@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>NeuroLibre</title>
+    <style>
+    .shine {
+        background: linear-gradient(to left, #ffffff, #ffffff 50%, red 50%, red) right;
+        background-size: 200% 100%;
+        padding-left: 10px;
+        padding-right: 10px;
+        border-radius: 5px;
+        color: white;
+        font-size: 24px;
+        animation: shine 1s ease-out forwards;
+        
+      }
+      @keyframes shine {
+        to {
+          background-position: left;
+        }
+      }
+      body {
+        font-family: sans-serif;
+        text-align: center;
+      }
+      h1 {
+        font-size: 50px;
+        color: #cccccc;
+      }
+      p {
+        font-size: 20px;
+        color: #666666;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .button {
+        display: inline-block;
+        border-radius: 3px;
+        background-color: red;
+        color: white;
+        font-size: 24px;
+        padding: 10px 20px;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Oops!</h1>
+      <center>
+        <img style="margin-top:30px;margin-left:50px;" width="200px" class="image" src="https://github.com/neurolibre/brand/raw/main/png/sad_robo.png" alt="Image">
+    </center>
+      <p>The reproducible preprint you are looking for does not exist.</p>
+      <div class="shine">But it could!</div>
+      <p style="color:red;">Visit our documentation below to prepare and submit a NeuroLibre preprint.</p>
+      <a class="button" href="https://docs.neurolibre.org/en/latest/PREPARE.html">NeuroLibre Docs</a>
+    </div>
+
+  </body>
+</html>

@@ -1,0 +1,13 @@
+[Unit]
+Description=API endpoint for neurolibre-data
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/neurolibre-data-api/neurolibre-data-api
+ExecStart=/usr/bin/gunicorn3 --workers 4 --bind unix:/home/ubuntu/neurolibre-data-api/neurolibre-data-api/neurolibre-data-api.sock -m 007 wsgi:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
