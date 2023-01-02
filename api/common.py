@@ -37,25 +37,3 @@ def load_all(globpath=BOOK_PATHS):
         book_collection += [book_dict]
 
     return book_collection
-
-def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
-    books = load_all()
-    
-    # Create an empty list for our results
-    results = []
-
-    # If we have the hash, return the corresponding book
-    if user_name is not None:
-        for book in books:
-            if book['user_name'] == user_name:
-                results.append(book)
-    elif commit_hash is not None:
-        for book in books:
-            if book['commit_hash'] == commit_hash:
-                results.append(book)
-    elif repo_name is not None:
-        for book in books:
-            if book['repo_name'] == repo_name:
-                results.append(book)
-    
-    return results
