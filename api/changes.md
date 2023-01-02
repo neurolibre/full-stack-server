@@ -7,4 +7,4 @@
 /api/v1/resources/data/sync --> /api/data/sync
 /api/v1/resources/books/sync --> /api/books/sync
 /api/v1/resources/binder/build --> /api/binder/build
-/api/v1/resources/books --> /api/book
+/api/v1/resources/books --> /api/book/build (test)

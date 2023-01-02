@@ -1,7 +1,6 @@
 from common import *
 from preprint import *
 import flask
-from flask_restx import Namespace
 import os
 import json
 import glob
@@ -21,7 +20,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from marshmallow import Schema, fields
-
+ 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
 
@@ -30,23 +29,33 @@ app = flask.Flask(__name__)
 app.register_blueprint(neurolibre_common_api.common_api)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+app.config["DEBUG"] = True
 
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
 app.logger.setLevel(logging.DEBUG)
 app.logger.debug('NeuroLibre preprint production API.')
 
-app.config["DEBUG"] = True
-app.config['FLASK_HTPASSWD_PATH'] = '/home/ubuntu/.htpasswd'
-#htpasswd = HtPasswdAuth(app)
+AUTH_KEY=os.getenv('AUTH_KEY')
+app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
+htpasswd = HtPasswdAuth(app)
+
+binderName = "binder-mcgill"
+domainName = "conp.cloud"
+logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
+serverName = 'preprint' # e.g. preprint.conp.cloud
+serverDescription = 'Production server'
+serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com")
+serverTOS = "http://docs.neurolibre.org"
+serverAbout = f"<h3>Endpoints to handle publishing tasks <u>following the completion of</u> the technical screening process.</h3>{logo}"
 
 spec = APISpec(
-        title='NeuroLibre preprint API',
+        title="Reproducible preprint API",
         version='v1',
         plugins=[MarshmallowPlugin()],
         openapi_version="3.0.2",
-        info=dict(description="Functions and resources to handle publishing tasks following the completion of the technical screening process.",contact=dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com"),termsOfService="http://docs.neurolibre.org"),
-        #servers = [{'url': 'https://{serverName}.conp.cloud/','description':'Production server.', 'variables': {'serverName':{'default':'preprint'}}}]
+        info=dict(description=serverAbout,contact=serverContact,termsOfService=serverTOS),
+        servers = [{'url': 'https://{serverName}.{domainName}/','description':'Production server.', 'variables': {'serverName':{'default':serverName},'domainName':{'default':domainName}}}]
         )
 
 app.config.update({
@@ -55,11 +64,18 @@ app.config.update({
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
-api_key_scheme = {"type": "apiKey", "in": "header", "name": "X-API-Key"}
-spec.components.security_scheme("ApiKeyAuth", api_key_scheme)
+api_key_scheme = {"type": "http", "scheme": "basic"}
+spec.components.security_scheme("basicAuth", api_key_scheme)
 
 # Create swagger UI documentation for the endpoints.
-docs = FlaskApiSpec(app=app,document_options=False,)
+docs = FlaskApiSpec(app=app,document_options=False)
+
+# Register common endpoints to the documentation
+docs.register(neurolibre_common_api.api_books_get,blueprint="common_api")
+
+# TODO: Replace yield stream with lists for most of the routes. 
+# You can get rid of run() and return a list instead. This way we can refactor 
+# and move server-side ops functions elsewhere to make endpoint descriptions clearer.
 
 class BucketsSchema(Schema):
     """
@@ -75,11 +91,11 @@ class BucketsSchema(Schema):
     deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
 
 @app.route('/api/zenodo/buckets', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
 @use_kwargs(BucketsSchema())
-def api_zenodo_post(fork_url,user_url,commit_fork,commit_user, title,issue_id,creators,deposit_data):
+def api_zenodo_post(user,fork_url,user_url,commit_fork,commit_user, title,issue_id,creators,deposit_data):
     """
     Fetches kwargs from validated BucketsSchema and makes bucket request to zenodo.
     """
@@ -141,11 +157,11 @@ class UploadSchema(Schema):
     commit_fork = fields.String(required=True,description="Commit sha at which the forked repository (and other resources) will be deposited")
 
 @app.route('/api/zenodo/upload', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload an item to the respective zenodo bucket (book, repository, data or docker image).', tags=['Zenodo'])
 @use_kwargs(UploadSchema())
-def api_upload_post(issue_id,repository_address,item,item_arg,fork_url,commit_fork):
+def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,commit_fork):
     """
     Uploads one item at a time (book, repository, data or docker image) to zenodo 
     for the buckets that have been created.
@@ -353,11 +369,11 @@ class ListSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 
 
 @app.route('/api/zenodo/list', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Get the list of Zenodo records that are available for a given submission.', tags=['Zenodo'])
 @use_kwargs(ListSchema())
-def api_zenodo_list_post(issue_id):
+def api_zenodo_list_post(user,issue_id):
     """
     List zenodo records for a given technical screening ID.
     """
@@ -382,11 +398,11 @@ class DeleteSchema(Schema):
     items = fields.List(fields.Str(),required=True,description="List of the items to be deleted from Zenodo.") 
 
 @app.route('/api/zenodo/flush', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Flush records and remove respective uploads from Zenodo, if available for a submission ID.', tags=['Zenodo'])
 @use_kwargs(DeleteSchema())
-def api_zenodo_flush_post(issue_id,items):
+def api_zenodo_flush_post(user,issue_id,items):
     """
     Delete buckets and uploaded files from zenodo if exist for a requested item type.
     """
@@ -450,11 +466,11 @@ class PublishSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 
 
 @app.route('/api/zenodo/publish', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
 @use_kwargs(PublishSchema())
-def api_zenodo_publish(issue_id):
+def api_zenodo_publish(user,issue_id):
     def run():
         ZENODO_TOKEN = os.getenv('ZENODO_API')
         params = {'access_token': ZENODO_TOKEN}
@@ -503,11 +519,11 @@ class DatasyncSchema(Schema):
     project_name = item = fields.String(required=True,description="Unique project name described for the submission.")
 
 @app.route('/api/data/sync', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
-def api_data_sync_post(project_name):
+def api_data_sync_post(user,project_name):
     # transfer with rsync
     remote_path = os.path.join("neurolibre-test-api:", "DATA", project_name)
     try:
@@ -531,12 +547,11 @@ class BooksyncSchema(Schema):
     commit_hash = fields.String(required=False,description="Commit hash.")
 
 @app.route('/api/books/sync', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
-def api_books_sync_post(repo_url,commit_hash=None):
-    repo_url = user_request["repo_url"]
+def api_books_sync_post(user,repo_url,commit_hash=None):
     repo = repo_url.split("/")[-1]
     user_repo = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
@@ -587,11 +602,11 @@ class BinderSchema(Schema):
     commit_hash = fields.String(required=False,description="Commit hash.")
 
 @app.route('/api/binder/build', methods=['POST'])
-#@htpasswd.required
+@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Request a binderhub build on the production server for a given repo.hash. Repo must belong to the roboneuro organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
-def api_build_post(repo_url, commit_hash):
+def api_build_post(user,repo_url, commit_hash):
     binderhub_api_url = "https://binder-mcgill.conp.cloud/build/{provider}/{user_repo}/{repo}.git/{commit}"
     repo = repo_url.split("/")[-1]
     user_repo = repo_url.split("/")[-2]
@@ -647,31 +662,3 @@ https://binder-mcgill.conp.cloud/v2/{provider}/{user_repo}/{repo}/{commit}
 
 # Register endpoint to the documentation
 docs.register(api_build_post)
-
-
-class BookSchema(Schema):
-    user_name = fields.String(required=False,description="Full URL of the repository submitted by the author.")
-    commit_hash = fields.String(required=False,description="Commit hash.")
-    repo_name = fields.String(required=False,description="Commit hash.")
-
-
-@app.route('/api/book', methods=['GET'])
-#@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Request a an individual book url via commit, repo name or user name.', tags=['Book'])
-def api_books_get(user_name=None,commit_hash=None,repo_name=None):
-    
-    if  not any([user_name, commit_hash, repo_name]):
-        flask.abort(400)
-
-    # Create an empty list for our results
-    results = book_get_by_params(user_name, commit_hash, repo_name)
-    if not results:
-        flask.abort(404)
-    
-    # Use the jsonify function from Flask to convert our list of
-    # Python dictionaries to the JSON format.
-    return flask.jsonify(results)
-
-# Register endpoint to the documentation
-docs.register(api_books_get)
