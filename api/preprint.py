@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+from common import *
 
 def zenodo_create_bucket(title, archive_type, creators, user_url, fork_url, commit_user, commit_fork, issue_id):
     ZENODO_TOKEN = os.getenv('ZENODO_API')
