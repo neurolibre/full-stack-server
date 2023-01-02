@@ -1,7 +1,5 @@
 import os
-import json
 import glob
-import requests
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
