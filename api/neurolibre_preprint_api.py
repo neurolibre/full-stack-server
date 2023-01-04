@@ -60,7 +60,7 @@ spec = APISpec(
 
 app.config.update({
     'APISPEC_SPEC': spec,
-    'APISPEC_SWAGGER_URL': '/swagger/',
+    'APISPEC_SWAGGER_URL': '/swagger',
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
@@ -89,6 +89,10 @@ class BucketsSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
     creators = fields.List(fields.Str(),required=True,description="List of the authors.")
     deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
+
+@app.route('/api/test', methods=['POST'])
+def api_test():
+    return f"Working"
 
 @app.route('/api/zenodo/buckets', methods=['POST'])
 @htpasswd.required
