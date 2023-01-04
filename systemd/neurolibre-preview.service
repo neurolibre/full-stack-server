@@ -1,0 +1,14 @@
+[Unit]
+Description=Neurolibre preview server
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=$HOME/full-stack-server/api
+Environment="PATH=$HOME/venv/neurolibre/bin"
+ExecStart=$HOME/venv/neurolibre/bin/gunicorn --workers 4 --bind unix:$HOME/full-stack-server/api/neurolibre_preview_api.sock -m 007 wsgi_preview:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
