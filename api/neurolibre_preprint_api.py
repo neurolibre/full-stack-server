@@ -43,7 +43,7 @@ htpasswd = HtPasswdAuth(app)
 binderName = "binder-mcgill"
 domainName = "conp.cloud"
 logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
-serverName = 'preprint' # e.g. preprint.conp.cloud
+serverName = 'neurolibre-data-prod' # e.g. preprint.conp.cloud
 serverDescription = 'Production server'
 serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com")
 serverTOS = "http://docs.neurolibre.org"
