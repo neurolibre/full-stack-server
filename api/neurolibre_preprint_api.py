@@ -90,7 +90,7 @@ class BucketsSchema(Schema):
     creators = fields.List(fields.Str(),required=True,description="List of the authors.")
     deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
 
-@app.route('/api/test', methods=['POST'])
+@app.route('/api/test', methods=['GET'])
 def api_test():
     return f"Working"
 
