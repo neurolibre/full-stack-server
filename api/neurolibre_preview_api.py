@@ -59,7 +59,7 @@ spec = APISpec(
 
 app.config.update({
     'APISPEC_SPEC': spec,
-    'APISPEC_SWAGGER_URL': '/swagger/',
+    'APISPEC_SWAGGER_URL': '/swagger',
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
