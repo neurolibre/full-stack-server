@@ -122,8 +122,72 @@ You can use [GTMetrix](https://gtmetrix.com/) to test the loading speed of indiv
 
 ## Deploy
 
+Clone this repository to `home` directory: 
+
+```
+cd ~
+git clone https://github.com/neurolibre/full-stack-server.git
+```
+
 ### Core dependencies 
 
+#### Flask, Gunicorn and other Python dependencies 
+
+This documentation assumes that the server host is a Ubuntu VM. To install Python dependencies, 
+we are going to use virtual environments.
+
+Ensure that python3 (3.6.9 or later) is available: 
+
+```
+which python3
+```
+
+Install `virtualenv` by:
+
+```
+sudo apt install python3-venv
+```
+Create a new folder (`venv`) under the home directory and inside that folder, create a virtual environment named `neurolibre`:
+
+```
+mkdir ~/venv
+cd ~/venv
+python3 -m venv neurolibre
+```
+
+If successful, you should see `~/venv/neurolibre` created. Enable this virtual environment, so that the dependencies are installed here: 
+
+```
+source ~/venv/neurolibre/bin/activate
+```
+
+If successful, the name of the environment should appear on bash, something like `(neurolibre) ubuntu@neurolibre-sftp:~/venv$`. **Ensure that the (neurolibre) environment is active, then:
+
+```
+pip3 install --upgrade pip
+pip3 install -r ~/full-stack-server/api/requirements.txt
+```
+
+#### NGINX installation and configurations
+
+To install and configure `nginx`: 
+
+```
+sudo apt install nginx
+```
+
+Allow HTTP (80) and HTTPS (443) ports:
+
+```
+sudo ufw allow 80,443/tcp
+```
+
+Create the following folders: 
+
+```
+sudo mkdir /etc/nginx/sites-available
+sudo mkdir /etc/nginx/sites-enabled
+```
 
 ### 
 
