@@ -90,10 +90,6 @@ class BucketsSchema(Schema):
     creators = fields.List(fields.Str(),required=True,description="List of the authors.")
     deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
 
-@app.route('/api/test', methods=['GET'])
-def api_test():
-    return f"Working"
-
 @app.route('/api/zenodo/buckets', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")

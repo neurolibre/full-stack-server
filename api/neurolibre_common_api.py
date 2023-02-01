@@ -8,6 +8,10 @@ common_api = Blueprint('common_api', __name__,
 
 #docs = FlaskApiSpec(common_api,document_options=False)
 
+@app.route('/api/heartbeat', methods=['GET'])
+def api_test():
+    return f"<3<3<3<3 Alive "
+
 @common_api.route('/api/books', methods=['GET'])
 def list_all_books():
     books = load_all()
