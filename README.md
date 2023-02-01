@@ -155,6 +155,8 @@ cd ~/venv
 python3 -m venv neurolibre
 ```
 
+> Note: Please do not replace the name `neurolibre` with something else. You can take a look at the `systemd/neurolibre-*.service` configuration file as to why. 
+
 If successful, you should see `~/venv/neurolibre` created. Enable this virtual environment, so that the dependencies are installed here: 
 
 ```
@@ -167,6 +169,31 @@ If successful, the name of the environment should appear on bash, something like
 pip3 install --upgrade pip
 pip3 install -r ~/full-stack-server/api/requirements.txt
 ```
+
+#### Configure server as a systemd service 
+
+Depending on the server type (preview or preprint), copy the respective content from `sytemd` folder in this repository to `/etc/systemd/system`:
+
+```
+sudo mv ~/full-stack-server/systemd/neurolibre-preview.service /etc/systemd/system/neurolibre-preview.service
+```
+
+If the python virtual environment and its dependencies are properly installed, you can start the service by: 
+
+```
+sudo systemctl start neurolibre-preprint.service
+```
+
+You can check the status by 
+
+```
+sudo systemctl status neurolibre-preprint.service
+```
+
+This should start multiple `gunicorn` workers, each one of them binding our flask application to a `unix socket` located at `~/full-stack-server/api/neurolibre_preview_api.sock`. You can check the existence of the `*.sock` file at this directory. The presence of this socket file is of key importance as in the next step, we will register it to nginx as an upstream server! 
+
+> Reminder: Use `neurolibre-preprint.service` instead of `neurolibre-preview.service` if you are setting up the production server. This is not only a naming convention, but also defines a functional separation between the roles of the two servers.
+
 
 #### NGINX installation and configurations
 
@@ -189,7 +216,63 @@ sudo mkdir /etc/nginx/sites-available
 sudo mkdir /etc/nginx/sites-enabled
 ```
 
-### 
+##### Update the `nginx.conf`
+
+Replace the default nginx configuration file with the one from this repository:
+
+```
+sudo cp ~/full-stack-server/nginx/nginx.conf /etc/nginx/nginx.conf
+```
+
+##### Add server-specific configuration files
+
+Depending on the server type (production or preview), copy `/nginx/neurolibre-<server-type>.conf` file to `/etc/nginx/sites-available`. For example, for the `preview` server: 
+
+```
+sudo cp ~/full-stack-server/nginx/neurolibre-preview.conf /etc/nginx/sites-enabled/neurolibre-preview.conf
+```
+
+Change the command if configuring the `preprint` server. 
+
+##### Create SSL certificates
+
+* Login to the cloudflare account, got to the respective site domain (e.g. `conp.cloud` or `neurolibre.org`), under the `SSL/TLS` --> `Origin Server` --> `Create Certificate`.
+
+* Use the default method (RSA 2048), leave the host names as is (or define a single subdomain, your call). Click create. 
+
+* This will create two long strings, one for `certificate` (first) and one for the private `key`. Create two files under `/etc/ssl` directory:
+     *  `cd /etc/ssl`
+     * `sudo nano /etc/ssl/conp.cloud.pem` --> Copy the `certificate` key here and save 
+     * `sudo nano /etc/ssl/conp.cloud.key` --> Copy the `key` string here and save.
+
+> Note: `conp.cloud.pem` and `conp.cloud.key` can be changed with any alternative name, such as `neurolibre.pem` and `neurolibre.key` as long as the origin certificate content is accurate AND if your `nginx.conf` is configured to look for that new file name:
+
+```
+    ssl_certificate     /etc/ssl/conp.cloud.pem;
+    ssl_certificate_key    /etc/ssl/conp.cloud.key;
+```
+
+Remember that the same directives also exist in the `/etc/nginx/sites-available/neurolibre-*.conf` configuration files. If you decide to change the certificate name, you will need to update these configs as well. 
+
+##### Start the server
+
+When you symlink the configuration file from `sites-available` to `sites-enabled`, it will take effect: 
+
+```
+sudo ln -s /etc/nginx/sites-available/neurolibre-preview.conf /etc/nginx/sites-enabled/neurolibre-preview.conf
+```
+
+then
+
+```
+sudo systemctl restart nginx
+```
+
+That's it! The server should be accessible at the domain you configured (e.g. preview.neurolibre.org)
+
+> Remember to use the correct name (`neurolibre-<type>.conf`) for the respective server.
+
+> Also, if your upstream server, i.e. the gunicorn socket, is not active, the webpage will not load. Ensure that `sudo systemctl status neurolibre-<type>.service` shows active status for the respective server. 
 
 ### Newrelic for Host and NGINX server
 

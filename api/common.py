@@ -1,5 +1,6 @@
 import os
 import glob
+import time
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
