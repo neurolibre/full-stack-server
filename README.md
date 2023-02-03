@@ -260,6 +260,15 @@ Change the command if configuring the `preprint` server.
 
 Remember that the same directives also exist in the `/etc/nginx/sites-available/neurolibre-*.conf` configuration files. If you decide to change the certificate name, you will need to update these configs as well. 
 
+##### A tiny hack to serve swagger ui static asset over upstream 
+
+This is a bit tricky both because a funny `_` (what python gives) vs `-` (what nginx expects) mismatch, also because we will be serving the swagger UI over a convoluted path. When you run the flask app locally, it will know where to locate UI-related assets and serve the UI on your localhost. But when we attempt it from `https://preview.neurolibre.org/documentation`, our NGINX server will not be able to locate them, so we help it: 
+
+```
+sudo mkdir /etc/nginx/html/flask-apispec
+sudo cp -r ~/venv/neurolibre/lib/python3.6/site-packages/flask_apispec/static /etc/nginx/html/flask-apispec/.
+```
+
 ##### Start the server
 
 When you symlink the configuration file from `sites-available` to `sites-enabled`, it will take effect: 
