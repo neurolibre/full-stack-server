@@ -71,7 +71,8 @@ spec.components.security_scheme("basicAuth", api_key_scheme)
 docs = FlaskApiSpec(app=app,document_options=False)
 
 # Register common endpoints to the documentation
-docs.register(neurolibre_common_api.api_books_get,blueprint="common_api")
+docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
+docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 
@@ -601,6 +602,8 @@ class BinderSchema(Schema):
     repo_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
     commit_hash = fields.String(required=False,description="Commit hash.")
 
+# This is named as a binder/build instead of /book/build due to its context 
+# Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")

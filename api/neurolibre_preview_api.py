@@ -39,8 +39,10 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
-binderName = "binder"
+binderName = "test"
 domainName = "conp.cloud"
+build_rate_limit = 30 #minutes
+
 logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
 serverName = 'preview' # e.g. preprint.conp.cloud
 serverDescription = 'Preview server'
@@ -69,66 +71,54 @@ spec.components.security_scheme("basicAuth", api_key_scheme)
 # Create swagger UI documentation for the endpoints.
 docs = FlaskApiSpec(app=app,document_options=False,)
 
+# Register common endpoints to the documentation
+docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
+docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 
+class BuildSchema(Schema):
+    """
+    Defines payload types and requirements for creating zenodo records.
+    """
+    repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
+    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
-
-
-
-
-
-
-@app.route('/api/v1/resources/books', methods=['POST'])
+@app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
-def api_books_post(user):
-    user_request = flask.request.get_json(force=True) 
-    binderhub_api_url = "https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit}"
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
+@use_kwargs(BuildSchema())
+def api_book_build(user, repo_url,commit_hash):
+    repo = repo_url.split("/")[-1]
+    user_repo = repo_url.split("/")[-2]
+    provider = repo_url.split("/")[-3]
+    if provider == "github.com":
+        provider = "gh"
+    elif provider == "gitlab.com":
+        provider = "gl"
 
-    if "repo_url" in user_request:
-        repo_url = user_request["repo_url"]
-        repo = repo_url.split("/")[-1]
-        user_repo = repo_url.split("/")[-2]
-        provider = repo_url.split("/")[-3]
-        if provider == "github.com":
-            provider = "gh"
-        elif provider == "gitlab.com":
-            provider = "gl"
-    else:
-        flask.abort(400)
-
-    if "commit_hash" in user_request:
-        commit = user_request["commit_hash"]
-    else:
-        commit = "HEAD"
-    
-    # checking user commit hash
-    commit_found  = False
-    if commit == "HEAD":
+    if commit_hash == "HEAD":
         refs = git.cmd.Git().ls_remote(repo_url).split("\n")
         for ref in refs:
             if ref.split('\t')[1] == "HEAD":
                 commit_hash = ref.split('\t')[0]
-                commit_found = True
-    else:
-        commit_hash = commit
-
-    # make binderhub and jupyter book builds
-    binderhub_request = binderhub_api_url.format(binderName=binderName,domainName=domainName,provider=provider, user_repo=user_repo, repo=repo, commit=commit)
+    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
     lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
+
+    ## Setting build rate limit
     if os.path.exists(lock_filepath):
         lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
-        # if lock file older than 30min, remove it
-        if lock_age_in_secs > 1800:
+        if lock_age_in_secs > build_rate_limit*60:
             os.remove(lock_filepath)
     if os.path.exists(lock_filepath):
-        binderhub_build_link = """
-https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit}
-""".format(provider=provider, user_repo=user_repo, repo=repo, commit=commit)
-        flask.abort(429, lock_age_in_secs, binderhub_build_link)
+        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
+        flask.abort(429, lock_age_in_secs, binderhub_exists_link)
     else:
         with open(lock_filepath, "w") as f:
             f.write("")
-    # requests builds
+    
+    # Request build from the preview binderhub instance
     req = requests.get(binderhub_request)
+
     def run():
         for line in req.iter_lines():
             if line:
@@ -136,8 +126,10 @@ https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit}
         results = book_get_by_params(commit_hash=commit_hash)
         print(results)
         os.remove(lock_filepath)
+
+        # TODO: Improve this convention.
         if not results:
-            error = {"reason":"424: Jupyter book built was not successfull!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
+            error = {"reason":"424: Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
             yield "\n" + json.dumps(error)
             yield ""
         else:
@@ -145,3 +137,6 @@ https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit}
             yield ""
 
     return flask.Response(run(), mimetype='text/plain')
+
+# Register endpoint to the documentation
+docs.register(api_book_build)

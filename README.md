@@ -216,12 +216,18 @@ sudo mkdir /etc/nginx/sites-available
 sudo mkdir /etc/nginx/sites-enabled
 ```
 
-##### Update the `nginx.conf`
+##### Update the `nginx.conf` and add `neurolibre_params`
 
 Replace the default nginx configuration file with the one from this repository:
 
 ```
 sudo cp ~/full-stack-server/nginx/nginx.conf /etc/nginx/nginx.conf
+```
+
+Add proxy pass parameters for the upstream server that is gunicorn/flask:
+
+```
+sudo cp ~/full-stack-server/nginx/neurolibre_params /etc/nginx/neurolibre_params
 ```
 
 ##### Add server-specific configuration files

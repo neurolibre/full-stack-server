@@ -9,16 +9,18 @@ common_api = Blueprint('common_api', __name__,
 #docs = FlaskApiSpec(common_api,document_options=False)
 
 @common_api.route('/api/heartbeat', methods=['GET'])
+@doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
 def api_test():
-    return f"<3<3<3<3 Alive "
+    return f"<3<3<3<3 Alive <3<3<3<3"
 
 @common_api.route('/api/books', methods=['GET'])
-def list_all_books():
+@doc(description='Get the list of all the built books that exist on the server.', tags=['Book'])
+def api_get_books():
     books = load_all()
     if books:
         return Response(jsonify(books), status=200, mimetype='application/json')
     else:
-        return Response(jsonify("oops"), status=404, mimetype='application/json')
+        return Response(jsonify("There are no books on this server yet."), status=404, mimetype='application/json')
 
 class BookSchema(Schema):
     user_name = fields.String(required=False,description="Full URL of the repository submitted by the author.")
@@ -29,8 +31,8 @@ class BookSchema(Schema):
 #@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(BookSchema())
-@doc(description='Request a an individual book url via commit, repo name or user name.', tags=['Book'])
-def api_books_get(user_name=None,commit_hash=None,repo_name=None):
+@doc(description='Request an individual book url via commit, repo name or user name.', tags=['Book'])
+def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     
     if  not any([user_name, commit_hash, repo_name]):
         abort(400)
