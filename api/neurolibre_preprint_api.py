@@ -73,6 +73,7 @@ docs = FlaskApiSpec(app=app,document_options=False)
 # Register common endpoints to the documentation
 docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
+docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 

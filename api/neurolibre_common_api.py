@@ -10,7 +10,7 @@ common_api = Blueprint('common_api', __name__,
 
 @common_api.route('/api/heartbeat', methods=['GET'])
 @doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
-def api_test():
+def api_heartbeat():
     return f"<3<3<3<3 Alive <3<3<3<3"
 
 @common_api.route('/api/books', methods=['GET'])

@@ -44,7 +44,7 @@ domainName = "conp.cloud"
 build_rate_limit = 30 #minutes
 
 logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
-serverName = 'preview' # e.g. preprint.conp.cloud
+serverName = 'preview' 
 serverDescription = 'Preview server'
 serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com")
 serverTOS = "http://docs.neurolibre.org"
@@ -56,12 +56,11 @@ spec = APISpec(
         plugins=[MarshmallowPlugin()],
         openapi_version="3.0.2",
         info=dict(description=serverAbout,contact=serverContact,termsOfService=serverTOS),
-        servers = [{'url': 'https://{serverName}.conp.cloud/','description':'Production server.', 'variables': {'serverName':{'default':serverName}}}]
+        servers = [{'url': 'https://{serverName}.neurolibre.org/','description':'Production server.', 'variables': {'serverName':{'default':serverName}}}]
         )
 
 app.config.update({
     'APISPEC_SPEC': spec,
-    'APISPEC_SWAGGER_URL': '/swagger',
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
@@ -74,6 +73,7 @@ docs = FlaskApiSpec(app=app,document_options=False,)
 # Register common endpoints to the documentation
 docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
+docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 
 class BuildSchema(Schema):
     """
@@ -85,7 +85,7 @@ class BuildSchema(Schema):
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
+@doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Book'])
 @use_kwargs(BuildSchema())
 def api_book_build(user, repo_url,commit_hash):
     repo = repo_url.split("/")[-1]
