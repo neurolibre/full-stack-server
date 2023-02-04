@@ -314,6 +314,7 @@ After successful installation, the newrelic agent should start running. Confirm 
 ```bash
 sudo systemctl status newrelic-infra.service
 ```
+If the installer prompted you to add additional packages including `NGINX`, `Golden Signal Alerts` etc. , you may skip the step 2. below. Nevertheless, go through the second bullet point (of step 2) to confirm successful `nri-nginx` installation.  
 
 2. Install new relic nginx integration
 
@@ -330,7 +331,7 @@ cd ~
 sudo apt install ./nri-nginx_amd64.deb
 ```
 
-If the installation is successful, you should see `nginx-config.yaml.sample` upon: 
+* If the installation is successful, you should see `nginx-config.yaml.sample` upon: 
 
 ```
 ls /etc/newrelic-infra/integrations.d
@@ -362,10 +363,148 @@ sudo cp nginx-config.yml.sample nginx-config.yml
 
 This action will start the `nri-nginx` integration. Run `sudo systemctl status newrelic-infra.service` to confirm successful. You should see the _"Integration health check finished with success"_ message for _integration_name=nri-nginx_.
 
+### Fail2ban installation and configuration 
+
+* Install 
+
+```
+sudo apt-get install fail2ban
+``` 
+
+* Copy over fail2ban configurations from this repository to where they should be:
+
+```
+sudo cp -R ~/full-stack-server/fail2ban/* /etc/fail2ban
+```
+
+> Note that these configurations assume that `/home/ubuntu/nginx-error.log` and `/home/ubuntu/nginx-access.log` are where they should be and configured as error/access logs for the nginx server.
+
+* Activate NGINX jails:
+
+```
+sudo systemctl restart fail2ban.service
+```
+
+* Confirm that the service is ready:
+
+```
+sudo systemctl status fail2ban.service
+```
+
+* See the number and the list of jails set up:
+
+```
+sudo fail2ban-client status
+```
+
+* Be a responsible guardian and take a look at those jails. For example, to see the list of blocked IPs due to suspicious authentication retries:
+
+```
+sudo fail2ban-client status nginx-http-auth
+```
+
+You can check other jails (e.g., `nginx-noproxy`,`nginx-nonscript`,`sshd`). 
+
+* Use your get out of the jail card: 
+
+In case you trapped yourself while testing if the jail works:
+
+```
+sudo fail2ban-client set nginx-http-auth unbanip ip.address.goes.here
+```
+
+See this [documentation](https://www.digitalocean.com/community/tutorials/how-to-protect-an-nginx-server-with-fail2ban-on-ubuntu-14-04) for further details regarding the configurations.
+
 ## Monitor, Debug, and Improve
 
- 
+### Use Newrelic
 
-4. Monitor the NGINX server 
+Login to the NewRelic portal where you can take a look at all the entities from both `preview` and `preprint` server. These entities could be specific to NGINX or the hosts events. You can take a look at a variety of logs, and see if there are any errors or critical warnings thrown.
 
-Login to the NewRelic portal and click `All entities`. If the integration is successful, a new entity will appear under the `NGINX servers` (something like `server:localhost.localdomain:80`). 
+NewRelic not only provides centralized monitoring of multiple resources, but also allows you to set alert conditions! You can install the mobile application to your iPhone/Android and get immediately notified when things are out of control.
+
+### Know your logs 
+
+We have several `systemd` services that are critical. You can use `journalctl` to take a look at what's going on with each one of them. For example, if you need to take a look at the logs from gunicorn (through which Flask logs are forwarded): 
+
+```
+journalctl -n 20 -u neurolibre-preview.service
+```
+
+Here, n is the number of last N log lines and `-u` is followed by the name of the service (e.g., nginx.service).
+
+## Dokku
+
+TODO: Move this elsewhere in the documentation.
+
+* Create a Ubuntu VM and associate a floating IP (vm.floating.ip).
+
+* Install Dokku to the VM by following [debian installation instructions](https://dokku.com/docs/getting-started/install/debian/).
+
+* Add an shh key to the Dokku. To achieve this, you need root access (`sudo -i`). If an ssh keypair does not exist (~/.ssh/id_rsa), create one (`ssh-keygen`): 
+
+```
+dokku ssh-keys:add <name> ~/.ssh/id_rsa 
+```
+
+* Add global domain
+
+```
+dokku domains:add-global dashboards.neurolibre.org
+```
+
+* On Cloudflare, add an A record for wildcard nested domain `*.dashboards.neurolibre.org`. This will require total TLS to issue individual certificates for every proxied hostname (paid feature). Otherwise, SSL termination will fail.
+
+* On Cloudflare, create origin certificates for the wildcard nested domain, copy over files to a `neurolibre.crt` and `neurolibre.key` files, respectively. Then: 
+
+```
+tar cvf neurolibre.tar neurolibre.crt neurolibre.key
+```
+
+* We can deploy the first application. Clone a compatible repository, e.g., `my-dashboard` and cd into it: 
+
+```
+cd ~/my-dashboard
+dokku apps:create my-dashboard
+```
+
+> If you app needs, you'll need to create [service plugins](https://dokku.com/docs/community/plugins/#official-plugins-beta) at this step.
+
+* Add git remote for your application: 
+
+```
+git remote add dokku dokku@[vm.floating.ip]:my-dashboard
+git push dokku main:master 
+```
+
+If the main branch is `main`, use `master:master` otherwise, or `branch:master` if that's what you need.
+
+* The push command above will start the deployment. If the VHOST is not enabled by default, you may not see URL being printed at the end of the deployment. In either case, add domain for the app: 
+
+```
+dokku domains:add my-dashboard dashboards.neurolibre.org
+```
+
+Confirm that it is enabled with: 
+
+```
+dokku domains:report my-dashboard
+```
+
+enable otherwise: 
+
+```
+dokku domains:enable my-dashboard
+```
+
+* Add certificates to the application: 
+
+```
+dokku add:certificate my-dashboard < ~/neurolibre.tar
+```
+
+* That's it! If successful, the app should be live on https://my-dashboard.dashboards.neurolibre.org 
+
+> Needless to say, `my-dashboard` here is just an example name. The repository you'll clone should have basic requirements (e.g., source code, a procfile to indicate what to execute and runtime dependency declarations such as requirements.txt, Gemfile, package.json, pom.xml, etc.) to deploy itself as an application to dokku.
+
+* Each application on Dokku will run in a container, named as "dynos" in Heroku. If you connect this VM to NewRelic (see instructions above), you can monitor each container/application/load and set alert conditions. 
