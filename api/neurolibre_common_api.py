@@ -35,7 +35,7 @@ class BookSchema(Schema):
 #@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(BookSchema())
-@doc(description='Request an individual book url via commit, repo name or user name.', tags=['Book'])
+@doc(description='Request an individual book url via commit, repo name or user name. Accepts arguments passed in the request URL.', tags=['Book'])
 def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     
     if  not any([user_name, commit_hash, repo_name]):
@@ -57,6 +57,8 @@ def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     if not results:
         current_app.logger.debug()
         response = make_response(jsonify('Requested book does not exist.'),404)
+    else:
+        response = make_response(jsonify(results),200)
     
     # Use the jsonify function from Flask to convert our list of
     # Python dictionaries to the JSON format.
