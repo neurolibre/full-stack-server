@@ -13,11 +13,14 @@ common_api = Blueprint('common_api', __name__,
 # imports this blueprint.
 
 @common_api.route('/api/heartbeat', methods=['GET'])
+@marshal_with(None,code=200,description="Success.")
 @doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
 def api_heartbeat():
     return make_response(jsonify("<3<3<3<3 Alive <3<3<3<3"),200)
 
 @common_api.route('/api/books', methods=['GET'])
+@marshal_with(None,code=404,description="Not found.")
+@marshal_with(None,code=200,description="Success.")
 @doc(description='Get the list of all the built books that exist on the server.', tags=['Book'])
 def api_get_books():
     books = load_all()
@@ -32,8 +35,8 @@ class BookSchema(Schema):
     repo_name = fields.String(required=False,description="Commit hash.")
 
 @common_api.route('/api/book', methods=['GET'])
-#@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@marshal_with(None,code=400,description="Bad request.")
+@marshal_with(None,code=404,description="Not found.")
 @marshal_with(None,code=200,description="Success.")
 @use_kwargs(BookSchema())
 @doc(description='Request an individual book url via commit, repo name or user name. Accepts arguments passed in the request URL.', tags=['Book'])
