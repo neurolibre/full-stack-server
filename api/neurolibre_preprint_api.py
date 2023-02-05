@@ -1,5 +1,3 @@
-from common import *
-from preprint import *
 import flask
 import os
 import json
@@ -9,17 +7,17 @@ import subprocess
 import requests
 import shutil
 import git
-from flask_htpasswd import HtPasswdAuth
-from dotenv import load_dotenv
-from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
 import neurolibre_common_api
+from common import *
+from preprint import *
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
-
-
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from marshmallow import Schema, fields
+from flask_htpasswd import HtPasswdAuth
+from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
  
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -40,8 +38,11 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
+# KEEP BINDERHUB URL AND DOMAIN UP TO DATE
 binderName = "binder-mcgill"
 domainName = "conp.cloud"
+build_rate_limit = 30 #minutes
+
 logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
 serverName = 'neurolibre-data-prod' # e.g. preprint.conp.cloud
 serverDescription = 'Production server'
@@ -58,12 +59,16 @@ spec = APISpec(
         servers = [{'url': 'https://{serverName}.{domainName}/','description':'Production server.', 'variables': {'serverName':{'default':serverName},'domainName':{'default':domainName}}}]
         )
 
+# SWAGGER UI URLS. Interestingly, the preview deployment 
+# required `/swagger/` instead. This one works as is.
 app.config.update({
     'APISPEC_SPEC': spec,
     'APISPEC_SWAGGER_URL': '/swagger',
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
+# Through Python, there's no way to disable within-documentation API calls.
+# Even though "Try it out" is not functional, we cannot get rid of it.
 api_key_scheme = {"type": "http", "scheme": "basic"}
 spec.components.security_scheme("basicAuth", api_key_scheme)
 
@@ -585,7 +590,7 @@ def api_books_sync_post(user,repo_url,commit_hash=None):
     # final check
     def run():
         results = book_get_by_params(commit_hash=commit_hash)
-        print(results)
+         #app.logger.debug(results)
         if not results:
             error = {"reason":"404: Could not found the jupyter book build!", "commit_hash":commit_hash, "repo_url":repo_url}
             yield "\n" + json.dumps(error)
@@ -644,7 +649,7 @@ def api_build_post(user,repo_url, commit_hash):
     if os.path.exists(lock_filepath):
         lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
         # if lock file older than 30min, remove it
-        if lock_age_in_secs > 1800:
+        if lock_age_in_secs > build_rate_limit*60:
             os.remove(lock_filepath)
     if os.path.exists(lock_filepath):
         binderhub_build_link = """

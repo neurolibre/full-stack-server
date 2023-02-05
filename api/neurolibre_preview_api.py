@@ -1,25 +1,21 @@
-from common import *
 import flask
 import os
 import json
-import glob
 import time
-import subprocess
 import requests
-import shutil
 import git
+import logging
+import neurolibre_common_api
+from flask import jsonify, make_response
+from common import *
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-import logging
-import neurolibre_common_api
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
-
-
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from marshmallow import Schema, fields
- 
+
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
 
@@ -39,6 +35,7 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
+# KEEP BINDERHUB URL AND DOMAIN UP TO DATE
 binderName = "test"
 domainName = "conp.cloud"
 build_rate_limit = 30 #minutes
@@ -50,6 +47,7 @@ serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpd
 serverTOS = "http://docs.neurolibre.org"
 serverAbout = f"<h3>Endpoints to handle preview & screening tasks <u>prior to the submission & screening</u>.</h3>{logo}"
 
+# API specifications displayed on the swagger UI 
 spec = APISpec(
         title="Neurolibre preview & screening API",
         version='v1',
@@ -59,12 +57,15 @@ spec = APISpec(
         servers = [{'url': 'https://{serverName}.neurolibre.org/','description':'Production server.', 'variables': {'serverName':{'default':serverName}}}]
         )
 
+# SWAGGER UI URLS. Pay attention to /swagger/ vs /swagger.
 app.config.update({
     'APISPEC_SPEC': spec,
     'APISPEC_SWAGGER_URL': '/swagger/',
     'APISPEC_SWAGGER_UI_URL': '/documentation'
 })
 
+# Through Python, there's no way to disable within-documentation API calls.
+# Even though "Try it out" is not functional, we cannot get rid of it.
 api_key_scheme = {"type": "http", "scheme": "basic"}
 spec.components.security_scheme("basicAuth", api_key_scheme)
 
@@ -78,7 +79,7 @@ docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 
 class BuildSchema(Schema):
     """
-    Defines payload types and requirements for creating zenodo records.
+    Defines payload types and requirements for book build request.
     """
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
@@ -86,7 +87,7 @@ class BuildSchema(Schema):
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Book'])
+@doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
 @use_kwargs(BuildSchema())
 def api_book_build(user, repo_url,commit_hash):
     repo = repo_url.split("/")[-1]
@@ -125,7 +126,7 @@ def api_book_build(user, repo_url,commit_hash):
             if line:
                 yield str(line.decode('utf-8')) + "\n"
         results = book_get_by_params(commit_hash=commit_hash)
-        print(results)
+        #app.logger.debug(results)
         os.remove(lock_filepath)
 
         # TODO: Improve this convention.
