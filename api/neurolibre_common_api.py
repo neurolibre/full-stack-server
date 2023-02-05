@@ -56,7 +56,6 @@ def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     results = book_get_by_params(user_name, commit_hash, repo_name)
     
     if not results:
-        current_app.logger.debug()
         response = make_response(jsonify('Requested book does not exist.'),404)
     else:
         response = make_response(jsonify(results),200)
