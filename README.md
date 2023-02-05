@@ -428,10 +428,12 @@ NewRelic not only provides centralized monitoring of multiple resources, but als
 We have several `systemd` services that are critical. You can use `journalctl` to take a look at what's going on with each one of them. For example, if you need to take a look at the logs from gunicorn (through which Flask logs are forwarded): 
 
 ```
-journalctl -n 20 -u neurolibre-preview.service
+journalctl -xn 20 -u neurolibre-preview.service
 ```
 
-Here, n is the number of last N log lines and `-u` is followed by the name of the service (e.g., nginx.service).
+The above would help you understand what went wrong if the service failed to restart. Note that `sudo systemctl status neurolibre-preview.service` is not going to explain what went wrong at the level you expect.
+
+Here, `-xn` is the number of last N lines of log with application context and `-u` is followed by the name of the service (e.g., nginx.service). For further details, see [journalctl reference](https://www.freedesktop.org/software/systemd/man/journalctl.html).
 
 ## Dokku
 
