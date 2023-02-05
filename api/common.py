@@ -4,7 +4,7 @@ import time
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
-BOOK_URL = "http://neurolibre-data-prod.conp.cloud/book-artifacts"
+BOOK_URL = "https://preview.neurolibre.org/book-artifacts"
 DOCKER_REGISTRY = "https://binder-registry.conp.cloud"
 
 def load_all(globpath=BOOK_PATHS):
