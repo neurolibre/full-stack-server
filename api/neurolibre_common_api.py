@@ -1,27 +1,30 @@
-from flask import Response, Blueprint, abort, jsonify, request, current_app
+from flask import Response, Blueprint, abort, jsonify, request, current_app, make_response
 from common import *
-from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
+from flask_apispec import marshal_with, doc, use_kwargs
 from marshmallow import Schema, fields
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
 
 # To emit log messages from this blueprint to the application context, 
-# we are going to use current_app. Only valid if used within route definitions. 
+# we are going to use current_app. Only valid if used within route definitions.
+
+# Document registration of the following endpoints must be performed by the app that 
+# imports this blueprint.
 
 @common_api.route('/api/heartbeat', methods=['GET'])
 @doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
 def api_heartbeat():
-    return f"<3<3<3<3 Alive <3<3<3<3"
+    return make_response(jsonify("<3<3<3<3 Alive <3<3<3<3"),200)
 
 @common_api.route('/api/books', methods=['GET'])
 @doc(description='Get the list of all the built books that exist on the server.', tags=['Book'])
 def api_get_books():
     books = load_all()
     if books:
-        return Response(jsonify(books), status=200, mimetype='application/json')
+        return make_response(jsonify(books), 200)
     else:
-        return Response(jsonify("There are no books on this server yet."), status=404, mimetype='application/json')
+        return make_response(jsonify("There are no books on this server yet."), 404)
 
 class BookSchema(Schema):
     user_name = fields.String(required=False,description="Full URL of the repository submitted by the author.")
@@ -46,17 +49,15 @@ def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     elif "repo_name" in request.args:
         repo_name = request.args.get("repo_name")
     else:
-        abort(400)
+        response = make_response(jsonify('Bad request, no arguments passed to locate a book.'),400)
 
     # Create an empty list for our results
     results = book_get_by_params(user_name, commit_hash, repo_name)
     
     if not results:
-        current_app.logger.debug('Requested book does not exist.')
-        abort(404)
+        current_app.logger.debug()
+        response = make_response(jsonify('Requested book does not exist.'),404)
     
     # Use the jsonify function from Flask to convert our list of
     # Python dictionaries to the JSON format.
-    return jsonify(results)
-
-# Register endpoint to the documentation
+    return response
