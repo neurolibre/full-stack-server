@@ -532,7 +532,7 @@ class DatasyncSchema(Schema):
 @use_kwargs(DatasyncSchema())
 def api_data_sync_post(user,project_name):
     # transfer with rsync
-    remote_path = os.path.join("neurolibre-test-api:", "DATA", project_name)
+    remote_path = os.path.join("neurolibre-preview:", "DATA", project_name)
     try:
         f = open("/DATA/data_synclog.txt", "a")
         f.write(remote_path)
@@ -579,7 +579,7 @@ def api_books_sync_post(user,repo_url,commit_hash=None):
     else:
         commit_hash = commit
     # transfer with rsync
-    remote_path = os.path.join("neurolibre-test-api:", "DATA", "book-artifacts", user_repo, provider, repo, commit_hash + "*")
+    remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", user_repo, provider, repo, commit_hash + "*")
     try:
         f = open("/DATA/synclog.txt", "a")
         f.write(remote_path)
@@ -616,7 +616,6 @@ class BinderSchema(Schema):
 @doc(description='Request a binderhub build on the production server for a given repo.hash. Repo must belong to the roboneuro organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
 def api_build_post(user,repo_url, commit_hash):
-    binderhub_api_url = "https://binder-mcgill.conp.cloud/build/{provider}/{user_repo}/{repo}.git/{commit}"
     repo = repo_url.split("/")[-1]
     user_repo = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
@@ -643,8 +642,8 @@ def api_build_post(user,repo_url, commit_hash):
     else:
         commit_hash = commit
 
-    # make binderhub and jupyter book builds
-    binderhub_request = binderhub_api_url.format(provider=provider, user_repo=user_repo, repo=repo, commit=commit)
+    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
+
     lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
     if os.path.exists(lock_filepath):
         lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
@@ -652,10 +651,8 @@ def api_build_post(user,repo_url, commit_hash):
         if lock_age_in_secs > build_rate_limit*60:
             os.remove(lock_filepath)
     if os.path.exists(lock_filepath):
-        binderhub_build_link = """
-https://binder-mcgill.conp.cloud/v2/{provider}/{user_repo}/{repo}/{commit}
-""".format(provider=provider, user_repo=user_repo, repo=repo, commit=commit)
-        flask.abort(409, binderhub_build_link)
+        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
+        flask.abort(409, binderhub_exists_link)
     else:
         with open(lock_filepath, "w") as f:
             f.write("")

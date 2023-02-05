@@ -120,16 +120,18 @@ For further details on tuning NGINX for performance, see these blog posts about 
 
 You can use [GTMetrix](https://gtmetrix.com/) to test the loading speed of individual NeuroLibre preprints. The loading speed of these pages mainly depends on the content of the static files they contain. For example, pages with interactive plots rendered using HTML may take longer to load because they encapsulate all the data points for various UI events.
 
-## Deploy
+## Deploy and configure NeuroLibre servers
 
-Clone this repository to `home` directory: 
+Clone this repository to `home` directory (typically `/home/ubuntu`):
 
 ```
 cd ~
 git clone https://github.com/neurolibre/full-stack-server.git
 ```
 
-### Core dependencies 
+Be careful not to run these commands (or anything else in this section) as the `root` user. If you ssh'd into the VM as root, you can switch to ubuntu by executing the `su ubuntu` command in the remote terminal. 
+
+> Throughout the rest of this section, **`<type>`** refers to either `preview` or `preprint`.
 
 #### Flask, Gunicorn and other Python dependencies 
 
@@ -155,44 +157,73 @@ cd ~/venv
 python3 -m venv neurolibre
 ```
 
-> Note: Please do not replace the name `neurolibre` with something else. You can take a look at the `systemd/neurolibre-*.service` configuration file as to why. 
+> Note: Please do not replace the virtual environment name above (`neurolibre`) with something else. You can take a look at the `systemd/neurolibre-<type>.service` configuration files as to why. 
 
-If successful, you should see `~/venv/neurolibre` created. Enable this virtual environment, so that the dependencies are installed here: 
+If successful, you should see `~/venv/neurolibre` created. Now, activate this virtual environment to the install dependencies in the right place:
 
 ```
 source ~/venv/neurolibre/bin/activate
 ```
 
-If successful, the name of the environment should appear on bash, something like `(neurolibre) ubuntu@neurolibre-sftp:~/venv$`. **Ensure that the (neurolibre) environment is active, then:
+If successful, the name of the environment should appear on bash, something like `(neurolibre) ubuntu@neurolibre-sftp:~/venv$`. **Ensure that the (neurolibre) environment is activated when you are executing the following commands**:
 
 ```
 pip3 install --upgrade pip
 pip3 install -r ~/full-stack-server/api/requirements.txt
 ```
 
-#### Configure server as a systemd service 
+You can confirm the packages/versions via `pip3 freeze`.
 
-Depending on the server type (preview or preprint), copy the respective content from `sytemd` folder in this repository to `/etc/systemd/system`:
+#### Configure the server as a systemd service 
+
+Depending on the server **type** [`preview` or `preprint`], copy the respective content from `sytemd` folder in this repository into `/etc/systemd/system`:
 
 ```
-sudo mv ~/full-stack-server/systemd/neurolibre-preview.service /etc/systemd/system/neurolibre-preview.service
+sudo cp ~/full-stack-server/systemd/neurolibre-<type>.service /etc/systemd/system/neurolibre-<type>.service
 ```
 
 If the python virtual environment and its dependencies are properly installed, you can start the service by: 
 
 ```
-sudo systemctl start neurolibre-preprint.service
+sudo systemctl start neurolibre-<type>.service
 ```
 
 You can check the status by 
 
 ```
-sudo systemctl status neurolibre-preprint.service
+sudo systemctl status neurolibre-<type>.service
 ```
 
-This should start multiple `gunicorn` workers, each one of them binding our flask application to a `unix socket` located at `~/full-stack-server/api/neurolibre_preview_api.sock`. You can check the existence of the `*.sock` file at this directory. The presence of this socket file is of key importance as in the next step, we will register it to nginx as an upstream server! 
+This should start multiple `gunicorn` workers, each one of them binding our flask application to a `unix socket` located at `~/full-stack-server/api/neurolibre_<type>_api.sock`. You can check the existence of the `*.sock` file at this directory. The presence of this socket file is of key importance as in the next step, we will register it to nginx as an upstream server! 
 
-> Reminder: Use `neurolibre-preprint.service` instead of `neurolibre-preview.service` if you are setting up the production server. This is not only a naming convention, but also defines a functional separation between the roles of the two servers.
+> Reminder: Replace the **`<type>`** in the commands above either with `preprint` or `preview` depending on the server (e.g., `neurolibre-preview.service`) you are configuring. Note that this is not only a naming convention, but also defines a functional separation between the roles of the two servers.
+
+#### Preprint <--> Preview serve data sync configurations
+
+After technical screening process, the final version of the Jupyter Book and respective data will be transferred from the preview (source) to the preprint (destination) server. At least as for the current convention. To achieve this, we preferred [`rsync`](https://linux.die.net/man/1/rsync) that uses ssh for communication between the source and destination.
+
+Whenever the public IP of either server changes and/or the VMs are re-spawned from scratch, please ensure that the following configuration is valid.  
+
+1. Create an ssh keypair _on the destination (preprint) server_ `ssh-keygen -t rsa`
+2. Add the **public** key (`*.pub`) to the `~/.ssh/authorized_keys` file _in the source (preview) server_. This will allow production server to pull files from the preview server.
+3. Confirm that you can ssh **into** the source (preview) server **from** the destination (preprint) server `ssh -i ~/.ssh/key ubuntu@preview.server.ip`.
+4. Create an ssh configuration file `~/.ssh/config` _on the destination (preprint) server_ to recognize preview (source) server as a host. The content of the configuration will be:
+
+```
+Host neurolibre-preview
+        HostName xxx.xx.xx.xxx
+        User ubuntu
+```
+
+Ensure that the you replaced `xxx.xx.xx.xxx` with the public IP address of the preview server. The first line of the configuration above declares the alias `neurolibre-preview`. If you change this name, you will need to make respective changes in the `neurolibre_preprint_api.py`. 
+
+5. Test file transfer. SSH into the destination (preprint) server and pull an example file from the source server: 
+
+```
+rsync -avR neurolibre-preview:/DATA/foo.txt /
+```
+
+Provided that the `/DATA/foo.txt` exists on the source (preview) server and you successfully configured ssh, you should see the same file appearing at the same destination (directory syncing, see more [here](https://www.digitalocean.com/community/tutorials/how-to-use-rsync-to-sync-local-and-remote-directories)) on the destination (preprint) server.
 
 
 #### NGINX installation and configurations
@@ -232,13 +263,13 @@ sudo cp ~/full-stack-server/nginx/neurolibre_params /etc/nginx/neurolibre_params
 
 ##### Add server-specific configuration files
 
-Depending on the server type (production or preview), copy `/nginx/neurolibre-<server-type>.conf` file to `/etc/nginx/sites-available`. For example, for the `preview` server: 
+Depending on the server **type** [`preprint` or `preview`], copy `/nginx/neurolibre-<type>.conf` file to `/etc/nginx/sites-available`:
 
 ```
-sudo cp ~/full-stack-server/nginx/neurolibre-preview.conf /etc/nginx/sites-enabled/neurolibre-preview.conf
+sudo cp ~/full-stack-server/nginx/neurolibre-<type>.conf /etc/nginx/sites-enabled/neurolibre-<type>.conf
 ```
 
-Change the command if configuring the `preprint` server. 
+> Reminder: Replace the **`<type>`** in the commands above either with `preprint` or `preview` depending on the server (e.g., `neurolibre-preview.service`) you are configuring.
 
 ##### Create SSL certificates
 
@@ -258,23 +289,25 @@ Change the command if configuring the `preprint` server.
     ssl_certificate_key    /etc/ssl/conp.cloud.key;
 ```
 
-Remember that the same directives also exist in the `/etc/nginx/sites-available/neurolibre-*.conf` configuration files. If you decide to change the certificate name, you will need to update these configs as well. 
+Remember that the same directives also exist in the `/etc/nginx/sites-available/neurolibre-<type>.conf` configuration files, both for `preview` and `preprint`. If you decide to change the certificate name, you will need to update these configs as well.
 
-##### A tiny hack to serve swagger ui static asset over upstream 
+##### A tiny hack to serve swagger ui static assets over upstream 
 
-This is a bit tricky both because a funny `_` (what python gives) vs `-` (what nginx expects) mismatch, also because we will be serving the swagger UI over a convoluted path. When you run the flask app locally, it will know where to locate UI-related assets and serve the UI on your localhost. But when we attempt it from `https://preview.neurolibre.org/documentation`, our NGINX server will not be able to locate them, so we help it: 
+This is a bit tricky both because a funny `_` (what python gives) vs `-` (what nginx expects) mismatch, also because we will be serving the swagger UI over a convoluted path. When you run the flask app locally, it will know where to locate UI-related assets and serve the UI on your localhost. But when we attempt it from `https://<type>.neurolibre.org/documentation`, our NGINX server will not be able to locate them, so we help it: 
 
 ```
 sudo mkdir /etc/nginx/html/flask-apispec
 sudo cp -r ~/venv/neurolibre/lib/python3.6/site-packages/flask_apispec/static /etc/nginx/html/flask-apispec/.
 ```
 
+This is required for both server types.
+
 ##### Start the server
 
 When you symlink the configuration file from `sites-available` to `sites-enabled`, it will take effect: 
 
 ```
-sudo ln -s /etc/nginx/sites-available/neurolibre-preview.conf /etc/nginx/sites-enabled/neurolibre-preview.conf
+sudo ln -s /etc/nginx/sites-available/neurolibre-<type>.conf /etc/nginx/sites-enabled/neurolibre-<type>.conf
 ```
 
 then
@@ -283,13 +316,15 @@ then
 sudo systemctl restart nginx
 ```
 
-That's it! The server should be accessible at the domain you configured (e.g. preview.neurolibre.org)
+That's it! The server should be accessible at the domain you configured (e.g. https://preview.neurolibre.org)
 
-> Remember to use the correct name (`neurolibre-<type>.conf`) for the respective server.
+This is required for both server types.
+
+> Remember to use the correct name (`neurolibre-<type>.conf`) for the respective (`preprint` or `preview`) server you are configuring.
 
 > Also, if your upstream server, i.e. the gunicorn socket, is not active, the webpage will not load. Ensure that `sudo systemctl status neurolibre-<type>.service` shows active status for the respective server. 
 
-### Newrelic for Host and NGINX server
+### Newrelic installation
 
 We will deploy New Relic Infrastructure (`newrelic-infra`) and the NGINX integration for New Relic (`nri-nginx`,[source repo](https://github.com/newrelic/nri-nginx)) to monitor the status of our host virtual machine (VM) and the NGINX server. 
 
