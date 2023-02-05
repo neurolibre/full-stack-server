@@ -34,6 +34,7 @@ class BookSchema(Schema):
 @common_api.route('/api/book', methods=['GET'])
 #@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@marshal_with(None,code=200,description="Success.")
 @use_kwargs(BookSchema())
 @doc(description='Request an individual book url via commit, repo name or user name. Accepts arguments passed in the request URL.', tags=['Book'])
 def api_get_book(user_name=None,commit_hash=None,repo_name=None):
