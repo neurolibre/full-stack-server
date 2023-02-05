@@ -85,7 +85,7 @@ class BuildSchema(Schema):
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
 @app.route('/api/book/build', methods=['POST'])
-@htpasswd.required
+#@htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
 @use_kwargs(BuildSchema())
