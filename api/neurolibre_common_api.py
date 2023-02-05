@@ -2,17 +2,12 @@ from flask import Response, Blueprint, abort, jsonify, request, current_app
 from common import *
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from marshmallow import Schema, fields
-import logging
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
 
-#docs = FlaskApiSpec(common_api,document_options=False)
-
-gunicorn_error_logger = logging.getLogger('gunicorn.error')
-current_app.logger.handlers.extend(gunicorn_error_logger.handlers)
-current_app.logger.setLevel(logging.DEBUG)
-current_app.logger.debug('NeuroLibre common API.')
+# To emit log messages from this blueprint to the application context, 
+# we are going to use current_app. Only valid if used within route definitions. 
 
 @common_api.route('/api/heartbeat', methods=['GET'])
 @doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
@@ -41,20 +36,23 @@ class BookSchema(Schema):
 def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     
     if  not any([user_name, commit_hash, repo_name]):
+        # Example debug message from within the blueprint route
         current_app.logger.debug('No payload, parsing request arguments.')
-    
+
     if "user_name" in request.args:
-        user_name = str(request.args['user_name'])
+        user_name = request.args.get("user_name")
     elif "commit_hash" in request.args:
-        commit_hash = str(request.args['commit_hash'])
+        commit_hash = request.args.get("commit_hash")
     elif "repo_name" in request.args:
-        repo_name = str(request.args['repo_name'])
+        repo_name = request.args.get("repo_name")
     else:
         abort(400)
 
     # Create an empty list for our results
     results = book_get_by_params(user_name, commit_hash, repo_name)
+    
     if not results:
+        current_app.logger.debug('Requested book does not exist.')
         abort(404)
     
     # Use the jsonify function from Flask to convert our list of
