@@ -553,7 +553,7 @@ class BooksyncSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
     commit_hash = fields.String(required=False,description="Commit hash.")
 
-@app.route('/api/books/sync', methods=['POST'])
+@app.route('/api/book/sync', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
