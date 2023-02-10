@@ -674,6 +674,6 @@ docs.register(api_build_post)
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preprint_test(user):
-    return make_response(jsonify("Login successful."),200)
+    return make_response(jsonify("Preprint server login successful. <3 NeuroLibre"),200)
 
 docs.register(api_preprint_test)
