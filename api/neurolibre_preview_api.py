@@ -142,3 +142,11 @@ def api_book_build(user, repo_url,commit_hash):
 
 # Register endpoint to the documentation
 docs.register(api_book_build)
+
+@app.route('/api/test', methods=['POST'])
+@htpasswd.required
+@doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
+def api_preview_test(user):
+    return make_response(jsonify("Login successful."),200)
+
+docs.register(api_preview_test)

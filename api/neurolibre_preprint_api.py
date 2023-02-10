@@ -11,6 +11,7 @@ import logging
 import neurolibre_common_api
 from common import *
 from preprint import *
+from flask import jsonify, make_response
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
@@ -668,3 +669,11 @@ def api_build_post(user,repo_url, commit_hash):
 
 # Register endpoint to the documentation
 docs.register(api_build_post)
+
+@app.route('/api/test', methods=['POST'])
+@htpasswd.required
+@doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
+def api_preprint_test(user):
+    return make_response(jsonify("Login successful."),200)
+
+docs.register(api_preprint_test)
