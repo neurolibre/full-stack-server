@@ -174,6 +174,17 @@ pip3 install -r ~/full-stack-server/api/requirements.txt
 
 You can confirm the packages/versions via `pip3 freeze`.
 
+##### Add working environment secret variables 
+
+Based on the `env.<type>.template` file located at the `/api/` folder under this repository (`~/full-stack-server/api`). create a `~/full-stack-server/api/.env` file and fill out the respective variable values:
+
+```
+cp ~/full-stack-server/api/env.<type>.template ~/full-stack-server/api/.env
+nano .env
+```
+
+> Note, this file will be ignored by git as it MUST NOT be shared. Please ensure that the file name is correct (`~/full-stack-server/api/.env`).
+
 #### Configure the server as a systemd service 
 
 Depending on the server **type** [`preview` or `preprint`], copy the respective content from `sytemd` folder in this repository into `/etc/systemd/system`:
