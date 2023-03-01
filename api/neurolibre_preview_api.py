@@ -123,7 +123,8 @@ def api_book_build(user, repo_url,commit_hash):
 
     if os.path.exists(lock_filepath):
         binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
-        flask.abort(429, lock_age_in_secs, binderhub_exists_link)
+        app.logger.debug(f"Trying to return 409")
+        flask.abort(409, binderhub_exists_link)
     else:
         with open(lock_filepath, "w") as f:
             f.write("")
