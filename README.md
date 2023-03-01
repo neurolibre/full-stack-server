@@ -185,7 +185,7 @@ nano .env
 
 > Note, this file will be ignored by git as it MUST NOT be shared. Please ensure that the file name is correct (`~/full-stack-server/api/.env`).
 
-#### Configure the server as a systemd service 
+#### Configure the server as a systemd service
 
 Depending on the server **type** [`preview` or `preprint`], copy the respective content from `sytemd` folder in this repository into `/etc/systemd/system`:
 
@@ -235,6 +235,9 @@ rsync -avR neurolibre-preview:/DATA/foo.txt /
 ```
 
 Provided that the `/DATA/foo.txt` exists on the source (preview) server and you successfully configured ssh, you should see the same file appearing at the same destination (directory syncing, see more [here](https://www.digitalocean.com/community/tutorials/how-to-use-rsync-to-sync-local-and-remote-directories)) on the destination (preprint) server.
+
+#### Cloud-level considerations
+
 
 
 #### NGINX installation and configurations

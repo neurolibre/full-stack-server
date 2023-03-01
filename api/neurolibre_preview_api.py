@@ -90,9 +90,12 @@ class BuildSchema(Schema):
 @doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
 @use_kwargs(BuildSchema())
 def api_book_build(user, repo_url,commit_hash):
+    app.logger.debug(f"Received request: {repo_url} and {commit_hash}")
     repo = repo_url.split("/")[-1]
     user_repo = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
+    app.logger.debug(f"Parsed request: {repo} and {user_repo} and {provider}")
+    
     if provider == "github.com":
         provider = "gh"
     elif provider == "gitlab.com":
@@ -119,6 +122,7 @@ def api_book_build(user, repo_url,commit_hash):
             f.write("")
     
     # Request build from the preview binderhub instance
+    app.logger.debug(f"Requesting build at: {binderhub_request}")
     req = requests.get(binderhub_request)
 
     def run():
