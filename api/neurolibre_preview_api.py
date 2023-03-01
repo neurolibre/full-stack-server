@@ -110,15 +110,16 @@ def api_book_build(user, repo_url,commit_hash):
     binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
     lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
 
-    app.logger.debug(f"This is the request link: {binderhub_request}")
+    app.logger.debug(f"{binderhub_request}")
 
     ## Setting build rate limit
     if os.path.exists(lock_filepath):
         lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
         if lock_age_in_secs > build_rate_limit*60:
+            app.logger.debug(f"Removing lock")
             os.remove(lock_filepath)
     
-    app.logger.debug(f"This is the lock file: {lock_filepath}")
+    app.logger.debug(f"Another {lock_filepath}")
 
     if os.path.exists(lock_filepath):
         binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
@@ -126,11 +127,13 @@ def api_book_build(user, repo_url,commit_hash):
     else:
         with open(lock_filepath, "w") as f:
             f.write("")
-    
+        app.logger.debug(f"Written new lock")
+
     # Request build from the preview binderhub instance
     app.logger.debug(f"Requesting build at: {binderhub_request}")
+    
     req = requests.get(binderhub_request)
-
+    app.logger.debug(f"Made the request")
     def run():
         for line in req.iter_lines():
             if line:
