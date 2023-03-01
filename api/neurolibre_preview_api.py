@@ -95,7 +95,7 @@ def api_book_build(user, repo_url,commit_hash):
     user_repo = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
     app.logger.debug(f"Parsed request: {repo} and {user_repo} and {provider}")
-    
+
     if provider == "github.com":
         provider = "gh"
     elif provider == "gitlab.com":
@@ -106,14 +106,20 @@ def api_book_build(user, repo_url,commit_hash):
         for ref in refs:
             if ref.split('\t')[1] == "HEAD":
                 commit_hash = ref.split('\t')[0]
+    
     binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
     lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
+
+    app.logger.debug(f"This is the request link: {binderhub_request}")
 
     ## Setting build rate limit
     if os.path.exists(lock_filepath):
         lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
         if lock_age_in_secs > build_rate_limit*60:
             os.remove(lock_filepath)
+    
+    app.logger.debug(f"This is the lock file: {lock_filepath}")
+
     if os.path.exists(lock_filepath):
         binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
         flask.abort(429, lock_age_in_secs, binderhub_exists_link)
