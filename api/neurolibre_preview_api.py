@@ -84,6 +84,74 @@ class BuildSchema(Schema):
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
+@app.route('/api/forward', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
+@use_kwargs(BuildSchema())
+def forward_eventstream(user, repo_url,commit_hash):
+    app.logger.debug(f"Received request: {repo_url} and {commit_hash}")
+    repo = repo_url.split("/")[-1]
+    user_repo = repo_url.split("/")[-2]
+    provider = repo_url.split("/")[-3]
+    app.logger.debug(f"Parsed request: {repo} and {user_repo} and {provider}")
+
+    if provider == "github.com":
+        provider = "gh"
+    elif provider == "gitlab.com":
+        provider = "gl"
+
+    if commit_hash == "HEAD":
+        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
+        for ref in refs:
+            if ref.split('\t')[1] == "HEAD":
+                commit_hash = ref.split('\t')[0]
+    
+    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
+    lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
+
+    app.logger.debug(f"{binderhub_request}")
+
+    ## Setting build rate limit
+    if os.path.exists(lock_filepath):
+        lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
+        if lock_age_in_secs > build_rate_limit*60:
+            app.logger.debug(f"Removing lock")
+            os.remove(lock_filepath)
+    
+    app.logger.debug(f"Another {lock_filepath}")
+
+    if os.path.exists(lock_filepath):
+        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
+        app.logger.debug(f"Trying to return 409")
+        flask.abort(409, binderhub_exists_link)
+    else:
+        with open(lock_filepath, "w") as f:
+            f.write("")
+        app.logger.debug(f"Written new lock")
+
+    # Request build from the preview binderhub instance
+    app.logger.debug(f"Requesting build stream: {binderhub_request}")
+    ######
+    response = requests.get(binderhub_request, stream=True)
+    if response.ok:
+        # Forward the response as an event stream
+        def generate():
+            for line in response.iter_lines():
+                if line:
+                    event = json.loads(line.decode('utf-8'))
+                    phase = event.get('phase')
+                    # Close the eventstream if phase is "failed"
+                    if phase and phase == 'failed':
+                        response.close()
+                        break
+                    else:
+                        yield f'data: {line.decode("utf-8")}\n\n'
+
+        os.remove(lock_filepath)
+        return flask.Response(generate(), mimetype='text/event-stream')
+
+
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
