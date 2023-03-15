@@ -139,13 +139,17 @@ def forward_eventstream(user, repo_url,commit_hash):
         def generate():
             for line in response.iter_lines():
                 if line:
-                    app.logger.debug(line.decode("utf-8"))
-                    event = json.loads(line.decode("utf-8"))
+                    #app.logger.debug(line.decode("utf-8"))
+                    event_string = line.decode("utf-8")
+                    event = json.loads(event_string.split(': ', 1)[1])
                     phase = event.get('phase')
                     # Close the eventstream if phase is "failed"
                     if phase and phase == 'failed':
                         response.close()
                         break
+                    elif phase and phase == 'built':
+                        yield f'Already built!'
+                        yield f'data: {line.decode("utf-8")}\n\n'
                     else:
                         yield f'data: {line.decode("utf-8")}\n\n'
 
