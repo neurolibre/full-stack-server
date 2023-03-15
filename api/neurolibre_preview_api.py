@@ -139,7 +139,8 @@ def forward_eventstream(user, repo_url,commit_hash):
         def generate():
             for line in response.iter_lines():
                 if line:
-                    event = json.loads(line.decode('utf-8'))
+                    app.logger.debug(line.decode("utf-8"))
+                    event = json.loads(line.decode("utf-8"))
                     phase = event.get('phase')
                     # Close the eventstream if phase is "failed"
                     if phase and phase == 'failed':
