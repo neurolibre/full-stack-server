@@ -1,4 +1,4 @@
-from flask import Response, Blueprint, abort, jsonify, request, current_app, make_response, request
+from flask import Response, Blueprint, abort, jsonify, request, current_app, make_response
 from common import *
 from flask_apispec import marshal_with, doc, use_kwargs
 from marshmallow import Schema, fields
@@ -23,8 +23,9 @@ class StatusSchema(Schema):
 def api_heartbeat(id=None):
     url = request.url
     parsed_url = urlparse(url)
-    if id:
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{issue_id} /n <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
+    if "id" in request.args:
+        id = request.args.get("id")
+        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} /n <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
     else:
         return make_response(jsonify(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}'),200)
 
