@@ -2,6 +2,7 @@ from flask import Response, Blueprint, abort, jsonify, request, current_app, mak
 from common import *
 from flask_apispec import marshal_with, doc, use_kwargs
 from marshmallow import Schema, fields
+from urllib.parse import urlparse
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
@@ -21,11 +22,11 @@ class StatusSchema(Schema):
 @doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
 def api_heartbeat(issue_id=None):
     url = request.url
+    parsed_url = urlparse(url)
     if issue_id:
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{issue_id} /n <br> &#128279; URL: {url}'),200)
-        
+        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{issue_id} /n <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
     else:
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running) at {url}'),200)
+        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}'),200)
 
 @common_api.route('/api/books', methods=['GET'])
 @marshal_with(None,code=404,description="Not found.")
