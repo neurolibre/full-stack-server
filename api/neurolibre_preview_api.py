@@ -25,6 +25,7 @@ app.register_blueprint(neurolibre_common_api.common_api)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config["DEBUG"] = True
+app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
