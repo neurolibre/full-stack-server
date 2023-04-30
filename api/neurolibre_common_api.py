@@ -25,7 +25,7 @@ def api_heartbeat(id=None):
     parsed_url = urlparse(url)
     if "id" in request.args:
         id = request.args.get("id")
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} /n <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
+        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
     else:
         return make_response(jsonify(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}'),200)
 
