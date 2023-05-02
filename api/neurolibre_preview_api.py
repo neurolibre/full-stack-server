@@ -160,18 +160,18 @@ def forward_eventstream(user, repo_url,commit_hash):
                         app.logger.debug(f"IndexError bypassed")
                         yield f'data: {line.decode("utf-8")}\n\n'
         
-        book_status = book_get_by_params(commit_hash=commit_hash)
-        #app.logger.debug(results)
-        os.remove(lock_filepath)
+            book_status = book_get_by_params(commit_hash=commit_hash)
+            #app.logger.debug(results)
+            os.remove(lock_filepath)
 
-        if not book_status:
-            error = {"reason":"424: Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-            yield "\n" + json.dumps(error)
-            yield ""
-        else:
-            yield "<-- Book Built -->"
-            yield "\n" + json.dumps(book_status[0])
-            yield ""
+            if not book_status:
+                error = {"reason":"424: Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
+                yield "\n" + json.dumps(error)
+                yield ""
+            else:
+                yield "<-- Book Built -->"
+                yield "\n" + json.dumps(book_status[0])
+                yield ""
 
         return flask.Response(generate(), mimetype='text/event-stream')
 
