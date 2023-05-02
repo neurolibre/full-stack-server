@@ -152,6 +152,7 @@ def forward_eventstream(user, repo_url,commit_hash):
                     elif phase and phase == 'built':
                         yield f'Already built!'
                         yield f'data: {line.decode("utf-8")}\n\n'
+                        return flask.Response(f'data: {line.decode("utf-8")}', status=200)
                     else:
                         yield f'data: {line.decode("utf-8")}\n\n'
 
