@@ -159,7 +159,6 @@ def forward_eventstream(user, repo_url,commit_hash):
                     except:
                         app.logger.debug(f"IndexError bypassed")
                         yield f'data: {line.decode("utf-8")}\n\n'
-
         os.remove(lock_filepath)
         return flask.Response(generate(), mimetype='text/event-stream')
 
