@@ -159,20 +159,28 @@ def forward_eventstream(user, repo_url,commit_hash):
                         pass
                         #app.logger.debug(f"IndexError bypassed")
                         #yield f'data: {line.decode("utf-8")}\n\n'
-        
+            
+            # After the upstream closes, check the server if there's 
+            # a book built successfully. 
             book_status = book_get_by_params(commit_hash=commit_hash)
-            #app.logger.debug(results)
+            
+            # Remove build lock either way.
             os.remove(lock_filepath)
 
+            # Append book-related response downstream
             if not book_status:
-                error = {"reason":"424: Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-                yield "\n" + json.dumps(error)
-                yield ""
+                # These flags will determine how the response will be 
+                # interpreted and returned outside the generator
+                yield "<-- Book Failed -->"
+                error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
+                yield json.dumps(error)
             else:
-                yield "<-- Book Built -->\n"
+                yield "<-- Book Success -->"
                 yield json.dumps(book_status[0])
-                yield ""
-
+        # As our API is behind Cloudflare, long responses trigger a timeout 
+        # if we parse the response here and send it as proper json. 
+        # That's why we stream from here, and deal with parsing at the 
+        # receiver's end (roboneuro ruby)
         return flask.Response(generate(), mimetype='text/event-stream')
 
 
