@@ -146,19 +146,19 @@ def forward_eventstream(user, repo_url,commit_hash):
                     try:
                         event = json.loads(event_string.split(': ', 1)[1])
                         phase = event.get('phase')
+                        message = event.get('message')
                         # Close the eventstream if phase is "failed"
-                        if phase and phase == 'failed':
+                        if phase == 'failed':
                             response.close()
                             break
-                        elif phase and phase == 'built':
-                            yield f'Already built!'
-                            yield f'data: {line.decode("utf-8")}\n\n'
-                            # return flask.Response(f'data: {line.decode("utf-8")}', status=200)
+                        #elif phase == 'built':
+                        #    yield f'data: {line.decode("utf-8")}\n\n'
                         else:
-                            yield f'data: {line.decode("utf-8")}\n\n'
+                            yield f'\n{message}'
                     except:
-                        app.logger.debug(f"IndexError bypassed")
-                        yield f'data: {line.decode("utf-8")}\n\n'
+                        pass
+                        #app.logger.debug(f"IndexError bypassed")
+                        #yield f'data: {line.decode("utf-8")}\n\n'
         
             book_status = book_get_by_params(commit_hash=commit_hash)
             #app.logger.debug(results)
