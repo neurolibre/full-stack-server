@@ -169,8 +169,8 @@ def forward_eventstream(user, repo_url,commit_hash):
                 yield "\n" + json.dumps(error)
                 yield ""
             else:
-                yield "<-- Book Built -->"
-                yield "\n" + json.dumps(book_status[0])
+                yield "<-- Book Built -->\n"
+                yield json.dumps(book_status[0])
                 yield ""
 
         return flask.Response(generate(), mimetype='text/event-stream')
