@@ -173,10 +173,10 @@ def forward_eventstream(user, repo_url,commit_hash):
                 # interpreted and returned outside the generator
                 yield "<-- Book Failed -->\n"
                 error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-                yield json.dumps(error)
+                yield "\n" + json.dumps(error)
             else:
                 yield "<-- Book Success -->\n"
-                yield json.dumps(book_status[0])
+                yield "\n" + json.dumps(book_status[0])
         # As our API is behind Cloudflare, long responses trigger a timeout 
         # if we parse the response here and send it as proper json. 
         # That's why we stream from here, and deal with parsing at the 
