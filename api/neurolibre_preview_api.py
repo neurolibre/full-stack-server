@@ -173,7 +173,7 @@ def forward_eventstream(user, repo_url,commit_hash):
                 # interpreted and returned outside the generator
                 error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
                 yield  "<-- Book Failed -->\n"
-                yield json.dumps(error)}
+                yield json.dumps(error)
             else:
                 yield "<-- Book Success -->\n"
                 yield json.dumps(book_status[0])
