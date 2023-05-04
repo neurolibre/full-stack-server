@@ -148,7 +148,10 @@ def forward_eventstream(user, repo_url,commit_hash):
                         #phase = event.get('phase')
                         message = event.get('message')
                         app.logger.debug(message)
-                        yield message
+                        if message:
+                            yield message
+                        else: 
+                            app.logger.debug("Did not yield something weird.")
                     except GeneratorExit:
                         pass
                     except:
