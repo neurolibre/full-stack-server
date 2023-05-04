@@ -145,16 +145,9 @@ def forward_eventstream(user, repo_url,commit_hash):
                     event_string = line.decode("utf-8")
                     try:
                         event = json.loads(event_string.split(': ', 1)[1])
-                        phase = event.get('phase')
+                        #phase = event.get('phase')
                         message = event.get('message')
-                        # Close the eventstream if phase is "failed"
-                        if phase == 'failed':
-                            response.close()
-                            break
-                        #elif phase == 'built':
-                        #    yield f'data: {line.decode("utf-8")}\n\n'
-                        else:
-                            yield message
+                        yield message
                     except:
                         pass
                         #app.logger.debug(f"IndexError bypassed")
