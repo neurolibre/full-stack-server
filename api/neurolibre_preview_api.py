@@ -142,18 +142,21 @@ def forward_eventstream(user, repo_url,commit_hash):
             for line in response.iter_lines():
                 if line:
                     #app.logger.debug(line.decode("utf-8"))
-                    event_string = line.decode("utf-8")
                     try:
-                        event = json.loads(event_string.split(': ', 1)[1])
-                        #phase = event.get('phase')
-                        message = event.get('message')
-                        app.logger.debug(message)
-                        if message:
-                            yield message
-                        else: 
-                            app.logger.debug("Did not yield something weird.")
-                    except GeneratorExit:
-                        pass
+                        event_string = line.decode("utf-8")
+                        try:
+                            event = json.loads(event_string.split(': ', 1)[1])
+                            #phase = event.get('phase')
+                            message = event.get('message')
+                            app.logger.debug(message)
+                            if message:
+                                yield message
+                            else: 
+                                app.logger.debug("Did not yield something weird.")
+                        except GeneratorExit:
+                            pass
+                        except:
+                            pass
                     except:
                         pass
                         #app.logger.debug(f"IndexError bypassed")
