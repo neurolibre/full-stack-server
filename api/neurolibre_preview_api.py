@@ -147,7 +147,10 @@ def forward_eventstream(user, repo_url,commit_hash):
                         event = json.loads(event_string.split(': ', 1)[1])
                         #phase = event.get('phase')
                         message = event.get('message')
+                        app.logger.debug(message)
                         yield message
+                    except GeneratorExit:
+                        pass
                     except:
                         pass
                         #app.logger.debug(f"IndexError bypassed")
