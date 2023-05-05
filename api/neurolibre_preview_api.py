@@ -79,6 +79,10 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 
+# Create a build_locks folder to control rate limits
+if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
+    os.makedirs(os.path.join(os.getcwd(),'build_locks'))
+
 class BuildSchema(Schema):
     """
     Defines payload types and requirements for book build request.
@@ -86,96 +90,78 @@ class BuildSchema(Schema):
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
-@app.route('/api/forward', methods=['POST'])
+@app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
+@marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
+@doc(description='Endpoint for building reproducibility assets on the preview BinderHub instance: Repo2Data, (Binder) Repo2Docker, Jupyter Book.', tags=['Book'])
 @use_kwargs(BuildSchema())
-def forward_eventstream(user, repo_url,commit_hash):
-    app.logger.debug(f"Received request: {repo_url} and {commit_hash}")
-    repo = repo_url.split("/")[-1]
-    user_repo = repo_url.split("/")[-2]
-    provider = repo_url.split("/")[-3]
-    app.logger.debug(f"Parsed request: {repo} and {user_repo} and {provider}")
+def api_book_build(user, repo_url,commit_hash):
+    """
+    Connect to binderhub build eventstream and forward it to 
+    the client.
+    TODO: Celery.
+    """
 
-    if provider == "github.com":
-        provider = "gh"
-    elif provider == "gitlab.com":
-        provider = "gl"
-
-    if commit_hash == "HEAD":
-        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
-        for ref in refs:
-            if ref.split('\t')[1] == "HEAD":
-                commit_hash = ref.split('\t')[0]
+    binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName)
     
-    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
-    lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
-
-    app.logger.debug(f"{binderhub_request}")
-
-    ## Setting build rate limit
-    if os.path.exists(lock_filepath):
-        lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
-        if lock_age_in_secs > build_rate_limit*60:
-            app.logger.debug(f"Removing lock")
-            os.remove(lock_filepath)
+    app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
     
-    app.logger.debug(f"Another {lock_filepath}")
-
-    if os.path.exists(lock_filepath):
-        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
-        app.logger.debug(f"Trying to return 409")
-        flask.abort(409, binderhub_exists_link)
-    else:
-        with open(lock_filepath, "w") as f:
-            f.write("")
-        app.logger.debug(f"Written new lock")
-
-    # Request build from the preview binderhub instance
-    app.logger.debug(f"Requesting build stream: {binderhub_request}")
-    ######
+    # START EVENTSTREAM | BINDER --> THIS ENDPOINT --> CLIENT |
     response = requests.get(binderhub_request, stream=True)
     if response.ok:
         # Forward the response as an event stream
         def generate():
             for line in response.iter_lines():
                 if line:
-                    #app.logger.debug(line.decode("utf-8"))
+                    # Fetch streamed block
                     event_string = line.decode("utf-8")
                     try:
+                        # Try getting an event object if the emit message
+                        # is json (e.g., may be keepalive otherwise)
                         event = json.loads(event_string.split(': ', 1)[1])
+
                         # https://binderhub.readthedocs.io/en/latest/api.html
+                        # MUST close response when phase is failed
                         if event.get('phase') == 'failed':
                             response.close()
+                            # Remove the lock as binder build failed.
+                            app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
+                            os.remove(lock_filename)
                             return
+
                         message = event.get('message')
-                        # app.logger.debug(message)
                         if message:
+                            # Only print when phase emits a message to
+                            # keep the logs neat.
                             yield message
+                    # An exception to handle 
+                    # for Gunicorn asynchronous worker (gevent)
                     except GeneratorExit:
                         pass
                     except:
+                        # Pass other events
                         pass
-                        #app.logger.debug(f"IndexError bypassed")
-                        #yield f'data: {line.decode("utf-8")}\n\n'
-            
+
             # After the upstream closes, check the server if there's 
-            # a book built successfully. 
+            # a book built successfully.
             book_status = book_get_by_params(commit_hash=commit_hash)
-            
-            # Remove build lock either way.
-            os.remove(lock_filepath)
+
+            # For now, remove the block either way.
+            # The main purpose is to avoid triggering
+            # a build for the same request. Later on
+            # you may choose to add dead time after a successful build.
+            os.remove(lock_filename)
 
             # Append book-related response downstream
             if not book_status:
                 # These flags will determine how the response will be 
                 # interpreted and returned outside the generator
                 error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-                yield  "<-- Book Failed -->\n"
+                yield "<-- Book Build Failed -->\n"
                 yield f"{json.dumps(error)}"
             else:
-                yield "<-- Book Success -->\n"
+                yield "<-- Book Build Successful -->\n"
                 yield f"{json.dumps(book_status[0])}"
         # As our API is behind Cloudflare, long responses trigger a timeout 
         # if we parse the response here and send it as proper json. 
@@ -183,78 +169,31 @@ def forward_eventstream(user, repo_url,commit_hash):
         # receiver's end (roboneuro ruby)
         return flask.Response(generate(), mimetype='text/event-stream')
 
-@app.route('/api/book/build', methods=['POST'])
-@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Send a book (+binder) build request to the preview server BinderHub.', tags=['Book'])
-@use_kwargs(BuildSchema())
-def api_book_build(user, repo_url,commit_hash):
-    app.logger.debug(f"Received request: {repo_url} and {commit_hash}")
-    repo = repo_url.split("/")[-1]
-    user_repo = repo_url.split("/")[-2]
-    provider = repo_url.split("/")[-3]
-    app.logger.debug(f"Parsed request: {repo} and {user_repo} and {provider}")
-
-    if provider == "github.com":
-        provider = "gh"
-    elif provider == "gitlab.com":
-        provider = "gl"
-
-    if commit_hash == "HEAD":
-        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
-        for ref in refs:
-            if ref.split('\t')[1] == "HEAD":
-                commit_hash = ref.split('\t')[0]
-    
-    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
-    lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
-
-    app.logger.debug(f"{binderhub_request}")
-
-    ## Setting build rate limit
-    if os.path.exists(lock_filepath):
-        lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
-        if lock_age_in_secs > build_rate_limit*60:
-            app.logger.debug(f"Removing lock")
-            os.remove(lock_filepath)
-    
-    app.logger.debug(f"Another {lock_filepath}")
-
-    if os.path.exists(lock_filepath):
-        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
-        app.logger.debug(f"Trying to return 409")
-        flask.abort(409, binderhub_exists_link)
-    else:
-        with open(lock_filepath, "w") as f:
-            f.write("")
-        app.logger.debug(f"Written new lock")
-
-    # Request build from the preview binderhub instance
-    app.logger.debug(f"Requesting build at: {binderhub_request}")
-    
-    req = requests.get(binderhub_request)
-    app.logger.debug(f"Made the request")
-    def run():
-        for line in req.iter_lines():
-            if line:
-                yield str(line.decode('utf-8')) + "\n"
-        results = book_get_by_params(commit_hash=commit_hash)
-        #app.logger.debug(results)
-        os.remove(lock_filepath)
-
-        # TODO: Improve this convention.
-        if not results:
-            error = {"reason":"424: Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-            yield "\n" + json.dumps(error)
-            yield ""
-        else:
-            yield "\n" + json.dumps(results[0])
-            yield ""
-
-    return flask.Response(run(), mimetype='text/plain')
-
 # Register endpoint to the documentation
 docs.register(api_book_build)
+
+class UnlockSchema(Schema):
+    """
+    Defines payload types for removing a lock for target repository build.
+    """
+    repo_url = fields.Str(required=True,description="Full URL of the target repository.")
+
+@app.route('/api/book/unlock', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@marshal_with(None,code=200,description="Build lock has been removed.")
+@marshal_with(None,code=404,description="Lock does not exist.")
+@doc(description='Remove the build lock that prevents recurrent or simultaneous build requests (rate limit 30 mins).', tags=['Book'])
+@use_kwargs(UnlockSchema())
+def api_unlock_build(user, repo_url):
+    lock_filename = get_lock_filename(repo_url)
+    if os.path.exists(lock_filename):
+        os.remove(lock_filename)
+        make_response(jsonify(f"Removed the lock for {repo_url}"),200)
+    else:
+        make_response(jsonify(f"No build lock found for {repo_url}"),404)
+
+docs.register(api_unlock_build)
 
 @app.route('/api/test', methods=['POST'])
 @htpasswd.required

@@ -81,6 +81,10 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 
+# Create a build_locks folder to control rate limits
+if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
+    os.makedirs(os.path.join(os.getcwd(),'build_locks'))
+
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 
 # and move server-side ops functions elsewhere to make endpoint descriptions clearer.
@@ -606,69 +610,38 @@ def api_books_sync_post(user,repo_url,commit_hash=None):
 docs.register(api_books_sync_post)
 
 class BinderSchema(Schema):
-    repo_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
-    commit_hash = fields.String(required=False,description="Commit hash.")
+    """
+    Defines payload types and requirements for binderhub build request.
+    """
+    repo_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
+    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for the build. Defaults to HEAD.")
 
 # This is named as a binder/build instead of /book/build due to its context 
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Request a binderhub build on the production server for a given repo.hash. Repo must belong to the roboneuro organization.', tags=['Binder'])
+@doc(description='Request a binderhub build on the production server for a given repo and hash. Repository must belong to the roboneurolibre organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
-def api_build_post(user,repo_url, commit_hash):
-    repo = repo_url.split("/")[-1]
-    user_repo = repo_url.split("/")[-2]
-    provider = repo_url.split("/")[-3]
-    if provider == "github.com":
-        provider = "gh"
-    elif provider == "gitlab.com":
-        provider = "gl"
-    else:
-        flask.abort(400)
+def api_binder_build(user,repo_url, commit_hash):
 
-    if commit_hash:
-        commit = commit_hash
-    else:
-        commit = "HEAD"
-    
-    # checking user commit hash
-    commit_found  = False
-    if commit == "HEAD":
-        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
-        for ref in refs:
-            if ref.split('\t')[1] == "HEAD":
-                commit_hash = ref.split('\t')[0]
-                commit_found = True
-    else:
-        commit_hash = commit
+    binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName)
 
-    binderhub_request = f"https://{binderName}.{domainName}/build/{provider}/{user_repo}/{repo}.git/{commit_hash}"
+    # Request build from the preview binderhub instance
+    app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
 
-    lock_filepath = f"./{provider}_{user_repo}_{repo}.lock"
-    if os.path.exists(lock_filepath):
-        lock_age_in_secs = time.time() - os.path.getmtime(lock_filepath)
-        # if lock file older than 30min, remove it
-        if lock_age_in_secs > build_rate_limit*60:
-            os.remove(lock_filepath)
-    if os.path.exists(lock_filepath):
-        binderhub_exists_link = f"https://{binderName}.{domainName}/v2/{provider}/{user_repo}/{repo}/{commit_hash}"
-        flask.abort(409, binderhub_exists_link)
-    else:
-        with open(lock_filepath, "w") as f:
-            f.write("")
     # requests builds
     req = requests.get(binderhub_request)
-    def run():
+    def generate():
         for line in req.iter_lines():
             if line:
                 yield str(line.decode('utf-8')) + "\n"
         yield ""
 
-    return flask.Response(run(), mimetype='text/plain')
+    return flask.Response(generate(), mimetype='text/plain')
 
 # Register endpoint to the documentation
-docs.register(api_build_post)
+docs.register(api_binder_build)
 
 @app.route('/api/test', methods=['POST'])
 @htpasswd.required

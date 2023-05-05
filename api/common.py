@@ -1,6 +1,8 @@
 import os
 import glob
 import time
+import git
+from flask import abort
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
@@ -54,3 +56,93 @@ def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
             if book['repo_name'] == repo_name:
                 results.append(book)
     return results
+
+def get_owner_repo_provider(repo_url):
+    """
+    Helper function to return owner/repo 
+    and a provider name (as abbreviated by BinderHub)
+    """
+    repo = repo_url.split("/")[-1]
+    owner = repo_url.split("/")[-2]
+    provider = repo_url.split("/")[-3]
+    if provider == "github.com":
+        provider = "gh"
+    elif provider == "gitlab.com":
+        provider = "gl"
+    return [owner,repo,provider]
+
+def format_commit_hash(commit_hash):
+    """
+    Returns the latest commit if HEAD (default endpoint value)
+    Returns the hash itself otherwise.
+    """
+    if commit_hash == "HEAD":
+        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
+        for ref in refs:
+            if ref.split('\t')[1] == "HEAD":
+                commit_hash = ref.split('\t')[0]
+    return commit_hash
+
+def get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash):
+    """
+    Simple helper function to return binderhub build request URI.
+    """
+    return f"https://{binderName}.{domainName}/build/{provider}/{owner}/{repo}.git/{commit_hash}"
+
+def get_lock_filename(repo_url):
+    """
+    Simple helper function to identify the lock filename.
+    """
+    [repo, owner, provider] = get_owner_repo_provider(repo_url)
+    fname = f"./{provider}_{owner}_{repo}.lock"
+    return os.path.join(os.getcwd(),'build_locks',fname)
+
+def check_lock_status(lock_filename,build_rate_limit):
+    """
+    If lock has expired, remove it (unlocked)
+    If not expired, return the remaining time in seconds.
+    If never existed, inform (not_locked)
+    Non-numeric returns are for semantics only. Downstream 
+    flow is determined based on numeric or not. 
+    """
+    if os.path.exists(lock_filename):
+    # If lock exists, check its age first.
+            lock_age_in_sec = time.time() - os.path.getmtime(lock_filename)
+            # If the lock file older than the rate limit, remove.
+            if lock_age_in_sec > build_rate_limit*60:
+                os.remove(lock_filename)
+                return "unlocked"
+            else: 
+                # Return remaining time in seconds
+                return round(build_rate_limit - lock_age_in_sec/60,1)
+    else:
+        return "not_locked"
+    
+def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName):
+    # Parse url to process
+    [repo, owner, provider] = get_owner_repo_provider(repo_url)
+
+    if provider not in ["gh","gl"]:
+        abort(400, "Unrecognized repository provider.") 
+
+    # Get lock filename
+    lock_filename = get_lock_filename(repo_url)
+
+    # First check on build lock conditions.
+    lock_status = check_lock_status(lock_filename,build_rate_limit)
+
+    if isinstance(lock_status, (int, float)):
+    # If lock is not expired, deny request and inform the client.
+        abort(409, f"Looks like a build is already in progress for {owner}/{repo}. Will be unlocked in {lock_status} minutes. Please try again later or request unlock (reviewers/editors only).")
+    else:
+        # Create a fresh lock and proceed to build.
+        with open(lock_filename, "w") as f:
+            f.write("")
+
+    # Get the latest commit hash if HEAD, pass otherwise.
+    commit_hash = format_commit_hash(commit_hash)
+
+    # Get the url to post build rquest and connect to eventstream.
+    binderhub_request = get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash)
+
+    return binderhub_request
