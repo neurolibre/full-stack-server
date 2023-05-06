@@ -173,7 +173,7 @@ def api_preview_test(user):
     response.mimetype = "text/plain"
     return response
 
-@app.route('/celery/test', methods=['GET'])
+@app.route('/api/celery/test', methods=['GET'])
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_celery_test(user):
@@ -182,7 +182,7 @@ def api_celery_test(user):
 
 docs.register(api_preview_test)
 
-@app.route('/task/<task_id>')
+@app.route('/api/task/<task_id>')
 def get_task_status(task_id):
     result = celery_app.AsyncResult(task_id)
     if result.ready():
