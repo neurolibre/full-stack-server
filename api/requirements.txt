@@ -12,3 +12,4 @@ flask-apispec
 flask-restx
 apispec-webframeworks
 gevent
+celery
