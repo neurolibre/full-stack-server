@@ -8,25 +8,25 @@ import logging
 import neurolibre_common_api
 from flask import jsonify, make_response
 from common import *
+from schema import BuildSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
-from marshmallow import Schema, fields
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
 
 app = flask.Flask(__name__)
 
+# LOAD CONFIGURATION FILE
+app.config.from_pyfile('preview_config.py')
+
 app.register_blueprint(neurolibre_common_api.common_api)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-# If DEBUG is true prettyprint False will be overridden.
-app.config["DEBUG"] = False
-app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
@@ -37,17 +37,17 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
-# KEEP BINDERHUB URL AND DOMAIN UP TO DATE
-binderName = "test"
-domainName = "conp.cloud"
-build_rate_limit = 30 #minutes
+binderName = app.config["BINDER_NAME"]
+domainName = app.config["BINDER_DOMAIN"]
+build_rate_limit = app.config["RATE_LIMIT"]
 
-logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
-serverName = 'preview' 
-serverDescription = 'Preview server'
-serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com")
-serverTOS = "http://docs.neurolibre.org"
-serverAbout = f"<h3>Endpoints to handle preview & screening tasks <u>prior to the submission & screening</u>.</h3>{logo}"
+app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
+
+serverContact = app.config["SERVER_CONTACT"] 
+serverName = app.config["SERVER_SLUG"]
+serverDescription = app.config["SERVER_DESC"]
+serverTOS = app.config["SERVER_TOS"]
+serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
 # API specifications displayed on the swagger UI 
 spec = APISpec(
@@ -56,15 +56,11 @@ spec = APISpec(
         plugins=[MarshmallowPlugin()],
         openapi_version="3.0.2",
         info=dict(description=serverAbout,contact=serverContact,termsOfService=serverTOS),
-        servers = [{'url': 'https://{serverName}.neurolibre.org/','description':'Production server.', 'variables': {'serverName':{'default':serverName}}}]
+        servers = [{'url': f'https://{serverName}.neurolibre.org/','description':'Preview server.', 'variables': {'serverName':{'default':serverName}}}]
         )
 
 # SWAGGER UI URLS. Pay attention to /swagger/ vs /swagger.
-app.config.update({
-    'APISPEC_SPEC': spec,
-    'APISPEC_SWAGGER_URL': '/swagger/',
-    'APISPEC_SWAGGER_UI_URL': '/documentation'
-})
+app.config.update({'APISPEC_SPEC': spec})
 
 # Through Python, there's no way to disable within-documentation API calls.
 # Even though "Try it out" is not functional, we cannot get rid of it.
@@ -78,17 +74,11 @@ docs = FlaskApiSpec(app=app,document_options=False,)
 docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
+docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
     os.makedirs(os.path.join(os.getcwd(),'build_locks'))
-
-class BuildSchema(Schema):
-    """
-    Defines payload types and requirements for book build request.
-    """
-    repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
-    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
@@ -104,9 +94,11 @@ def api_book_build(user, repo_url,commit_hash):
     """
 
     binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName)
-    
+
     app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
-    
+
+    lock_filename = get_lock_filename(repo_url)
+
     # START EVENTSTREAM | BINDER --> THIS ENDPOINT --> CLIENT |
     response = requests.get(binderhub_request, stream=True)
     if response.ok:
@@ -172,30 +164,7 @@ def api_book_build(user, repo_url,commit_hash):
 # Register endpoint to the documentation
 docs.register(api_book_build)
 
-class UnlockSchema(Schema):
-    """
-    Defines payload types for removing a lock for target repository build.
-    """
-    repo_url = fields.Str(required=True,description="Full URL of the target repository.")
-
-@app.route('/api/book/unlock', methods=['POST'])
-@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@marshal_with(None,code=200,description="Build lock has been removed.")
-@marshal_with(None,code=404,description="Lock does not exist.")
-@doc(description='Remove the build lock that prevents recurrent or simultaneous build requests (rate limit 30 mins).', tags=['Book'])
-@use_kwargs(UnlockSchema())
-def api_unlock_build(user, repo_url):
-    lock_filename = get_lock_filename(repo_url)
-    if os.path.exists(lock_filename):
-        os.remove(lock_filename)
-        make_response(jsonify(f"Removed the lock for {repo_url}"),200)
-    else:
-        make_response(jsonify(f"No build lock found for {repo_url}"),404)
-
-docs.register(api_unlock_build)
-
-@app.route('/api/test', methods=['POST'])
+@app.route('/api/test', methods=['GET'])
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preview_test(user):

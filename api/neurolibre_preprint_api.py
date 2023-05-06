@@ -11,24 +11,26 @@ import logging
 import neurolibre_common_api
 from common import *
 from preprint import *
-from flask import jsonify, make_response
+from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema
+from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
-from marshmallow import Schema, fields
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
- 
+
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
 
 app = flask.Flask(__name__)
 
+# LOAD CONFIGURATION FILE
+app.config.from_pyfile('preprint_config.py')
+
 app.register_blueprint(neurolibre_common_api.common_api)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-app.config["DEBUG"] = True
 
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
@@ -39,17 +41,17 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
-# KEEP BINDERHUB URL AND DOMAIN UP TO DATE
-binderName = "binder-mcgill"
-domainName = "conp.cloud"
-build_rate_limit = 30 #minutes
+binderName = app.config["BINDER_NAME"]
+domainName = app.config["BINDER_DOMAIN"]
+build_rate_limit = app.config["RATE_LIMIT"]
 
-logo ="<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
-serverName = 'neurolibre-data-prod' # e.g. preprint.conp.cloud
-serverDescription = 'Production server'
-serverContact = dict(name="NeuroLibre",url="https://neurolibre.org",email="conpdev@gmail.com")
-serverTOS = "http://docs.neurolibre.org"
-serverAbout = f"<h3>Endpoints to handle publishing tasks <u>following the completion of</u> the technical screening process.</h3>{logo}"
+app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
+
+serverContact = app.config["SERVER_CONTACT"] 
+serverName = app.config["SERVER_SLUG"]
+serverDescription = app.config["SERVER_DESC"]
+serverTOS = app.config["SERVER_TOS"]
+serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
 spec = APISpec(
         title="Reproducible preprint API",
@@ -57,16 +59,12 @@ spec = APISpec(
         plugins=[MarshmallowPlugin()],
         openapi_version="3.0.2",
         info=dict(description=serverAbout,contact=serverContact,termsOfService=serverTOS),
-        servers = [{'url': 'https://{serverName}.{domainName}/','description':'Production server.', 'variables': {'serverName':{'default':serverName},'domainName':{'default':domainName}}}]
+        servers = [{'url': f'https://{serverName}.{domainName}/','description':'Production server.', 'variables': {'serverName':{'default':serverName},'domainName':{'default':domainName}}}]
         )
 
 # SWAGGER UI URLS. Interestingly, the preview deployment 
 # required `/swagger/` instead. This one works as is.
-app.config.update({
-    'APISPEC_SPEC': spec,
-    'APISPEC_SWAGGER_URL': '/swagger',
-    'APISPEC_SWAGGER_UI_URL': '/documentation'
-})
+app.config.update({'APISPEC_SPEC': spec})
 
 # Through Python, there's no way to disable within-documentation API calls.
 # Even though "Try it out" is not functional, we cannot get rid of it.
@@ -80,6 +78,7 @@ docs = FlaskApiSpec(app=app,document_options=False)
 docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
+docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
@@ -88,19 +87,6 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 
 # and move server-side ops functions elsewhere to make endpoint descriptions clearer.
-
-class BucketsSchema(Schema):
-    """
-    Defines payload types and requirements for creating zenodo records.
-    """
-    fork_url = fields.Str(required=True,description="Full URL of the forked (roboneurolibre) repository.")
-    user_url = fields.Str(required=True,description="Full URL of the repository submitted by the author.")
-    commit_fork = fields.String(required=True,description="Commit sha at which the forked repository (and other resources) will be deposited")
-    commit_user = fields.String(required=True,description="Commit sha at which the user repository was forked into roboneurolibre.")
-    title = fields.String(required=True,description="Title of the submitted preprint. Each Zenodo record will attain this title.")
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
-    creators = fields.List(fields.Str(),required=True,description="List of the authors.")
-    deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
 
 @app.route('/api/zenodo/buckets', methods=['POST'])
 @htpasswd.required
@@ -158,15 +144,6 @@ def api_zenodo_post(user,fork_url,user_url,commit_fork,commit_user, title,issue_
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_post)
-
-
-class UploadSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 
-    repository_address = fields.String(required=True,description="Full URL of the repository submitted by the author.")
-    item = fields.String(required=True,description="One of the following: | book | repository | data | docker |")
-    item_arg = fields.String(required=True,description="Additional information to locate the item on the server. Needed for items data and docker.")
-    fork_url = fields.String(required=True,description="Full URL of the forked (roboneurolibre) repository.")
-    commit_fork = fields.String(required=True,description="Commit sha at which the forked repository (and other resources) will be deposited")
 
 @app.route('/api/zenodo/upload', methods=['POST'])
 @htpasswd.required
@@ -377,9 +354,6 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
 # Register endpoint to the documentation
 docs.register(api_upload_post)
 
-class ListSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 
-
 @app.route('/api/zenodo/list', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -404,10 +378,6 @@ def api_zenodo_list_post(user,issue_id):
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_list_post)
-
-class DeleteSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
-    items = fields.List(fields.Str(),required=True,description="List of the items to be deleted from Zenodo.") 
 
 @app.route('/api/zenodo/flush', methods=['POST'])
 @htpasswd.required
@@ -474,9 +444,6 @@ def api_zenodo_flush_post(user,issue_id,items):
 # Register endpoint to the documentation
 docs.register(api_zenodo_flush_post)
 
-class PublishSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 
-
 @app.route('/api/zenodo/publish', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -527,9 +494,6 @@ def api_zenodo_publish(user,issue_id):
 # Register endpoint to the documentation
 docs.register(api_zenodo_publish)
 
-class DatasyncSchema(Schema):
-    project_name = item = fields.String(required=True,description="Unique project name described for the submission.")
-
 @app.route('/api/data/sync', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -553,10 +517,6 @@ def api_data_sync_post(user,project_name):
 
 # Register endpoint to the documentation
 docs.register(api_data_sync_post)
-
-class BooksyncSchema(Schema):
-    repository_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
-    commit_hash = fields.String(required=False,description="Commit hash.")
 
 @app.route('/api/book/sync', methods=['POST'])
 @htpasswd.required
@@ -609,13 +569,6 @@ def api_books_sync_post(user,repo_url,commit_hash=None):
 # Register endpoint to the documentation
 docs.register(api_books_sync_post)
 
-class BinderSchema(Schema):
-    """
-    Defines payload types and requirements for binderhub build request.
-    """
-    repo_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
-    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for the build. Defaults to HEAD.")
-
 # This is named as a binder/build instead of /book/build due to its context 
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
@@ -643,7 +596,7 @@ def api_binder_build(user,repo_url, commit_hash):
 # Register endpoint to the documentation
 docs.register(api_binder_build)
 
-@app.route('/api/test', methods=['POST'])
+@app.route('/api/test', methods=['GET'])
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preprint_test(user):

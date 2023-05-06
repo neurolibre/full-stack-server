@@ -71,7 +71,7 @@ def get_owner_repo_provider(repo_url):
         provider = "gl"
     return [owner,repo,provider]
 
-def format_commit_hash(commit_hash):
+def format_commit_hash(repo_url,commit_hash):
     """
     Returns the latest commit if HEAD (default endpoint value)
     Returns the hash itself otherwise.
@@ -94,7 +94,7 @@ def get_lock_filename(repo_url):
     Simple helper function to identify the lock filename.
     """
     [repo, owner, provider] = get_owner_repo_provider(repo_url)
-    fname = f"./{provider}_{owner}_{repo}.lock"
+    fname = f"{provider}_{owner}_{repo}.lock"
     return os.path.join(os.getcwd(),'build_locks',fname)
 
 def check_lock_status(lock_filename,build_rate_limit):
@@ -119,6 +119,11 @@ def check_lock_status(lock_filename,build_rate_limit):
         return "not_locked"
     
 def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName):
+    """
+        Two arguments repo_url and commit_hash are passed with payload
+        by the client. The last tree arguments are 
+    
+    """
     # Parse url to process
     [repo, owner, provider] = get_owner_repo_provider(repo_url)
 
@@ -140,7 +145,7 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
             f.write("")
 
     # Get the latest commit hash if HEAD, pass otherwise.
-    commit_hash = format_commit_hash(commit_hash)
+    commit_hash = format_commit_hash(repo_url,commit_hash)
 
     # Get the url to post build rquest and connect to eventstream.
     binderhub_request = get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash)
