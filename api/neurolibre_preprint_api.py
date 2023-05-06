@@ -19,6 +19,8 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
+from neurolibre_celery_tasks import rsync, celery_app
+from celery.result import AsyncResult
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -507,13 +509,15 @@ def api_data_sync_post(user,project_name):
         f.write(remote_path)
         f.close()
         subprocess.check_call(["rsync", "-avR", remote_path, "/"])
-    except subprocess.CalledProcessError:
-        flask.abort(404)
+    except subprocess.CalledProcessError as e:
+        flask.abort(404, f"Cannot sync data: {e.output}")
     # final check
     if len(os.listdir(os.path.join("/DATA", project_name))) == 0:
-        return {"reason": "404: Data sync was not successfull.", "project_name": project_name}
+        response = make_response(f"Data sync was not successful for {project_name}",404)
     else:
-        return {"reason": "200: Data sync succeeded."}
+        response = make_response(f"Successfully synced the data: {project_name} to the preprint server.",200)
+    response.mimetype = "text/plain"
+    return response
 
 # Register endpoint to the documentation
 docs.register(api_data_sync_post)
@@ -524,34 +528,23 @@ docs.register(api_data_sync_post)
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
 def api_books_sync_post(user,repo_url,commit_hash=None):
-    repo = repo_url.split("/")[-1]
-    user_repo = repo_url.split("/")[-2]
-    provider = repo_url.split("/")[-3]
-    if not ((provider == "github.com") | (provider == "gitlab.com")):
-        flask.abort(400)
-    if commit_hash:
-        commit = commit_hash
-    else:
-        commit = "HEAD"
-    # checking user commit hash
-    commit_found  = False
-    if commit == "HEAD":
-        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
-        for ref in refs:
-            if ref.split('\t')[1] == "HEAD":
-                commit_hash = ref.split('\t')[0]
-                commit_found = True
-    else:
-        commit_hash = commit
+    
+    # Book locations on the servers use full provider urls (github.com, not gh)
+    [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
+
+    commit_hash = format_commit_hash(repo_url,commit_hash)
+
     # transfer with rsync
-    remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", user_repo, provider, repo, commit_hash + "*")
+    remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", owner, provider, repo, commit_hash + "*")
+    
     try:
+        # Write sync request to log.
         f = open("/DATA/synclog.txt", "a")
         f.write(remote_path)
         f.close()
         subprocess.check_call(["rsync", "-avR", remote_path, "/"])
-    except subprocess.CalledProcessError:
-        flask.abort(404)
+    except subprocess.CalledProcessError as e:
+        flask.abort(404, f"Cannot sync data: {e.output}")
     # final check
     def run():
         results = book_get_by_params(commit_hash=commit_hash)
@@ -600,6 +593,22 @@ docs.register(api_binder_build)
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preprint_test(user):
-    return make_response(jsonify("Preprint server login successful. <3 NeuroLibre"),200)
+    task = rsync.delay()
+    return f'Rsync started {task.id}'
+    # response = make_response("Preprint server login successful. <3 NeuroLibre",200)
+    # response.mimetype = "text/plain"
+    # return response
 
 docs.register(api_preprint_test)
+
+
+@app.route('/task/<task_id>')
+def get_task_status(task_id):
+    result = celery_app.AsyncResult(task_id)
+    if result.ready():
+        if result.successful():
+            return jsonify({'status': 'SUCCESS', 'result': result.result})
+        else:
+            return jsonify({'status': 'FAILURE', 'traceback': result.traceback})
+    else:
+        return jsonify({'status': 'PENDING'})

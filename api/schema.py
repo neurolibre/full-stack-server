@@ -70,5 +70,5 @@ class DatasyncSchema(Schema):
 
 class BooksyncSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
-    commit_hash = fields.String(required=False,description="Commit hash.")
+    commit_hash = fields.String(required=False,dump_default="HEAD", description="Commit hash.")
 

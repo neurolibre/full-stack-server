@@ -37,9 +37,10 @@ def api_heartbeat(id=None):
     parsed_url = urlparse(url)
     if "id" in request.args:
         id = request.args.get("id")
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}'),200)
+        response =  make_response(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}',200)
     else:
-        return make_response(jsonify(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}'),200)
+        response =  make_response(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}',200)
+    return response
 
 @common_api.route('/api/books', methods=['GET'])
 @marshal_with(None,code=404,description="Not found.")
@@ -96,6 +97,9 @@ def api_unlock_build(user, repo_url):
     lock_filename = get_lock_filename(repo_url)
     if os.path.isfile(lock_filename):
         os.remove(lock_filename)
-        return make_response(jsonify(f"Removed the lock for {repo_url}"),200)
+        response = make_response(f"Removed the lock for {repo_url}",200)
     else:
-        return make_response(jsonify(f"No build lock found for {repo_url}"),404)
+        response =  make_response(f"No build lock found for {repo_url}",404)
+    
+    response.mimetype = "text/plain"
+    return response

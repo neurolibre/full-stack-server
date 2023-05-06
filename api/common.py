@@ -57,7 +57,7 @@ def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
                 results.append(book)
     return results
 
-def get_owner_repo_provider(repo_url):
+def get_owner_repo_provider(repo_url,provider_full_name=False):
     """
     Helper function to return owner/repo 
     and a provider name (as abbreviated by BinderHub)
@@ -65,10 +65,14 @@ def get_owner_repo_provider(repo_url):
     repo = repo_url.split("/")[-1]
     owner = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
-    if provider == "github.com":
-        provider = "gh"
-    elif provider == "gitlab.com":
-        provider = "gl"
+    if provider not in ["github.com","gitlab.com"]:
+        abort(400, "Unrecognized repository provider.")
+    if not provider_full_name:
+        if provider == "github.com":
+            provider = "gh"
+        elif provider == "gitlab.com":
+            provider = "gl"
+
     return [owner,repo,provider]
 
 def format_commit_hash(repo_url,commit_hash):
@@ -126,9 +130,6 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
     """
     # Parse url to process
     [repo, owner, provider] = get_owner_repo_provider(repo_url)
-
-    if provider not in ["gh","gl"]:
-        abort(400, "Unrecognized repository provider.") 
 
     # Get lock filename
     lock_filename = get_lock_filename(repo_url)

@@ -168,6 +168,8 @@ docs.register(api_book_build)
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preview_test(user):
-    return make_response(jsonify("Preview server login successful. <3 NeuroLibre"),200)
+    response = make_response(jsonify("Preview server login successful. <3 NeuroLibre"),200)
+    response.mimetype = "text/plain"
+    return response
 
 docs.register(api_preview_test)
