@@ -20,7 +20,6 @@ from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import rsync, celery_app
-from celery.result import AsyncResult
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()

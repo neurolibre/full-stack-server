@@ -15,6 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
+from neurolibre_celery_tasks import rsync, celery_app
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -172,4 +173,22 @@ def api_preview_test(user):
     response.mimetype = "text/plain"
     return response
 
+@app.route('/celery/test', methods=['GET'])
+@htpasswd.required
+@doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
+def api_celery_test(user):
+    task = rsync.delay()
+    return f'Rsync started {task.id}'
+
 docs.register(api_preview_test)
+
+@app.route('/task/<task_id>')
+def get_task_status(task_id):
+    result = celery_app.AsyncResult(task_id)
+    if result.ready():
+        if result.successful():
+            return jsonify({'status': 'SUCCESS', 'result': result.result})
+        else:
+            return jsonify({'status': 'FAILURE', 'traceback': result.traceback})
+    else:
+        return jsonify({'status': 'PENDING'})
