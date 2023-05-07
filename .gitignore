@@ -9,6 +9,7 @@ __pycache__/
 # Lock files for BinderHub builds
 *.lock
 build_locks/
+celery_preview/
 # Distribution / packaging
 .Python
 build/

@@ -1,0 +1,18 @@
+[Unit]
+Description=Neurolibre Task Manager
+After=neurolibre-preview.service
+
+[Service]
+Type=forking
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/full-stack-server/api
+Environment="PATH=$PATH:/home/ubuntu/venv/neurolibre/bin"
+Environment="CELERY_CREATE_DIRS=1"
+ExecStart=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi start w1 w2 --loglevel=info --pidfile="celery_preview/run/celery/%n.pid" --logfile="$HOME/log/celery/%n%I.log"
+ExecStop=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi stopwait w1 w2
+ExecReload=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi restart w1 w2 --loglevel=info --pidfile="celery_preview/run/celery/%n.pid" --logfile="$HOME/log/celery/%n%I.log"
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
