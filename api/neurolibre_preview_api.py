@@ -15,7 +15,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
-from neurolibre_celery_tasks import rsync, celery_app
+from neurolibre_celery_tasks import rsync, celery_app,sleep_task
+from celery.events.state import State
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -177,18 +178,33 @@ def api_preview_test(user):
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_celery_test(user):
-    task = rsync.delay()
-    return f'Rsync started {task.id}'
+    seconds = 60
+    task = sleep_task.apply_async(args=[seconds])
+    return f'Celery test started: {task.id}'
 
 docs.register(api_preview_test)
 
 @app.route('/api/task/<task_id>')
 def get_task_status(task_id):
-    result = celery_app.AsyncResult(task_id)
-    if result.ready():
-        if result.successful():
-            return jsonify({'status': 'SUCCESS', 'result': result.result})
-        else:
-            return jsonify({'status': 'FAILURE', 'traceback': result.traceback})
+    task = celery_app.AsyncResult(task_id)
+    if task.state == 'PENDING':
+        response = {
+            'status': 'Waiting to start.'
+        }
+    elif task.state == 'PROGRESS':
+        remaining = task.info.get('remaining', 0) if task.info else 0
+        response = {
+            'status': 'sleeping',
+            'remaining': remaining
+        }
+    elif task.state == 'SUCCESS':
+        response = {
+            'status': 'done sleeping for 60 seconds'
+        }
     else:
-        return jsonify({'status': 'PENDING'})
+        response = {
+            'status': 'failed to sleep'
+        }
+    return jsonify(response)
+
+    

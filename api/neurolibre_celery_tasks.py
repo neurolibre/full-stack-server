@@ -13,3 +13,10 @@ def rsync():
     return "I woke up."
     # import subprocess
     # subprocess.call(['rsync', '-avz', source, destination])
+
+@celery_app.task(bind=True)
+def sleep_task(self, seconds):
+    for i in range(seconds):
+        time.sleep(1)
+        self.update_state(state='PROGRESS', meta={'remaining': seconds - i - 1})
+    return 'done sleeping for {} seconds'.format(seconds)

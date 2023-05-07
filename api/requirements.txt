@@ -13,3 +13,4 @@ flask-restx
 apispec-webframeworks
 gevent
 celery
+redis
