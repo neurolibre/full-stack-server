@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data
+from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -83,8 +83,6 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
-docs.register(neurolibre_common_api.api_celery_test,blueprint="common_api")
-docs.register(neurolibre_common_api.get_task_status_test,blueprint="common_api")
 
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
@@ -603,3 +601,41 @@ def api_preprint_test(user):
      return response
 
 docs.register(api_preprint_test)
+
+
+@app.route('/api/celery/test', methods=['GET'],endpoint='api_celery_test')
+@htpasswd.required
+@doc(description='Starts a background task (sleep 1 min) and returns task ID.', tags=['Tests'])
+def api_celery_test(user):
+    seconds = 60
+    task = sleep_task.apply_async(args=[seconds])
+    return f'Celery test started: {task.id}'
+
+docs.register(api_celery_test)
+
+@app.route('/api/celery/test/<task_id>',methods=['GET'], endpoint='get_task_status_test')
+@htpasswd.required
+@doc(description='Get the status of the test task.', tags=['Tasks'])
+def get_task_status_test(user,task_id):
+    task = celery_app.AsyncResult(task_id)
+    if task.state == 'PENDING':
+        response = {
+            'status': 'Waiting to start.'
+        }
+    elif task.state == 'PROGRESS':
+        remaining = task.info.get('remaining', 0) if task.info else 0
+        response = {
+            'status': 'sleeping',
+            'remaining': remaining
+        }
+    elif task.state == 'SUCCESS':
+        response = {
+            'status': 'done sleeping for 60 seconds'
+        }
+    else:
+        response = {
+            'status': 'failed to sleep'
+        }
+    return jsonify(response)
+
+docs.register(get_task_status_test)
