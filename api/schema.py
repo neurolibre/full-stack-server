@@ -69,7 +69,7 @@ class PublishSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
 
 class DatasyncSchema(Schema):
-    id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
+    id = fields.String(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
 class BooksyncSchema(Schema):
