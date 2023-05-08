@@ -3,6 +3,7 @@ import os
 import re
 import pytz
 import datetime
+import json
 
 GH_BOT=os.getenv('GH_BOT')
 github_client = Github(GH_BOT)
@@ -49,3 +50,10 @@ def gh_template_respond(phase,task_name,repo,issue_id,task_id="",comment_id="", 
     else:
         # This one updates comment, returns None
         return gh_update_comment(repo,issue_id,comment_id,template[phase])
+
+def gh_get_project_name(target_repo):
+    repo = github_client.get_repo(gh_filter(target_repo))
+    # This is a requirement
+    contents = repo.get_contents("binder/data_requirement.json")
+    data = json.loads(contents.decoded_content)
+    return data['projectName']

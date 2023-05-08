@@ -505,9 +505,10 @@ docs.register(api_zenodo_publish)
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
-def api_data_sync_post(user,project_name,issue_id):
+def api_data_sync_post(user,target_repository,issue_id):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
+    project_name = gh_get_project_name(target_repository)
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
     # Start the BG task.
