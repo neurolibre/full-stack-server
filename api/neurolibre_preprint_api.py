@@ -500,16 +500,18 @@ docs.register(api_zenodo_publish)
 
 @app.route('/api/data/sync', methods=['POST'])
 @htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
 def api_data_sync_post(user,id,repo_url):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
+    app.logger.debug(f'{id} {repo_url}')
     issue_id = id
     project_name = gh_get_project_name(repo_url)
+    app.logger.debug(f'{project_name}')
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
+    app.logger.debug(f'{comment_id}')
     # Start the BG task.
     task_result = rsync_data.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
     # If successfully queued the task, update the comment
@@ -528,7 +530,6 @@ docs.register(api_data_sync_post)
 
 @app.route('/api/book/sync', methods=['POST'])
 @htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
 def api_books_sync_post(user,repo_url,commit_hash=None):
@@ -570,7 +571,6 @@ docs.register(api_books_sync_post)
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
 @htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Request a binderhub build on the production server for a given repo and hash. Repository must belong to the roboneurolibre organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
 def api_binder_build(user,repo_url, commit_hash):
