@@ -11,6 +11,9 @@ class UnlockSchema(Schema):
     """
     repo_url = fields.Str(required=True,description="Full URL of the target repository.")
 
+class TaskSchema(Schema):
+    task_id = fields.String(required=True,description="Celery task ID.")
+
 class BookSchema(Schema):
     user_name = fields.String(required=False,description="Return NeuroLibre reproducible preperints that match a user (owner) name (suggested to be used in addition to the repo_name)")
     commit_hash = fields.String(required=False,description="Return NeuroLibre reproducible preprints built at the requested commit hash.")
@@ -67,8 +70,8 @@ class PublishSchema(Schema):
 
 class DatasyncSchema(Schema):
     project_name = item = fields.String(required=True,description="Unique project name described for the submission.")
+    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
 
 class BooksyncSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
     commit_hash = fields.String(required=False,dump_default="HEAD", description="Commit hash.")
-

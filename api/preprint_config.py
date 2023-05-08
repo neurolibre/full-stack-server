@@ -12,3 +12,6 @@ SERVER_CONTACT = dict(name="NeuroLibre",url="https://neurolibre.org",email="conp
 SERVER_ABOUT = "<h3>Endpoints to handle publishing tasks <u>following the completion of</u> the technical screening process.</h3>"
 APISPEC_SWAGGER_URL= "/swagger/"
 APISPEC_SWAGGER_UI_URL= "/documentation"
+
+# IMPORTANT !!!!!
+REVIEW_REPOSITORY = "neurolibre/neurolibre-reviews-testing"

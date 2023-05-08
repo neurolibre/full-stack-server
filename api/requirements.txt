@@ -14,3 +14,5 @@ apispec-webframeworks
 gevent
 celery
 redis
+PyGithub
+pytz

@@ -15,7 +15,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
-from neurolibre_celery_tasks import rsync, celery_app,sleep_task
+from github_client import *
+from neurolibre_celery_tasks import celery_app,sleep_task
 from celery.events.state import State
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
@@ -77,6 +78,8 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
+docs.register(neurolibre_common_api.api_celery_test,blueprint="common_api")
+docs.register(neurolibre_common_api.get_task_status_test,blueprint="common_api")
 
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
@@ -174,37 +177,4 @@ def api_preview_test(user):
     response.mimetype = "text/plain"
     return response
 
-@app.route('/api/celery/test', methods=['GET'])
-@htpasswd.required
-@doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
-def api_celery_test(user):
-    seconds = 60
-    task = sleep_task.apply_async(args=[seconds])
-    return f'Celery test started: {task.id}'
-
 docs.register(api_preview_test)
-
-@app.route('/api/task/<task_id>')
-def get_task_status(task_id):
-    task = celery_app.AsyncResult(task_id)
-    if task.state == 'PENDING':
-        response = {
-            'status': 'Waiting to start.'
-        }
-    elif task.state == 'PROGRESS':
-        remaining = task.info.get('remaining', 0) if task.info else 0
-        response = {
-            'status': 'sleeping',
-            'remaining': remaining
-        }
-    elif task.state == 'SUCCESS':
-        response = {
-            'status': 'done sleeping for 60 seconds'
-        }
-    else:
-        response = {
-            'status': 'failed to sleep'
-        }
-    return jsonify(response)
-
-    

@@ -2,8 +2,9 @@ from flask import Response, Blueprint, abort, jsonify, request, current_app, mak
 from common import *
 from flask_apispec import marshal_with, doc, use_kwargs
 from urllib.parse import urlparse
-from schema import UnlockSchema, StatusSchema, BookSchema
+from schema import UnlockSchema, StatusSchema, BookSchema, TaskSchema
 from flask_htpasswd import HtPasswdAuth
+from neurolibre_celery_tasks import celery_app, sleep_task
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
@@ -21,17 +22,29 @@ def setup_htpasswd_auth():
     htpasswd_auth  = HtPasswdAuth(current_app)
     common_api.htpasswd_auth = htpasswd_auth
 
-# Decorate to require HTTP Basic Authentication for
-# common-api endpoints
-def require_http_auth(view_func):
-    def wrapper(*args, **kwargs):
+def require_http_auth(func):
+  def wrapper(*args, **kwargs):
+    try:
         return common_api.htpasswd_auth.required(view_func)(*args, **kwargs)
-    return wrapper
+    except Exception as e:
+        error_code = getattr(e, "code", 500)
+        r = ({"message": e.message, "matches": e.message, "error_code": error_code})
+        return make_response(jsonify(r))
+  # Renaming the function name:
+  wrapper.__name__ = func.__name__
+  return wrapper
+
+# # Decorate to require HTTP Basic Authentication for
+# # common-api endpoints
+# def require_http_auth(view_func):
+#     def wrapper(*args, **kwargs):
+#         return common_api.htpasswd_auth.required(view_func)(*args, **kwargs)
+#     return wrapper
 
 @common_api.route('/api/heartbeat', methods=['GET'])
 @marshal_with(None,code=200,description="Success.")
 @use_kwargs(StatusSchema())
-@doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Heartbeat'])
+@doc(description='Sanity check for the successful registration of the API endpoints.', tags=['Tests'])
 def api_heartbeat(id=None):
     url = request.url
     parsed_url = urlparse(url)
@@ -86,7 +99,7 @@ def api_get_book(user_name=None,commit_hash=None,repo_name=None):
     # Python dictionaries to the JSON format.
     return response
 
-@common_api.route('/api/book/unlock', methods=['POST'])
+@common_api.route('/api/book/unlock', methods=['POST'], endpoint='api_unlock_build')
 @require_http_auth
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @marshal_with(None,code=200,description="Build lock has been removed.")
@@ -103,3 +116,38 @@ def api_unlock_build(user, repo_url):
     
     response.mimetype = "text/plain"
     return response
+
+
+@common_api.route('/api/celery/test', methods=['GET'],endpoint='api_celery_test')
+@require_http_auth
+@doc(description='Starts a background task (sleep 1 min) and returns task ID.', tags=['Tests'])
+def api_celery_test(user):
+    seconds = 60
+    task = sleep_task.apply_async(args=[seconds])
+    return f'Celery test started: {task.id}'
+
+@common_api.route('/api/celery/test/<task_id>',methods=['GET'], endpoint='get_task_status_test')
+@require_http_auth
+@doc(description='Get the status of the test task.', tags=['Tasks'])
+def get_task_status_test(user,task_id):
+    task = celery_app.AsyncResult(task_id)
+    if task.state == 'PENDING':
+        response = {
+            'status': 'Waiting to start.'
+        }
+    elif task.state == 'PROGRESS':
+        remaining = task.info.get('remaining', 0) if task.info else 0
+        response = {
+            'status': 'sleeping',
+            'remaining': remaining
+        }
+    elif task.state == 'SUCCESS':
+        response = {
+            'status': 'done sleeping for 60 seconds'
+        }
+    else:
+        response = {
+            'status': 'failed to sleep'
+        }
+    return jsonify(response)
+

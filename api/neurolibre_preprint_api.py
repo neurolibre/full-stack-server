@@ -11,6 +11,7 @@ import logging
 import neurolibre_common_api
 from common import *
 from preprint import *
+from github_client import *
 from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
@@ -19,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import rsync, celery_app
+from neurolibre_celery_tasks import celery_app, rsync_data
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -42,9 +43,11 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
+reviewRepository = app.config["REVIEW_REPOSITORY"]
 binderName = app.config["BINDER_NAME"]
 domainName = app.config["BINDER_DOMAIN"]
 build_rate_limit = app.config["RATE_LIMIT"]
+
 
 app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
 
@@ -80,6 +83,8 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
+docs.register(neurolibre_common_api.api_celery_test,blueprint="common_api")
+docs.register(neurolibre_common_api.get_task_status_test,blueprint="common_api")
 
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
@@ -500,21 +505,21 @@ docs.register(api_zenodo_publish)
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
-def api_data_sync_post(user,project_name):
-    # transfer with rsync
-    remote_path = os.path.join("neurolibre-preview:", "DATA", project_name)
-    try:
-        f = open("/DATA/data_synclog.txt", "a")
-        f.write(remote_path)
-        f.close()
-        subprocess.check_call(["rsync", "-avR", remote_path, "/"])
-    except subprocess.CalledProcessError as e:
-        flask.abort(404, f"Cannot sync data: {e.output}")
-    # final check
-    if len(os.listdir(os.path.join("/DATA", project_name))) == 0:
-        response = make_response(f"Data sync was not successful for {project_name}",404)
+def api_data_sync_post(user,project_name,issue_id):
+    # Create a comment in the review issue. 
+    # The worker will update that depending on the  state of the task.
+    task_title = "DATA TRANSFER (Preview --> Preprint)"
+    comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
+    # Start the BG task.
+    task_result = rsync_data.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
+    # If successfully queued the task, update the comment
+    if task_result.task_id is not None:
+        gh_template_respond("received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response("Celery task assigned successfully.",200)
     else:
-        response = make_response(f"Successfully synced the data: {project_name} to the preprint server.",200)
+    # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond("failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response("Celery could not start the task.",500)
     response.mimetype = "text/plain"
     return response
 
@@ -590,24 +595,10 @@ docs.register(api_binder_build)
 
 @app.route('/api/test', methods=['GET'])
 @htpasswd.required
-@doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
+@doc(description='Check if SSL verified authentication is functional.', tags=['Tests'])
 def api_preprint_test(user):
-    task = rsync.delay()
-    return f'Rsync started {task.id}'
-    # response = make_response("Preprint server login successful. <3 NeuroLibre",200)
-    # response.mimetype = "text/plain"
-    # return response
+     response = make_response("Preprint server login successful. <3 NeuroLibre",200)
+     response.mimetype = "text/plain"
+     return response
 
 docs.register(api_preprint_test)
-
-
-@app.route('/task/<task_id>')
-def get_task_status(task_id):
-    result = celery_app.AsyncResult(task_id)
-    if result.ready():
-        if result.successful():
-            return jsonify({'status': 'SUCCESS', 'result': result.result})
-        else:
-            return jsonify({'status': 'FAILURE', 'traceback': result.traceback})
-    else:
-        return jsonify({'status': 'PENDING'})
