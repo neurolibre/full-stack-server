@@ -506,7 +506,8 @@ docs.register(api_zenodo_publish)
 def api_data_sync_post(user,id,repo_url):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
-    project_name = gh_get_project_name(target_repository)
+    issue_id = id
+    project_name = gh_get_project_name(repo_url)
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
     # Start the BG task.
