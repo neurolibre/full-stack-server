@@ -517,12 +517,12 @@ def api_data_sync_post(user,id,repo_url):
     # If successfully queued the task, update the comment
     if task_result.task_id is not None:
         gh_template_respond("received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
-        response = make_response("Celery task assigned successfully.",200)
+        response = make_response(jsonify("Celery task assigned successfully."),200)
     else:
     # If not successfully assigned, fail the status immediately and return 500
         gh_template_respond("failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
-        response = make_response("Celery could not start the task.",500)
-    response.mimetype = "text/plain"
+        response = make_response(jsonify("Celery could not start the task."),500)
+    #response.mimetype = "text/plain"
     return response
 
 # Register endpoint to the documentation
