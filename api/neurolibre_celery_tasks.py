@@ -7,6 +7,9 @@ import pytz
 import datetime
 from github_client import *
 from github import Github
+from dotenv import load_dotenv
+
+load_dotenv()
 
 celery_app = Celery('neurolibre_celery_tasks', backend='redis://localhost:6379/1', broker='redis://localhost:6379/0')
 
