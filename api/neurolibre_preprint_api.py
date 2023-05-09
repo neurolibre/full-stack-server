@@ -21,6 +21,7 @@ from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task
+from github import Github
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -505,22 +506,24 @@ docs.register(api_zenodo_publish)
 def api_data_sync_post(user,id,repository_url):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
     issue_id = id
     app.logger.debug(f'{issue_id} {repository_url}')
     project_name = gh_get_project_name(repository_url)
     app.logger.debug(f'{project_name}')
     task_title = "DATA TRANSFER (Preview --> Preprint)"
-    comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     app.logger.debug(f'{comment_id}')
     # Start the BG task.
     task_result = rsync_data.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
     # If successfully queued the task, update the comment
     if task_result.task_id is not None:
-        gh_template_respond("received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
         response = make_response(jsonify("Celery task assigned successfully."),200)
     else:
     # If not successfully assigned, fail the status immediately and return 500
-        gh_template_respond("failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
         response = make_response(jsonify("Celery could not start the task."),500)
     #response.mimetype = "text/plain"
     return response

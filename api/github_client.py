@@ -1,4 +1,3 @@
-from github import Github
 import os
 import re
 import pytz
@@ -29,34 +28,28 @@ def gh_filter(input_str):
     else:
         return input_str
 
-def gh_create_comment(issue_repo,issue_id,comment_body):
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
+def gh_create_comment(github_client, issue_repo,issue_id,comment_body):
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(number=issue_id)
     commit_comment = issue.create_comment(comment_body)
     return commit_comment.id
 
-def gh_update_comment(issue_repo,issue_id,comment_id,comment_body):
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
+def gh_update_comment(github_client, issue_repo,issue_id,comment_id,comment_body):
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(issue_id)
     comment = issue.get_comment(comment_id)
     comment.edit(comment_body)
 
-def gh_template_respond(phase,task_name,repo,issue_id,task_id="",comment_id="", message=""):
+def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",comment_id="", message=""):
     template = gh_response_template(task_name,task_id,message=message)
     if phase == "pending":
         # This one adds a new comment, returns comment_id
-        return gh_create_comment(repo,issue_id,template['pending'])
+        return gh_create_comment(github_client,repo,issue_id,template['pending'])
     else:
         # This one updates comment, returns None
-        return gh_update_comment(repo,issue_id,comment_id,template[phase])
+        return gh_update_comment(github_client,repo,issue_id,comment_id,template[phase])
 
-def gh_get_project_name(target_repo):
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
+def gh_get_project_name(github_client,target_repo):
     repo = github_client.get_repo(gh_filter(target_repo))
     # This is a requirement
     contents = repo.get_contents("binder/data_requirement.json")
