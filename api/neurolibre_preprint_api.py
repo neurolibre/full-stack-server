@@ -502,12 +502,11 @@ docs.register(api_zenodo_publish)
 @htpasswd.required
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
-def api_data_sync_post(user,id,repo_url):
+def api_data_sync_post(user,issue_id,target_repository):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
-    app.logger.debug(f'{id} {repo_url}')
-    issue_id = id
-    project_name = gh_get_project_name(repo_url)
+    app.logger.debug(f'{issue_id} {target_repository}')
+    project_name = gh_get_project_name(target_repository)
     app.logger.debug(f'{project_name}')
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond("pending",task_title,reviewRepository,issue_id)
