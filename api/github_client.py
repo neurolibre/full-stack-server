@@ -8,6 +8,10 @@ import json
 GH_BOT=os.getenv('GH_BOT')
 github_client = Github(GH_BOT)
 
+def get_github_client():
+    GH_BOT=os.getenv('GH_BOT')
+    return Github(GH_BOT)
+
 def gh_response_template(task_name,task_id,message=""):
     tz = pytz.timezone('US/Pacific')
     now = datetime.datetime.now(tz)
@@ -31,18 +35,21 @@ def gh_filter(input_str):
         return input_str
 
 def gh_create_comment(issue_repo,issue_id,comment_body):
+    github_client = get_github_client()
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(number=issue_id)
     commit_comment = issue.create_comment(comment_body)
     return commit_comment.id
 
 def gh_update_comment(issue_repo,issue_id,comment_id,comment_body):
+    github_client = get_github_client()
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(issue_id)
     comment = issue.get_comment(comment_id)
     comment.edit(comment_body)
 
 def gh_template_respond(phase,task_name,repo,issue_id,task_id="",comment_id="", message=""):
+    github_client = get_github_client()
     template = gh_response_template(task_name,task_id,message=message)
     if phase == "pending":
         # This one adds a new comment, returns comment_id
@@ -52,6 +59,7 @@ def gh_template_respond(phase,task_name,repo,issue_id,task_id="",comment_id="", 
         return gh_update_comment(repo,issue_id,comment_id,template[phase])
 
 def gh_get_project_name(target_repo):
+    github_client = get_github_client()
     repo = github_client.get_repo(gh_filter(target_repo))
     # This is a requirement
     contents = repo.get_contents("binder/data_requirement.json")
