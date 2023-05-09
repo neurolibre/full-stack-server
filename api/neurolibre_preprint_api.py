@@ -510,7 +510,7 @@ def api_data_sync_post(user,id,repository_url):
     github_client = Github(GH_BOT)
     issue_id = id
     app.logger.debug(f'{issue_id} {repository_url}')
-    project_name = gh_get_project_name(repository_url)
+    project_name = gh_get_project_name(github_client,repository_url)
     app.logger.debug(f'{project_name}')
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
