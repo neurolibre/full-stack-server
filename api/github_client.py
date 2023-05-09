@@ -5,8 +5,7 @@ import pytz
 import datetime
 import json
 
-GH_BOT=os.getenv('GH_BOT')
-github_client = Github(GH_BOT)
+
 
 def gh_response_template(task_name,task_id,message=""):
     tz = pytz.timezone('US/Pacific')
@@ -31,12 +30,16 @@ def gh_filter(input_str):
         return input_str
 
 def gh_create_comment(issue_repo,issue_id,comment_body):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(number=issue_id)
     commit_comment = issue.create_comment(comment_body)
     return commit_comment.id
 
 def gh_update_comment(issue_repo,issue_id,comment_id,comment_body):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
     repo = github_client.get_repo(gh_filter(issue_repo))
     issue = repo.get_issue(issue_id)
     comment = issue.get_comment(comment_id)
@@ -52,6 +55,8 @@ def gh_template_respond(phase,task_name,repo,issue_id,task_id="",comment_id="", 
         return gh_update_comment(repo,issue_id,comment_id,template[phase])
 
 def gh_get_project_name(target_repo):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
     repo = github_client.get_repo(gh_filter(target_repo))
     # This is a requirement
     contents = repo.get_contents("binder/data_requirement.json")
