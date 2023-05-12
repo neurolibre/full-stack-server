@@ -84,6 +84,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
     task_id = self.request.id
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
     commit_hash = format_commit_hash(repo_url,commit_hash)
+    logging.info(f"{owner}{provider}{repo}{commit_hash}")
     remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", owner, provider, repo, commit_hash + "*")
     try:
         # TODO: improve this, subpar logging.
