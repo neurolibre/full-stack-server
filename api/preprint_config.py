@@ -15,4 +15,4 @@ APISPEC_SWAGGER_URL= "/swagger/"
 APISPEC_SWAGGER_UI_URL= "/documentation"
 
 # IMPORTANT !!!!!
-REVIEW_REPOSITORY = "neurolibre/neurolibre-reviews-testing"
+REVIEW_REPOSITORY = "neurolibre/neurolibre-reviews"
