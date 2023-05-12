@@ -51,7 +51,7 @@ def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
         self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
         gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
         logging.info("Calling subprocess")
-        out = subprocess.check_call(["/usr/bin/rsync", "-avR", remote_path, "/"],capture_output=True,text=True)
+        out = subprocess.check_output(["/usr/bin/rsync", "-avR", remote_path, "/"])
         logging.info(out)
     except subprocess.CalledProcessError as e:
         logging.info("Subprocess exception")
