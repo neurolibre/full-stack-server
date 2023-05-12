@@ -66,7 +66,7 @@ def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
             self.update_state(state=states.FAILURE, meta={'message': f"Directory exists but empty {project_name}"})
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory exists but empty: {project_name}")
         else:
-            gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, "")
+            gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, output)
             self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
     else:
         #logging.info("No dir exemption")

@@ -19,11 +19,11 @@ def gh_response_template(task_name,task_id,message=""):
         message = str()
     
     response_template = dict(
-                pending=f"&#10240;&#10240; **{task_name}** \n &#9899;  **Status:** Request reached NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                received=f"&#10240;&#10240; **{task_name}** \n &#9898;  **Status:** Request queued on NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                started= f"&#10240;&#10240; **{task_name}** \n &#128992;  **Status:** In progress `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                success= f"&#10240;&#10240; **{task_name}** \n &#128994;  **Status:** Successful! `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                failure= f"&#10240;&#10240; **{task_name}** \n &#128308;  **Status:** Failed `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}")
+                pending=f"&#10240;&#10240; **{task_name}** \n &#9899;&nbsp; **Status:** Request reached NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                received=f"&#10240;&#10240; **{task_name}** \n &#9898;&nbsp; **Status:** Request queued on NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                started= f"&#10240;&#10240; **{task_name}** \n &#128992;&nbsp; **Status:** In progress `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                success= f"&#10240;&#10240; **{task_name}** \n &#128994;&nbsp; **Status:** Successful! `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                failure= f"&#10240;&#10240; **{task_name}** \n &#128308;&nbsp; **Status:** Failed `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}")
     return response_template
 
 def gh_filter(input_str):
