@@ -18,12 +18,13 @@ def gh_response_template(task_name,task_id,message=""):
     else: 
         message = str()
     
+    
     response_template = dict(
-                pending=f"&#10240;&#10240; **{task_name}** \n &#9899;&nbsp; **Status:** Request reached NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                received=f"&#10240;&#10240; **{task_name}** \n &#9898;&nbsp; **Status:** Request queued on NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                started= f"&#10240;&#10240; **{task_name}** \n &#128992;&nbsp; **Status:** In progress `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                success= f"&#10240;&#10240; **{task_name}** \n &#128994;&nbsp; **Status:** Successful! `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
-                failure= f"&#10240;&#10240; **{task_name}** \n &#128308;&nbsp; **Status:** Failed `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}")
+                pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message}",
+                received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
+                started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
+                success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
+                failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}")
     return response_template
 
 def gh_filter(input_str):
