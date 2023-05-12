@@ -5,17 +5,25 @@ import datetime
 import json
 
 
+def isNotBlank(myString):
+    return bool(myString and myString.strip())
 
 def gh_response_template(task_name,task_id,message=""):
     tz = pytz.timezone('US/Pacific')
     now = datetime.datetime.now(tz)
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
+    
+    if isNotBlank(message):
+        message = f"\n <details><summary> :information_source: See details </summary><pre><code>{message}</code></pre></details>"
+    else: 
+        message = str()
+    
     response_template = dict(
-                pending=f"&#10240;&#10240; **{task_name}** \n &#9899; **Status:** Request reached NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time}",
-                received=f"&#10240;&#10240; **{task_name}** \n &#9898; **Status:** Request queued on NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time}",
-                started= f"&#10240;&#10240; **{task_name}** \n &#128992; **Status:** In progress `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time}",
-                success= f"&#10240;&#10240; **{task_name}** \n &#128994; **Status:** Successful! `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time}",
-                failure= f"&#10240;&#10240; **{task_name}** \n &#128308; **Status:** Failed `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; ```{message}```")
+                pending=f"&#10240;&#10240; **{task_name}** \n &#9899;  **Status:** Request reached NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                received=f"&#10240;&#10240; **{task_name}** \n &#9898;  **Status:** Request queued on NeuroLibre servers \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                started= f"&#10240;&#10240; **{task_name}** \n &#128992;  **Status:** In progress `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                success= f"&#10240;&#10240; **{task_name}** \n &#128994;  **Status:** Successful! `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}",
+                failure= f"&#10240;&#10240; **{task_name}** \n &#128308;  **Status:** Failed `{task_id[0:8]}` \n &#10240;&#10240; **Last updated:** {cur_time} \n &#10240;&#10240; {message}")
     return response_template
 
 def gh_filter(input_str):
