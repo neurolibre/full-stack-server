@@ -54,9 +54,12 @@ app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
 
 serverContact = app.config["SERVER_CONTACT"] 
 serverName = app.config["SERVER_SLUG"]
+serverDomain = app.config["SERVER_DOMAIN"]
 serverDescription = app.config["SERVER_DESC"]
 serverTOS = app.config["SERVER_TOS"]
 serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
+
+app.logger.info(f"Server running https://{serverName}.{serverDomain} as BinderHub.")
 
 spec = APISpec(
         title="Reproducible preprint API",
@@ -509,12 +512,12 @@ def api_data_sync_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     issue_id = id
-    app.logger.debug(f'{issue_id} {repository_url}')
+    #app.logger.debug(f'{issue_id} {repository_url}')
     project_name = gh_get_project_name(github_client,repository_url)
-    app.logger.debug(f'{project_name}')
+    #app.logger.debug(f'{project_name}')
     task_title = "DATA TRANSFER (Preview --> Preprint)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
-    app.logger.debug(f'{comment_id}')
+    #app.logger.debug(f'{comment_id}')
     # Start the BG task.
     task_result = rsync_data.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
     # If successfully queued the task, update the comment
@@ -541,29 +544,7 @@ def api_books_sync_post(user,repo_url,commit_hash=None):
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
 
     commit_hash = format_commit_hash(repo_url,commit_hash)
-
-    # transfer with rsync
-    remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", owner, provider, repo, commit_hash + "*")
-    
-    try:
-        # Write sync request to log.
-        f = open("/DATA/synclog.txt", "a")
-        f.write(remote_path)
-        f.close()
-        subprocess.check_call(["rsync", "-avR", remote_path, "/"])
-    except subprocess.CalledProcessError as e:
-        flask.abort(404, f"Cannot sync data: {e.output}")
-    # final check
-    def run():
-        results = book_get_by_params(commit_hash=commit_hash)
-         #app.logger.debug(results)
-        if not results:
-            error = {"reason":"404: Could not found the jupyter book build!", "commit_hash":commit_hash, "repo_url":repo_url}
-            yield "\n" + json.dumps(error)
-            yield ""
-        else:
-            yield "\n" + json.dumps(results[0])
-            yield ""
+    server = f"https://{serverName}.{serverDomain}"
 
     return flask.Response(run(), mimetype='text/plain')
 
