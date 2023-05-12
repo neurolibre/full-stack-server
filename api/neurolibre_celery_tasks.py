@@ -98,7 +98,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
         output = process.communicate()[0]
         ret = process.wait()
-        #logging.info(output)
+        logging.info(output)
     except subprocess.CalledProcessError as e:
         #logging.info("Subprocess exception")
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
@@ -116,7 +116,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         process_sym = subprocess.Popen(["ln", "-s", book_path, doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_sym = process_sym.communicate()[0]
         ret_sym = process_sym.wait()
-        #logging.info(output_sym)
+        logging.info(output_sym)
         book_path_url = os.path.join("book-artifacts", owner, provider, repo, commit_hash,"_build","html")
         # Check if symlink successful
         if os.path.exists(os.path.join("DATA","10.55458",f"neurolibre.{iid}")):
