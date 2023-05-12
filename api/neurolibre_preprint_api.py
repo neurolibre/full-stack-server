@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task
+from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task, rsync_book
 from github import Github
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
@@ -538,15 +538,32 @@ docs.register(api_data_sync_post)
 @htpasswd.required
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
-def api_books_sync_post(user,repo_url,commit_hash=None):
-    
-    # Book locations on the servers use full provider urls (github.com, not gh)
-    [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
-
+def api_books_sync_post(user,id,repo_url,commit_hash=None):
+    # Kwargs should match received json request payload fields 
+    # assigning this into issue_id for clarity.
+    issue_id = id
     commit_hash = format_commit_hash(repo_url,commit_hash)
     server = f"https://{serverName}.{serverDomain}"
+    # TODO: Implement this into a class not to 
+    # repeat this, make sure that async call friendly
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    # Task name
+    task_title = "REPRODUCIBLE PREPRINT TRANSFER (Preview --> Preprint)"
+    # Make comment under the issue
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+    # Start Celery task
+    task_result = rsync_book.apply_async(args=[repo_url, commit_hash, comment_id, issue_id, reviewRepository, server])
+    # Update the comment depending on task_id existence.
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
 
-    return flask.Response(run(), mimetype='text/plain')
+    return response
 
 # Register endpoint to the documentation
 docs.register(api_books_sync_post)

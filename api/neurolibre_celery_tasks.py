@@ -115,6 +115,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         process_sym = subprocess.Popen(["ln", "-s", book_path, doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_sym = process.communicate()[0]
         ret_sym = process.wait()
+        #logging.info(output_sym)
         book_path_url = os.path.join("book-artifacts", owner, provider, repo, commit_hash,"_build","html")
         # Check if symlink successful
         if os.path.exists(os.path.join("DATA","10.55458",f"neurolibre.{iid}")):

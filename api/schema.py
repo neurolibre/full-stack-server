@@ -73,6 +73,6 @@ class DatasyncSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
 class BooksyncSchema(Schema):
-    repository_url = fields.String(required=True,description="Full URL of the repository submitted by the author.")
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
+    repository_url = fields.String(required=True,description="Full URL of the target repository")
     commit_hash = fields.String(required=False,dump_default="HEAD", description="Commit hash.")
-
