@@ -59,7 +59,7 @@ serverDescription = app.config["SERVER_DESC"]
 serverTOS = app.config["SERVER_TOS"]
 serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
-app.logger.info(f"Server running https://{serverName}.{serverDomain} as BinderHub.")
+app.logger.info(f"Server running https://{serverName}.{serverDomain}.")
 
 spec = APISpec(
         title="Reproducible preprint API",
@@ -538,7 +538,7 @@ docs.register(api_data_sync_post)
 @htpasswd.required
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
-def api_books_sync_post(user,id,repository_url,commit_hash):
+def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
     # Kwargs should match received json request payload fields 
     # assigning this into issue_id for clarity.
     issue_id = id
