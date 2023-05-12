@@ -538,7 +538,7 @@ docs.register(api_data_sync_post)
 @htpasswd.required
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
-def api_books_sync_post(user,id,repository_url,commit_hash=None):
+def api_books_sync_post(user,id,repository_url,commit_hash):
     # Kwargs should match received json request payload fields 
     # assigning this into issue_id for clarity.
     issue_id = id
@@ -554,6 +554,7 @@ def api_books_sync_post(user,id,repository_url,commit_hash=None):
     # Make comment under the issue
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start Celery task
+    app.logger.debug(f"{repo_url}|{commit_hash}|{comment_id}|{issue_id}|{reviewRepository}|{server}")
     task_result = rsync_book.apply_async(args=[repo_url, commit_hash, comment_id, issue_id, reviewRepository, server])
     # Update the comment depending on task_id existence.
     if task_result.task_id is not None:
