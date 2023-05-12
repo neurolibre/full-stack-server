@@ -110,7 +110,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retreive book at {commit_hash}")
     else:
         # Symlink production book to attain a proper URL
-        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash + "*")
+        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash + "_build" + "html" + "*")
         iid = "{:05d}".format(issue_id)
         doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}",".")
         process_mkd = subprocess.Popen(["mkdir", f"/DATA/10.55458/neurolibre.{iid}"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
