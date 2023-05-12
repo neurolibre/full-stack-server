@@ -8,6 +8,12 @@ import datetime
 from github_client import *
 from github import Github
 from dotenv import load_dotenv
+import logging
+
+
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 load_dotenv()
 
@@ -44,14 +50,23 @@ def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
         now = get_time()
         self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
         gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
-        subprocess.check_call(["/usr/bin/rsync", "-avR", remote_path, "/"])
+        logging.info("Calling subprocess")
+        out = subprocess.check_call(["/usr/bin/rsync", "-avR", remote_path, "/"],capture_output=True,text=True)
+        logging.info(out)
     except subprocess.CalledProcessError as e:
+        logging.info("Subprocess exception")
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
         self.update_state(state=states.FAILURE, meta={'message': e.output})
     # final check
-    if len(os.listdir(os.path.join("/DATA", project_name))) == 0:
-        self.update_state(state=states.FAILURE, meta={'message': f"Data sync was not successful for {project_name}"})
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Data sync was not successful for {project_name}")
+    if os.path.exists(os.path.join("/DATA", project_name)):
+        if len(os.listdir(os.path.join("/DATA", project_name))) == 0:
+            logging.info("Listdir exception")
+            self.update_state(state=states.FAILURE, meta={'message': f"Directory exists but empty {project_name}"})
+            gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory exists but empty: {project_name}")
+        else:
+            gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, "")
+            self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
     else:
-        gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, "")
-        self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
+        logging.info("No dir exemption")
+        self.update_state(state=states.FAILURE, meta={'message': f"Directory does not exist {project_name}"})
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory does not exist: {project_name}")
