@@ -97,7 +97,7 @@ def get_lock_filename(repo_url):
     """
     Simple helper function to identify the lock filename.
     """
-    [repo, owner, provider] = get_owner_repo_provider(repo_url)
+    [owner, repo, provider] = get_owner_repo_provider(repo_url)
     fname = f"{provider}_{owner}_{repo}.lock"
     return os.path.join(os.getcwd(),'build_locks',fname)
 
@@ -129,7 +129,7 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
     
     """
     # Parse url to process
-    [repo, owner, provider] = get_owner_repo_provider(repo_url)
+    [owner, repo, provider] = get_owner_repo_provider(repo_url)
 
     # Get lock filename
     lock_filename = get_lock_filename(repo_url)
