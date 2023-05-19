@@ -10,6 +10,7 @@ from common import *
 from github import Github
 from dotenv import load_dotenv
 import logging
+import shutil
 
 
 
@@ -116,14 +117,20 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         process_mkd = subprocess.Popen(["mkdir", doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_mkd = process_mkd.communicate()[0]
         ret_mkd = process_mkd.wait()
-        process_sym = subprocess.Popen(["ln", "-s", book_path + '/*', doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-        output_sym = process_sym.communicate()[0]
-        ret_sym = process_sym.wait()
-        logging.info(output_sym)
-        book_path_url = os.path.join("book-artifacts", owner, provider, repo, commit_hash,"_build","html")
+        # process_sym = subprocess.Popen(["ln", "-s", book_path + '/*', doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        # output_sym = process_sym.communicate()[0]
+        # ret_sym = process_sym.wait()
+        # logging.info(output_sym)
+        for item in os.listdir(book_path):
+            source_path = os.path.join(book_path, item)
+            target_path = os.path.join(doi_path, item)
+            if os.path.isdir(source_path):
+                shutil.symlink(source_path, target_path, target_is_directory=True)
+            else:
+                os.symlink(source_path, target_path)
         # Check if symlink successful
         if os.path.exists(os.path.join(doi_path)):
-            message = f"<a href=\"{server}/10.55458/neurolibre.{iid}\">Reproducible Preprint URL (DOI formatted)</a><p><a href=\"{server}/{book_path_url}\">Reproducible Preprint (bare URL)</a></p>"
+            message = f"<a href=\"{server}/10.55458/neurolibre.{iid}\">Reproducible Preprint URL (DOI formatted)</a><p><a href=\"{server}/{book_path}\">Reproducible Preprint (bare URL)</a></p>"
             gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, message)
             self.update_state(state=states.SUCCESS, meta={'message': message})
         else:
