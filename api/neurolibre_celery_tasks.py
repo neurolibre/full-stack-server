@@ -10,7 +10,6 @@ from common import *
 from github import Github
 from dotenv import load_dotenv
 import logging
-import shutil
 
 
 
@@ -125,7 +124,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
             source_path = os.path.join(book_path, item)
             target_path = os.path.join(doi_path, item)
             if os.path.isdir(source_path):
-                shutil.symlink(source_path, target_path, target_is_directory=True)
+                os.symlink(source_path, target_path, target_is_directory=True)
             else:
                 os.symlink(source_path, target_path)
         # Check if symlink successful
