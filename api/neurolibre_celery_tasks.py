@@ -110,19 +110,19 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retreive book at {commit_hash}")
     else:
         # Symlink production book to attain a proper URL
-        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , "_build" , "html" , "*")
+        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , "_build" , "html")
         iid = "{:05d}".format(issue_id)
-        doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}",".")
-        process_mkd = subprocess.Popen(["mkdir", f"/DATA/10.55458/neurolibre.{iid}"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}")
+        process_mkd = subprocess.Popen(["mkdir", doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_mkd = process_mkd.communicate()[0]
         ret_mkd = process_mkd.wait()
-        process_sym = subprocess.Popen(["ln", "-s", book_path, doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        process_sym = subprocess.Popen(["ln", "-s", book_path + '/*', doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_sym = process_sym.communicate()[0]
         ret_sym = process_sym.wait()
         logging.info(output_sym)
         book_path_url = os.path.join("book-artifacts", owner, provider, repo, commit_hash,"_build","html")
         # Check if symlink successful
-        if os.path.exists(os.path.join("/DATA","10.55458",f"neurolibre.{iid}")):
+        if os.path.exists(os.path.join(doi_path)):
             message = f"<a href=\"{server}/10.55458/neurolibre.{iid}\">Reproducible Preprint URL (DOI formatted)</a><p><a href=\"{server}/{book_path_url}\">Reproducible Preprint (bare URL)</a></p>"
             gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, message)
             self.update_state(state=states.SUCCESS, meta={'message': message})
