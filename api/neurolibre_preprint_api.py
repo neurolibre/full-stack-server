@@ -582,7 +582,7 @@ def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start BG process
-    task_result = rsync_book.fork_configure_repository(args=[repo_url, comment_id, issue_id, reviewRepository])
+    task_result = fork_configure_repository.apply_async(args=[repo_url, comment_id, issue_id, reviewRepository])
     # Update the comment depending on task_id existence.
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
