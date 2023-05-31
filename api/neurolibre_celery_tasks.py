@@ -157,7 +157,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
 
 @celery_app.task(bind=True)
-def fork_configure_repository(self, source_url, comment_id, issue_id, reviewRepository, server):
+def fork_configure_repository(self, source_url, comment_id, issue_id, reviewRepository):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     
     GH_BOT=os.getenv('GH_BOT')

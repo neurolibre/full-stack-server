@@ -12,7 +12,7 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema
+from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema, ProdStartSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task, rsync_book
+from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task, rsync_book, fork_configure_repository
 from github import Github
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
@@ -569,6 +569,31 @@ def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
 
 # Register endpoint to the documentation
 docs.register(api_books_sync_post)
+
+@app.route('/api/production/start', methods=['POST'])
+@htpasswd.required
+@doc(description='Fork user repository into roboneurolibre and update _config and _toc.', tags=['Production'])
+@use_kwargs(ProdStartSchema())
+def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
+    issue_id = id
+    repo_url = repository_url
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_title = "INITIATE PRODUCTION (Fork and Configure)"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+    # Start BG process
+    task_result = rsync_book.fork_configure_repository(args=[repo_url, comment_id, issue_id, reviewRepository])
+    # Update the comment depending on task_id existence.
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
+
+docs.register(api_production_start_post)
 
 # This is named as a binder/build instead of /book/build due to its context 
 # Production server BinderHub deployment does not build a book.
