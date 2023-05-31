@@ -9,9 +9,9 @@ Group=www-data
 WorkingDirectory=/home/ubuntu/full-stack-server/api
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/ubuntu/venv/neurolibre/bin
 Environment="CELERY_CREATE_DIRS=1"
-ExecStart=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi start w1 w2 --loglevel=info --pidfile="celery_preview/run/%n.pid" --logfile="$HOME/log/%n%I.log"
+ExecStart=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi start w1 w2 --loglevel=info --pidfile="celery_preview/run/%n.pid" --logfile="celery_preview/log/%n%I.log"
 ExecStop=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi stopwait w1 w2
-ExecReload=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi restart w1 w2 --loglevel=info --pidfile="celery_preview/run/%n.pid" --logfile="$HOME/log/%n%I.log"
+ExecReload=/home/ubuntu/venv/neurolibre/bin/celery -A neurolibre_celery_tasks multi restart w1 w2 --loglevel=info --pidfile="celery_preview/run/%n.pid" --logfile="celery_preview/log/%n%I.log"
 Restart=on-failure
 
 [Install]

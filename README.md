@@ -120,6 +120,12 @@ For further details on tuning NGINX for performance, see these blog posts about 
 
 You can use [GTMetrix](https://gtmetrix.com/) to test the loading speed of individual NeuroLibre preprints. The loading speed of these pages mainly depends on the content of the static files they contain. For example, pages with interactive plots rendered using HTML may take longer to load because they encapsulate all the data points for various UI events.
 
+## Install Redis 
+
+Simply follow [these instructions](https://redis.io/docs/getting-started/installation/install-redis-on-linux/) to install Redis on Ubuntu.
+
+Our server will use Redis both as message broker and backend for Celery asynchronous task manager. What a weird sentence, is not it? I tried to explain above what these components are responsible for. 
+
 ## Deploy and configure NeuroLibre servers
 
 Clone this repository to `home` directory (typically `/home/ubuntu`):
@@ -133,9 +139,9 @@ Be careful not to run these commands (or anything else in this section) as the `
 
 > Throughout the rest of this section, **`<type>`** refers to either `preview` or `preprint`.
 
-#### Flask, Gunicorn and other Python dependencies 
+#### Flask, Gunicorn, Celery, and other Python dependencies 
 
-This documentation assumes that the server host is a Ubuntu VM. To install Python dependencies, 
+This documentation assumes that the server host is a Ubuntu VM. To install Python dependencies,
 we are going to use virtual environments.
 
 Ensure that python3 (3.6.9 or later) is available: 
@@ -187,19 +193,19 @@ nano .env
 
 #### Configure the server as a systemd service
 
-Depending on the server **type** [`preview` or `preprint`], copy the respective content from `sytemd` folder in this repository into `/etc/systemd/system`:
+Depending on the server **type** [`preview` or `preprint`], copy the respective content from `systemd` folder in this repository into `/etc/systemd/system`:
 
 ```
 sudo cp ~/full-stack-server/systemd/neurolibre-<type>.service /etc/systemd/system/neurolibre-<type>.service
 ```
 
-If the python virtual environment and its dependencies are properly installed, you can start the service by: 
+If the python virtual environment and its dependencies are properly installed, you can start the service by:
 
 ```
 sudo systemctl start neurolibre-<type>.service
 ```
 
-You can check the status by 
+You can check the status by
 
 ```
 sudo systemctl status neurolibre-<type>.service
@@ -208,6 +214,12 @@ sudo systemctl status neurolibre-<type>.service
 This should start multiple `gunicorn` workers, each one of them binding our flask application to a `unix socket` located at `~/full-stack-server/api/neurolibre_<type>_api.sock`. You can check the existence of the `*.sock` file at this directory. The presence of this socket file is of key importance as in the next step, we will register it to nginx as an upstream server! 
 
 > Reminder: Replace the **`<type>`** in the commands above either with `preprint` or `preview` depending on the server (e.g., `neurolibre-preview.service`) you are configuring. Note that this is not only a naming convention, but also defines a functional separation between the roles of the two servers.
+
+#### Configure Celery as a systemd service
+
+For Celery async task queue manager to work, there are two requirements:
+1. Redis properly installed and running 
+2. `neurolibre-<type>.service` is up and running (see previous step)
 
 #### Preprint <--> Preview serve data sync configurations
 
@@ -238,11 +250,9 @@ Provided that the `/DATA/foo.txt` exists on the source (preview) server and you 
 
 #### Cloud-level considerations
 
-
-
 #### NGINX installation and configurations
 
-To install and configure `nginx`: 
+To install and configure `nginx`:
 
 ```
 sudo apt install nginx
@@ -501,39 +511,63 @@ dokku ssh-keys:add <name> ~/.ssh/id_rsa
 * Add global domain
 
 ```
-dokku domains:add-global dashboards.neurolibre.org
+dokku domains:add-global db.neurolibre.org
 ```
 
-* On Cloudflare, add an A record for wildcard nested domain `*.dashboards.neurolibre.org`. This will require total TLS to issue individual certificates for every proxied hostname (paid feature). Otherwise, SSL termination will fail.
+* On Cloudflare, add an A record for wildcard nested domain `*.db.neurolibre.org`. This will require total TLS to issue individual certificates for every proxied hostname (paid feature). Otherwise, SSL termination will fail.
 
-* On Cloudflare, create origin certificates for the wildcard nested domain, copy over files to a `neurolibre.crt` and `neurolibre.key` files, respectively. Then: 
+* On Cloudflare: 
+  * Under the SSl/TLS --> Edge Certificates --> *.db.neurolibre.org (Type Advanced) should be active.
+  * SSL/TLS encryption mode must be set to FULL 
+  * `A record` added for the floating IP address (*.db.neurolibre.org 206.xxx.xx.xx) must be proxied (orange cloud)
 
+* Install letsencrypt plugin:
 ```
-tar cvf neurolibre.tar neurolibre.crt neurolibre.key
+sudo dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
 ```
 
-* We can deploy the first application. Clone a compatible repository, e.g., `my-dashboard` and cd into it: 
+* Create a DNS edit token for zone neurolibre.org
+  * Login to cloudflare
+  * My Profile --> API Tokens --> Create Token
+  * Next to  `Edit Zone DNS`, click `use this template`
+  * First row: Zone - DNS - Edit
+  * Second row: Include - Specific zone - neurolibre.org
+  * Continue to summary, create token and note it down for the next step
+
+Note: You can check [supported lego providers](https://go-acme.github.io/lego/dns/cloudflare/) for up-to-date environment variable names. Note that dokku letsencrypt plugin does not support `_FILE` suffixes to read values from a file. If you are living up to your parents' societal expectations, your lego provider probably refers to a real logo store where you buy some interlocking plastic bricks to entertain your kids.
+
+* Configure the plugin:
+  *  `dokku letsencrypt:set --global email conp.dev@gmail.com`
+  *  `dokku letsencrypt:set --global dns-provider cloudflare`
+  *  `dokku letsencrypt:set --global dns-provider-CLOUDFLARE_DNS_API_TOKEN <add-dns-api-token-here>`
+
+* Now we are ready to deploy applications (PHEW). Clone a compatible repository, e.g., `my-dashboard` and cd into it: 
 
 ```
 cd ~/my-dashboard
 dokku apps:create my-dashboard
 ```
 
-> If you app needs, you'll need to create [service plugins](https://dokku.com/docs/community/plugins/#official-plugins-beta) at this step.
+> If your app needs, you'll need to create [service plugins](https://dokku.com/docs/community/plugins/#official-plugins-beta) at this step.
 
 * Add git remote for your application: 
 
 ```
 git remote add dokku dokku@[vm.floating.ip]:my-dashboard
-git push dokku main:master 
 ```
 
-If the main branch is `main`, use `master:master` otherwise, or `branch:master` if that's what you need.
+* Deploy the application 
+
+```
+git push dokku <reference_branch>:master
+```
+
+Replace the `<reference_branch>` with the branch from which you want to deploy the app.
 
 * The push command above will start the deployment. If the VHOST is not enabled by default, you may not see URL being printed at the end of the deployment. In either case, add domain for the app: 
 
 ```
-dokku domains:add my-dashboard dashboards.neurolibre.org
+dokku domains:add my-dashboard db.neurolibre.org
 ```
 
 Confirm that it is enabled with: 
@@ -551,11 +585,46 @@ dokku domains:enable my-dashboard
 * Add certificates to the application: 
 
 ```
-dokku add:certificate my-dashboard < ~/neurolibre.tar
+dokku letsencrypt:enable my-dashboard
 ```
 
-* That's it! If successful, the app should be live on https://my-dashboard.dashboards.neurolibre.org 
+* That's it! If successful, the app should be live on https://my-dashboard.db.neurolibre.org 
+
+* Check all the resources to see if thigns are in order:
+
+```
+dokku report my-dashboard
+```
 
 > Needless to say, `my-dashboard` here is just an example name. The repository you'll clone should have basic requirements (e.g., source code, a procfile to indicate what to execute and runtime dependency declarations such as requirements.txt, Gemfile, package.json, pom.xml, etc.) to deploy itself as an application to dokku.
 
-* Each application on Dokku will run in a container, named as "dynos" in Heroku. If you connect this VM to NewRelic (see instructions above), you can monitor each container/application/load and set alert conditions. 
+* If the application appears to be running on the VM, but now accessible via web
+  * Ensure that a proper `Security Group` is added to the instance to allow outside connections
+  * Click on the instance --> Interfaces --> Under the Actions Tab --> Edit Security Groups
+  * Move a suitable security group from the left panel (all) to the right panel (port)
+
+* If there's not a security group available
+    * Network --> Security Groups --> Create
+
+| Direction | Ether Type | Protocol | Port Range  | Remote IP Prefix |
+|-----------|------------|----------|-------------|------------------|
+| Egress    | IPv4       | Any      | Any         | 0.0.0.0/0        |
+| Egress    | IPv6       | Any      | Any         | ::/0             |
+| Ingress   | IPv4       | ICMP     | Any         | -                |
+| Ingress   | IPv4       | ICMP     | Any         | 192.168.73.30/32 |
+| Ingress   | IPv4       | TCP      | Any         | 192.168.73.30/32 |
+| Ingress   | IPv4       | TCP      | 1 - 65535   | -                |
+| Ingress   | IPv4       | TCP      | 1 - 65535   | 192.168.73.30/32 |
+| Ingress   | IPv4       | TCP      | 22 (SSH)    | 0.0.0.0/0        |
+| Ingress   | IPv4       | TCP      | 80 (HTTP)   | 0.0.0.0/0        |
+| Ingress   | IPv4       | TCP      | 443 (HTTPS) | 0.0.0.0/0        |
+| Ingress   | IPv4       | UDP      | 1 - 65535   | -                |
+| Ingress   | IPv4       | UDP      | 1 - 65535   | 192.168.73.30/32 |
+
+* Each application on Dokku will run in a container, named as "dynos" in Heroku. If you connect this VM to NewRelic (see instructions above), you can monitor each container/application/load and set alert conditions.
+
+* Permanent redirect from `*.dashboards.neurolibre.org` to `*.db.neurolibre.org`
+  * Cloudflare --> Rules --> Page Rules 
+  * `URL`: *.dashboards.neurolibre.org/
+  * Forwarding URL & 301 Permanent redirect 
+  * `Destination URL`: https://$1.db.neurolibre.org
