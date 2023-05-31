@@ -608,15 +608,45 @@ def api_binder_build(user,repo_url, commit_hash):
     # Request build from the preview binderhub instance
     app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
 
-    # requests builds
-    req = requests.get(binderhub_request)
-    def generate():
-        for line in req.iter_lines():
-            if line:
-                yield str(line.decode('utf-8')) + "\n"
-        yield ""
+    lock_filename = get_lock_filename(repo_url)
 
-    return flask.Response(generate(), mimetype='text/plain')
+    response = requests.get(binderhub_request, stream=True)
+    if response.ok:
+        # Forward the response as an event stream
+        def generate():
+            for line in response.iter_lines():
+                if line:
+                    # Fetch streamed block
+                    event_string = line.decode("utf-8")
+                    try:
+                        # Try getting an event object if the emit message
+                        # is json (e.g., may be keepalive otherwise)
+                        event = json.loads(event_string.split(': ', 1)[1])
+
+                        # https://binderhub.readthedocs.io/en/latest/api.html
+                        # MUST close response when phase is failed
+                        if event.get('phase') == 'failed':
+                            response.close()
+                            # Remove the lock as binder build failed.
+                            app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
+                            os.remove(lock_filename)
+                            return
+
+                        message = event.get('message')
+                        if message:
+                            # Only print when phase emits a message to
+                            # keep the logs neat.
+                            yield message
+                    # An exception to handle 
+                    # for Gunicorn asynchronous worker (gevent)
+                    except GeneratorExit:
+                        pass
+                    except:
+                        # Pass other events
+                        pass
+
+    os.remove(lock_filename)
+    return flask.Response(generate(), mimetype='text/event-stream')
 
 # Register endpoint to the documentation
 docs.register(api_binder_build)
