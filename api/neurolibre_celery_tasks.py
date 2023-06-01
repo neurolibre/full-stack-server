@@ -428,6 +428,9 @@ def zenodo_create_buckets_task(self, payload):
             if valid_field:
                 author[valid_field] = author.pop(invalid_field)
 
+        if author.get('orcid') is None:
+            author.pop('orcid')
+
     collect = {}
     for archive_type in payload['archive_assets']:
                 gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Creating Zenodo buckets for {archive_type}")
