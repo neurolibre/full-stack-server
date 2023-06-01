@@ -20,8 +20,9 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
 
     ZENODO_TOKEN = os.getenv('ZENODO_API')
-    headers = {"Content-Type": "application/json",
-                    "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
+    params = {'access_token': ZENODO_TOKEN}
+    # headers = {"Content-Type": "application/json",
+    #                 "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
     
     # WANING: 
     # FOR NOW assuming that HEAD corresponds to the latest successful
@@ -62,8 +63,11 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     # Make an empty deposit to create the bucket 
     r = requests.post('https://zenodo.org/api/deposit/depositions',
-                headers=headers,
+                params=params,
                 data=json.dumps(data))
+    
+    print(json.dumps(data))
+
     if not r:
         return {"reason":"404: Cannot create " + archive_type + " bucket.", "commit_hash":commit_fork, "repo_url":fork_url}
     else:

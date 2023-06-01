@@ -392,12 +392,48 @@ def zenodo_create_buckets_task(self, payload):
         msg = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
         gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
 
+    
+    data = payload['paper_data']
+
+    # We need to go through some affiliation mapping here.
+    affiliation_mapping = {str(affiliation['index']): affiliation['name'] for affiliation in data['affiliations']}
+    first_affiliations = []
+    for author in data['authors']:
+        if isinstance(author['affiliation'],int):
+            affiliation_index = author['affiliation']
+        else:
+            affiliation_indices = [affiliation_index for affiliation_index in author['affiliation'].split(',')]
+            affiliation_index = affiliation_indices[0]
+        first_affiliation = affiliation_mapping[str(affiliation_index)]
+        first_affiliations.append(first_affiliation)
+
+    for ii in range(len(data['authors'])):
+        data['authors'][ii]['affiliation'] = first_affiliations[ii]
+    
+    # To deal with some typos, also with orchid :) 
+    valid_field_names = {'name', 'orcid', 'affiliation'}
+    for author in data['authors']:
+        invalid_fields = []
+        for field in author:
+            if field not in valid_field_names:
+                invalid_fields.append(field)
+        
+        for invalid_field in invalid_fields:
+            valid_field = None
+            for valid_name in valid_field_names:
+                if valid_name.lower() in invalid_field.lower() or (valid_name == 'orcid' and invalid_field.lower() == 'orchid'):
+                    valid_field = valid_name
+                    break
+            
+            if valid_field:
+                author[valid_field] = author.pop(invalid_field)
+
     collect = {}
     for archive_type in payload['archive_assets']:
                 gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Creating Zenodo buckets for {archive_type}")
-                r = zenodo_create_bucket(payload['paper_data']['title'],
+                r = zenodo_create_bucket(data['title'],
                                          archive_type,
-                                         payload['paper_data']['authors'],
+                                         data['authors'],
                                          payload['repository_url'],
                                          payload['issue_id'])
                 collect[archive_type] = r
