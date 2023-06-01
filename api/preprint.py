@@ -64,12 +64,13 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     # Make an empty deposit to create the bucket 
     r = requests.post("https://zenodo.org/api/deposit/depositions",
                 params=params,
-                json=json.dumps(data))
+                json=data)
     
-    response_dict = json.loads(r.text)
+    print(f"Error: {r.status_code} - {r.text}")
+    # response_dict = json.loads(r.text)
 
-    for i in response_dict:
-        print("key: ", i, "val: ", response_dict[i])
+    # for i in response_dict:
+    #     print("key: ", i, "val: ", response_dict[i])
 
     if not r:
         return {"reason":"404: Cannot create " + archive_type + " bucket.", "commit_hash":commit_fork, "repo_url":fork_url}
