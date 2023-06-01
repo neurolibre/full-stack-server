@@ -3,6 +3,12 @@ import glob
 import time
 import git
 from flask import abort
+import yaml
+
+"""
+Helper functions for the tasks 
+performed by both servers (preview and preprint).
+"""
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
@@ -10,6 +16,10 @@ BOOK_URL = "https://preview.neurolibre.org/book-artifacts"
 DOCKER_REGISTRY = "https://binder-registry.conp.cloud"
 
 def load_all(globpath=BOOK_PATHS):
+    """
+    Get the list of all the jupyter books that exist in the
+    respective server.
+    """
     book_collection = []
     paths = glob.glob(globpath)
     for path in paths:
@@ -39,6 +49,11 @@ def load_all(globpath=BOOK_PATHS):
     return book_collection
 
 def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
+    """
+    Returns a book objet if it exists for one or for the intersection
+    of multiple parameters passed as an argument to the function.
+    Typical use case is with commit_hash.
+    """
     books = load_all()
     # Create an empty list for our results
     results = []
@@ -125,8 +140,7 @@ def check_lock_status(lock_filename,build_rate_limit):
 def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName):
     """
         Two arguments repo_url and commit_hash are passed with payload
-        by the client. The last tree arguments are 
-    
+        by the client. The last tree arguments are from configurations.
     """
     # Parse url to process
     [owner, repo, provider] = get_owner_repo_provider(repo_url)
@@ -154,6 +168,12 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
     return binderhub_request
 
 def book_log_collector(owner,repo,provider,commit_hash):
+    """
+    Retreive the content of Jupyter Book build logs. 
+    The main log (book-build.log) exists both on build success or failure.
+    Execution report logs only come to existence if something went wrong 
+    while executing the respective notebook ot myST.
+    """
     logs = []
     root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
     main_log_file = f"{root_dir}/book-build.log"
@@ -181,3 +201,25 @@ def book_log_collector(owner,repo,provider,commit_hash):
         logs.append(f"I could not find any book log for {owner}/{repo} at {commit_hash}")
     logs  = "\n".join(logs)
     return logs
+
+def parse_front_matter(markdown_string):
+    """
+    Simple function to read front-matter yaml data 
+    from markdown files (e.g., paper.md).
+    """
+    lines = markdown_string.split('\n')
+    front_matter_lines = []
+    in_front_matter = False
+
+    for line in lines:
+        if line.strip() == '---':  # Start or end of front matter
+            in_front_matter = not in_front_matter
+            continue
+
+        if in_front_matter:
+            front_matter_lines.append(line)
+        else:
+            break
+
+    front_matter = '\n'.join(front_matter_lines)
+    return yaml.safe_load(front_matter)

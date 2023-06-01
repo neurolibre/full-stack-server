@@ -1,17 +1,20 @@
 from celery import Celery
 import time
 import os 
+import json
 import subprocess
 from celery import states
 import pytz
 import datetime
 from github_client import *
 from common import *
+from preprint import *
 from github import Github, UnknownObjectException
 from dotenv import load_dotenv
 import logging
 import requests
 from flask import Response
+
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -19,11 +22,13 @@ JOURNAL_NAME = "NeuroLibre"
 PAPERS_PATH = "https://neurolibre.org/papers"
 PRODUCTION_BINDERHUB = "https://binder-mcgill.conp.cloud"
 
-# Format logging
+"""
+Configuration START
+"""
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Important, secrets will not be loaded otherwise.
+# IMPORTANT, secrets will not be loaded otherwise.
 load_dotenv()
 
 # Setting Redis as both backend and broker
@@ -31,8 +36,16 @@ celery_app = Celery('neurolibre_celery_tasks', backend='redis://localhost:6379/1
 
 celery_app.conf.update(task_track_started=True)
 
+"""
+Configuration END
+"""
+
 # Set timezone US/Eastern (Montreal)
 def get_time():
+    """
+    To be printed on issue comment updates for 
+    background tasks.
+    """
     tz = pytz.timezone('US/Eastern')
     now = datetime.datetime.now(tz)
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -49,7 +62,7 @@ def sleep_task(self, seconds):
     return 'done sleeping for {} seconds'.format(seconds)
 
 @celery_app.task(bind=True)
-def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
+def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     """
     Uploading data to the production server 
     from the test server.
@@ -90,7 +103,7 @@ def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory does not exist: {project_name}")
 
 @celery_app.task(bind=True)
-def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server):
+def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server):
     """
     Moving the book from the test to the production
     server. This book is expected to be built from
@@ -160,7 +173,7 @@ def rsync_book(self, repo_url, commit_hash, comment_id, issue_id, reviewReposito
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
 
 @celery_app.task(bind=True)
-def fork_configure_repository(self, source_url, comment_id, issue_id, reviewRepository):
+def fork_configure_repository_task(self, source_url, comment_id, issue_id, reviewRepository):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     
     GH_BOT=os.getenv('GH_BOT')
@@ -303,8 +316,14 @@ def binder_stream(response, github_client,lock_filename, task_id, payload):
             except:
                 pass
 
+"""
+TODO IMPORTANT 
+
+EITHER CALL GENERATOR MULTIPLE TIMES, OR MOVE IT TO THE 
+BODY OF THE TASK, OTHERWISE UPDATES ARE NOT RECEIVED. 
+"""
 @celery_app.task(bind=True)
-def preview_build_book(self, payload):
+def preview_build_book_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -355,3 +374,52 @@ def preview_build_book(self, payload):
         else:
             issue_comment = []
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
+
+
+@celery_app.task(bind=True)
+def zenodo_create_buckets_task(self, payload):
+    
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+
+    fname = f"zenodo_deposit_NeuroLibre_{payload['issue_id']:05d}.json"
+    local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
+
+    if os.path.exists(local_file):
+        msg = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
+        gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+
+    collect = {}
+    for archive_type in payload['archive_assets']:
+                gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Creating Zenodo buckets for {archive_type}")
+                r = zenodo_create_bucket(payload['paper_data']['title'],
+                                         archive_type,
+                                         payload['paper_data']['authors'],
+                                         payload['repository_url'],
+                                         payload['issue_id'])
+                collect[archive_type] = r
+                # Rate limit
+                time.sleep(2)
+    
+    if {k: v for k, v in collect.items() if 'reason' in v}:
+        # This means at least one of the deposits has failed.
+        logging.info(f"Caught an issue with the deposit. A record (JSON) will not be created.")
+
+        # Delete deposition if succeeded for a certain resource
+        remove_dict = {k: v for k, v in collect.items() if not 'reason' in v }
+        for key in remove_dict:
+            logging.info("Deleting " + remove_dict[key]["links"]["self"])
+            tmp = zenodo_delete_bucket(remove_dict[key]["links"]["self"])
+            time.sleep(1)
+            # Returns 204 if successful, cast str to display
+            collect[key + "_deleted"] = str(tmp)
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{collect}")
+    else:
+        # This means that all requested deposits are successful
+        print(f'Writing {local_file}...')
+        with open(local_file, 'w') as outfile:
+            json.dump(collect, outfile)
+        gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")

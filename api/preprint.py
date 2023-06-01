@@ -2,14 +2,37 @@ import os
 import requests
 import json
 from common import *
+from dotenv import load_dotenv
 
-def zenodo_create_bucket(title, archive_type, creators, user_url, fork_url, commit_user, commit_fork, issue_id):
+load_dotenv()
+
+"""
+Helper functions for the tasks 
+performed by the preprint (production server).
+"""
+
+def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id):
+    
+    [owner,repo,provider] =  get_owner_repo_provider(repository_url,provider_full_name=True)
+
+    # ASSUMPTION 
+    # Fork exists and has the same name.
+    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+
     ZENODO_TOKEN = os.getenv('ZENODO_API')
     headers = {"Content-Type": "application/json",
                     "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
     
+    # WANING: 
+    # FOR NOW assuming that HEAD corresponds to the latest successful
+    # book build. That may not be the case. Requires better 
+    # data handling or extra functionality to retreive the latest successful
+    # book commit.
+    commit_user = format_commit_hash(repository_url,"HEAD")
+    commit_fork = format_commit_hash(fork_url,"HEAD")
+
     libre_text = f'<a href="{fork_url}/commit/{commit_fork}"> reference repository/commit by roboneuro</a>'
-    user_text = f'<a href="{user_url}/commit/{commit_user}">latest change by the author</a>'
+    user_text = f'<a href="{repository_url}/commit/{commit_user}">latest change by the author</a>'
     review_text = f'<p>For details, please visit the corresponding <a href="https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}">NeuroLibre technical screening.</a></p>'
     sign_text = '\n<p><strong><a href="https://neurolibre.org" target="NeuroLibre">https://neurolibre.org</a></strong></p>'
 
@@ -28,7 +51,8 @@ def zenodo_create_bucket(title, archive_type, creators, user_url, fork_url, comm
         data["metadata"]["description"] = 'NeuroLibre JupyterBook built at this ' + libre_text + ', based on the ' + user_text + '.' + review_text + sign_text
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = 'dataset'
-        data["metadata"]["description"] = 'Dataset provided for NeuroLibre preprint.\n' + f'Author repo: {user_url}\nNeuroLibre fork:{fork_url}' + review_text + sign_text
+        # TODO: USE OpenAI API here to explain data.
+        data["metadata"]["description"] = 'Dataset provided for NeuroLibre preprint.\n' + f'Author repo: {repository_url}\nNeuroLibre fork:{fork_url}' + review_text + sign_text
     elif (archive_type == 'repository'):
         data["metadata"]["upload_type"] = 'software'
         data["metadata"]["description"] = 'GitHub archive of the ' + libre_text + ', based on the ' + user_text + '.' + review_text + sign_text
@@ -44,6 +68,12 @@ def zenodo_create_bucket(title, archive_type, creators, user_url, fork_url, comm
         return {"reason":"404: Cannot create " + archive_type + " bucket.", "commit_hash":commit_fork, "repo_url":fork_url}
     else:
         return r.json()
+
+def zenodo_delete_bucket(remove_link):
+    ZENODO_TOKEN = os.getenv('ZENODO_API')
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
+    response = requests.delete(remove_link, headers=headers)
+    return response
 
 def docker_login():
     uname = os.getenv('DOCKER_USERNAME')

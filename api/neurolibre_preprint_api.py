@@ -20,8 +20,12 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data, sleep_task, rsync_book, fork_configure_repository
+from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task
 from github import Github
+
+"""
+Configuration START
+"""
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -88,9 +92,18 @@ docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
+"""
+Configuration END
+"""
+
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
     os.makedirs(os.path.join(os.getcwd(),'build_locks'))
+
+
+"""
+API Endpoints START
+"""
 
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 
@@ -101,54 +114,50 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
 @use_kwargs(BucketsSchema())
-def api_zenodo_post(user,fork_url,user_url,commit_fork,commit_user, title,issue_id,creators,deposit_data):
-    """
-    Fetches kwargs from validated BucketsSchema and makes bucket request to zenodo.
-    """
-    def run():
-        ZENODO_TOKEN = os.getenv('ZENODO_API')
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
-        fname = f"zenodo_deposit_NeuroLibre_{'%05d'%issue_id}.json"
-        local_file = os.path.join(get_deposit_dir(issue_id), fname)
-        
-        collect = {}
-        if os.path.exists(local_file):
-            # File already exists, do nothing.
-            collect["message"] = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}"
-        else:
-            # File does not exist, move on to determine for which resources
-            # zenodo buckets will be created.
-            if deposit_data:
-                # User does not have DOI'd data, we'll create.
-                resources = ["book","repository","data","docker"]
-            else:
-                # Do not create a record for data, user already did.
-                resources = ["book","repository","docker"]
-            for archive_type in resources:
-                r = zenodo_create_bucket(title, archive_type, creators, user_url, fork_url, commit_user, commit_fork, issue_id)
-                collect[archive_type] = r
-                time.sleep(0.5)
-            if {k: v for k, v in collect.items() if 'reason' in v}:
-                # This means at least one of the deposits has failed.
-                print('Caught an issue with the deposit. A record (JSON) will not be created.')
-                # Delete deposition if succeeded for a certain resource
-                remove_dict = {k: v for k, v in collect.items() if not 'reason' in v }
-                for key in remove_dict:
-                    print("Deleting " + remove_dict[key]["links"]["self"])
-                    tmp = requests.delete(remove_dict[key]["links"]["self"], headers=headers)
-                    time.sleep(0.5)
-                    # Returns 204 if successful, cast str to display
-                    collect[key + "_deleted"] = str(tmp)
-            else:
-                # This means that all requested deposits are successful
-                print(f'Writing {local_file}...')
-                with open(local_file, 'w') as outfile:
-                    json.dump(collect, outfile)
+def api_zenodo_post(user,id,repository_url):
 
-        # The response will be returned to the caller regardless of the state.
-        yield "\n" + json.dumps(collect)
-        yield ""
-    return flask.Response(run(), mimetype='text/plain')
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    data_archive_exists = gh_read_from_issue_body(github_client,reviewRepository,issue_id,"data-archive")
+
+    if data_archive_exists:
+        archive_assets = ["book","repository","docker"]
+    else:
+        archive_assets = ["book","repository","data","docker"]
+
+    # We need the list of authors and their ORCID, this will 
+    # be fetched from the paper.md in the tarhet repository
+    paper_string = gh_get_paper_markdown(github_client,repository_url)
+    paper_data = parse_front_matter(paper_string)
+
+    if not paper_data:
+       comment = f"&#128308; Cannot extract metadata from the front-matter of the `paper.md` for {repository_url}."
+       gh_create_comment(github_client,reviewRepository,issue_id,comment)
+       return make_response(jsonify(f"Problem with parsing paper.md for {repository_url}"),404)
+
+    task_title = "Reproducibility Assets - Create Zenodo buckets"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id,paper_data['authors'])
+
+    celery_payload = dict(task_title = task_title,
+                          issue_id= issue_id,
+                          review_repository = reviewRepository,
+                          comment_id = comment_id,
+                          archive_assets = archive_assets,
+                          paper_data = paper_data,
+                          repository_url = repository_url)
+
+    task_result = zenodo_create_buckets_task.apply_async(args=[celery_payload])
+
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_post)
@@ -519,7 +528,7 @@ def api_data_sync_post(user,id,repository_url):
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     #app.logger.debug(f'{comment_id}')
     # Start the BG task.
-    task_result = rsync_data.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
+    task_result = rsync_data_task.apply_async(args=[comment_id, issue_id, project_name, reviewRepository])
     # If successfully queued the task, update the comment
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
@@ -557,7 +566,7 @@ def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start Celery task
     app.logger.debug(f"{repo_url}|{commit_hash}|{comment_id}|{issue_id}|{reviewRepository}|{server}")
-    task_result = rsync_book.apply_async(args=[repo_url, commit_hash, comment_id, issue_id, reviewRepository, server])
+    task_result = rsync_book_task.apply_async(args=[repo_url, commit_hash, comment_id, issue_id, reviewRepository, server])
     # Update the comment depending on task_id existence.
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
@@ -584,7 +593,7 @@ def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start BG process
-    task_result = fork_configure_repository.apply_async(args=[repo_url, comment_id, issue_id, reviewRepository])
+    task_result = fork_configure_repository_task.apply_async(args=[repo_url, comment_id, issue_id, reviewRepository])
     # Update the comment depending on task_id existence.
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")

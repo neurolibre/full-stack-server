@@ -42,14 +42,9 @@ class BucketsSchema(Schema):
     """
     Defines payload types and requirements for creating zenodo records.
     """
-    fork_url = fields.Str(required=True,description="Full URL of the forked (roboneurolibre) repository.")
-    user_url = fields.Str(required=True,description="Full URL of the repository submitted by the author.")
-    commit_fork = fields.String(required=True,description="Commit sha at which the forked repository (and other resources) will be deposited")
-    commit_user = fields.String(required=True,description="Commit sha at which the user repository was forked into roboneurolibre.")
-    title = fields.String(required=True,description="Title of the submitted preprint. Each Zenodo record will attain this title.")
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
-    creators = fields.List(fields.Str(),required=True,description="List of the authors.")
-    deposit_data = fields.Boolean(required=True,description="Determines whether Zenodo will deposit the data provided by the user.")
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
+    repository_url = fields.String(required=True,description="Full URL of the target repository")
+
 
 class UploadSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 

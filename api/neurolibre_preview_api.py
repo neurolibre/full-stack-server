@@ -16,9 +16,13 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app,sleep_task, preview_build_book
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
+
+"""
+Configuration START
+"""
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -81,9 +85,18 @@ docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
+"""
+Configuration END
+"""
+
 # Create a build_locks folder to control rate limits
 if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
     os.makedirs(os.path.join(os.getcwd(),'build_locks'))
+
+"""
+API Endpoints START
+"""
+
 
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required
@@ -114,7 +127,7 @@ def api_book_build(user, id, repo_url, commit_hash):
                           review_repository=reviewRepository,
                           task_title=task_title)
     
-    task_result = preview_build_book.apply_async(args=[celery_payload])
+    task_result = preview_build_book_task.apply_async(args=[celery_payload])
 
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
