@@ -66,7 +66,10 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
                 params=params,
                 json=json.dumps(data))
     
-    print(r)
+    response_dict = json.loads(r.text)
+
+    for i in response_dict:
+        print("key: ", i, "val: ", response_dict[i])
 
     if not r:
         return {"reason":"404: Cannot create " + archive_type + " bucket.", "commit_hash":commit_fork, "repo_url":fork_url}
