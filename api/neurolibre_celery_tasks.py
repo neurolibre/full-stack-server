@@ -70,6 +70,7 @@ def rsync_data(self, comment_id, issue_id, project_name, reviewRepository):
         process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output = process.communicate()[0]
         ret = process.wait()
+        #logging.info(output)
     except subprocess.CalledProcessError as e:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
         self.update_state(state=states.FAILURE, meta={'message': e.output})

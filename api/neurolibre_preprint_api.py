@@ -542,7 +542,9 @@ def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
     # Kwargs should match received json request payload fields 
     # assigning this into issue_id for clarity.
     issue_id = id
-    repo_url = repository_url
+    [owner, repo, provider] = get_owner_repo_provider(repository_url,provider_full_name=True)
+    # Create fork URL 
+    repo_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_hash = format_commit_hash(repo_url,commit_hash)
     server = f"https://{serverName}.{serverDomain}"
     # TODO: Implement this into a class not to 
