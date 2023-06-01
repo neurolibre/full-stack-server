@@ -16,8 +16,9 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app,sleep_task
+from neurolibre_celery_tasks import celery_app,sleep_task, preview_build_book
 from celery.events.state import State
+from github import Github, UnknownObjectException
 
 # THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
 load_dotenv()
@@ -40,6 +41,7 @@ AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
+reviewRepository = app.config["REVIEW_REPOSITORY"]
 binderName = app.config["BINDER_NAME"]
 domainName = app.config["BINDER_DOMAIN"]
 build_rate_limit = app.config["RATE_LIMIT"]
@@ -89,80 +91,107 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
 @doc(description='Endpoint for building reproducibility assets on the preview BinderHub instance: Repo2Data, (Binder) Repo2Docker, Jupyter Book.', tags=['Book'])
 @use_kwargs(BuildSchema())
-def api_book_build(user, repo_url,commit_hash):
+def api_book_build(user, id, repo_url, commit_hash):
     """
     Connect to binderhub build eventstream and forward it to 
     the client.
     TODO: Celery.
     """
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
 
-    binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName)
+    task_title = "Book Build (Preview)"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
 
-    app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
+    celery_payload = dict(repo_url=repo_url, 
+                          commit_hash=commit_hash, 
+                          rate_limit=build_rate_limit,
+                          binder_name=binderName, 
+                          domain_name = domainName,
+                          comment_id=comment_id,
+                          issue_id=issue_id,
+                          review_repository=reviewRepository,
+                          task_title=task_title)
+    
+    task_result = preview_build_book.apply_async(args=[celery_payload])
 
-    lock_filename = get_lock_filename(repo_url)
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
 
-    # START EVENTSTREAM | BINDER --> THIS ENDPOINT --> CLIENT |
-    response = requests.get(binderhub_request, stream=True)
-    if response.ok:
-        # Forward the response as an event stream
-        def generate():
-            for line in response.iter_lines():
-                if line:
-                    # Fetch streamed block
-                    event_string = line.decode("utf-8")
-                    try:
-                        # Try getting an event object if the emit message
-                        # is json (e.g., may be keepalive otherwise)
-                        event = json.loads(event_string.split(': ', 1)[1])
+    # binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, binderName, domainName)
 
-                        # https://binderhub.readthedocs.io/en/latest/api.html
-                        # MUST close response when phase is failed
-                        if event.get('phase') == 'failed':
-                            response.close()
-                            # Remove the lock as binder build failed.
-                            app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                            os.remove(lock_filename)
-                            return
+    # app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
 
-                        message = event.get('message')
-                        if message:
-                            # Only print when phase emits a message to
-                            # keep the logs neat.
-                            yield message
-                    # An exception to handle 
-                    # for Gunicorn asynchronous worker (gevent)
-                    except GeneratorExit:
-                        pass
-                    except:
-                        # Pass other events
-                        pass
+    # lock_filename = get_lock_filename(repo_url)
 
-            # After the upstream closes, check the server if there's 
-            # a book built successfully.
-            book_status = book_get_by_params(commit_hash=commit_hash)
+    # # START EVENTSTREAM | BINDER --> THIS ENDPOINT --> CLIENT |
+    # response = requests.get(binderhub_request, stream=True)
+    # if response.ok:
+    #     # Forward the response as an event stream
+    #     def generate():
+    #         for line in response.iter_lines():
+    #             if line:
+    #                 # Fetch streamed block
+    #                 event_string = line.decode("utf-8")
+    #                 try:
+    #                     # Try getting an event object if the emit message
+    #                     # is json (e.g., may be keepalive otherwise)
+    #                     event = json.loads(event_string.split(': ', 1)[1])
 
-            # For now, remove the block either way.
-            # The main purpose is to avoid triggering
-            # a build for the same request. Later on
-            # you may choose to add dead time after a successful build.
-            os.remove(lock_filename)
+    #                     # https://binderhub.readthedocs.io/en/latest/api.html
+    #                     # MUST close response when phase is failed
+    #                     if event.get('phase') == 'failed':
+    #                         response.close()
+    #                         # Remove the lock as binder build failed.
+    #                         app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
+    #                         os.remove(lock_filename)
+    #                         return
 
-            # Append book-related response downstream
-            if not book_status:
-                # These flags will determine how the response will be 
-                # interpreted and returned outside the generator
-                error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
-                yield "<-- Book Build Failed -->\n"
-                yield f"{json.dumps(error)}"
-            else:
-                yield "<-- Book Build Successful -->\n"
-                yield f"{json.dumps(book_status[0])}"
-        # As our API is behind Cloudflare, long responses trigger a timeout 
-        # if we parse the response here and send it as proper json. 
-        # That's why we stream from here, and deal with parsing at the 
-        # receiver's end (roboneuro ruby)
-        return flask.Response(generate(), mimetype='text/event-stream')
+    #                     message = event.get('message')
+    #                     if message:
+    #                         # Only print when phase emits a message to
+    #                         # keep the logs neat.
+    #                         yield message
+    #                 # An exception to handle 
+    #                 # for Gunicorn asynchronous worker (gevent)
+    #                 except GeneratorExit:
+    #                     pass
+    #                 except:
+    #                     # Pass other events
+    #                     pass
+
+    #         # After the upstream closes, check the server if there's 
+    #         # a book built successfully.
+    #         book_status = book_get_by_params(commit_hash=commit_hash)
+
+    #         # For now, remove the block either way.
+    #         # The main purpose is to avoid triggering
+    #         # a build for the same request. Later on
+    #         # you may choose to add dead time after a successful build.
+    #         os.remove(lock_filename)
+
+    #         # Append book-related response downstream
+    #         if not book_status:
+    #             # These flags will determine how the response will be 
+    #             # interpreted and returned outside the generator
+    #             error = {"status":"404", "message":"Jupyter book built was not successful!", "commit_hash":commit_hash, "binderhub_url":binderhub_request}
+    #             yield "<-- Book Build Failed -->\n"
+    #             yield f"{json.dumps(error)}"
+    #         else:
+    #             yield "<-- Book Build Successful -->\n"
+    #             yield f"{json.dumps(book_status[0])}"
+    #     # As our API is behind Cloudflare, long responses trigger a timeout 
+    #     # if we parse the response here and send it as proper json. 
+    #     # That's why we stream from here, and deal with parsing at the 
+    #     # receiver's end (roboneuro ruby)
+    #     return flask.Response(generate(), mimetype='text/event-stream')
 
 # Register endpoint to the documentation
 docs.register(api_book_build)

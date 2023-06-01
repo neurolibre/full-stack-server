@@ -152,3 +152,32 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
     binderhub_request = get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash)
 
     return binderhub_request
+
+def book_log_collector(owner,repo,provider,commit_hash):
+    logs = []
+    root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
+    main_log_file = f"{root_dir}/book-build.log"
+    if os.path.isfile(main_log_file):
+        with open(main_log_file) as f:
+            mainlog = [line.rstrip() for line in f]
+        mainlog  = "\n".join(mainlog)
+        book_log = f"<details><summary> <b>Jupyter Book build log</b> </summary><pre><code>{mainlog}</code></pre></details>"
+        logs.append(book_log)
+        # Look at the reports directory
+        reports_path = f"{root_dir}/_build/html/reports"
+        if os.path.exists(reports_path) and os.path.isdir(reports_path):
+            file_list = [f for f in os.listdir(reports_path) if os.path.isfile(os.path.join(reports_path,f))]
+            # Collect each one of these logs
+            for file_name in file_list:
+                with open(f"{root_dir}/_build/html/reports/{file_name}") as file:
+                    cur_log = [line.rstrip() for line in file]
+                cur_log  = "\n".join(cur_log)
+                base_name = file_name.split(".")[0]
+                msg= f"<details><summary> <b>Execution error log</b> for <code>{base_name}</code> notebook ({base_name}.ipynb) or MyST ({base_name}.md)).</summary><pre><code>{cur_log}</code></pre></details>"
+                logs.append(msg)
+        msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
+        logs.append(msg)
+    else: 
+        logs.append(f"I could not find any book log for {owner}/{repo} at {commit_hash}")
+    logs  = "\n".join(logs)
+    return logs
