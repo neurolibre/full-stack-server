@@ -121,6 +121,11 @@ def get_deposit_dir(issue_id):
 def zenodo_get_status(issue_id):
 
     zenodo_dir = f"/DATA/zenodo_records/{issue_id:05d}"
+
+    # Create directory if does not exists.
+    if not os.path.exists(zenodo_dir):
+        os.makedirs(zenodo_dir)
+
     file_list = [f for f in os.listdir(zenodo_dir) if os.path.isfile(os.path.join(zenodo_dir,f))]
     res = ','.join(file_list)
 
