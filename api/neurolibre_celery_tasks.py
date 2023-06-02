@@ -392,7 +392,8 @@ def zenodo_create_buckets_task(self, payload):
     if os.path.exists(local_file):
         msg = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
         gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
-
+        self.request.revoke(terminate=True)
+        return
     
     data = payload['paper_data']
 
