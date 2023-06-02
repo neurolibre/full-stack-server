@@ -474,7 +474,7 @@ def zenodo_upload_book_task(self, payload):
     
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
-    owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
+    owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
     
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
