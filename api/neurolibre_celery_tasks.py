@@ -471,6 +471,8 @@ def zenodo_upload_book_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
+    
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
     owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
     

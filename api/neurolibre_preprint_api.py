@@ -113,8 +113,8 @@ API Endpoints START
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload an item to the respective zenodo bucket (book, repository, data or docker image).', tags=['Zenodo'])
-@use_kwargs(IDSchema())
-def zenodo_upload_book_post(user,id):
+@use_kwargs(DatasyncSchema())
+def zenodo_upload_book_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     issue_id = id
@@ -133,6 +133,7 @@ def zenodo_upload_book_post(user,id):
                           bucket_url = bucket_url,
                           comment_id = comment_id,
                           review_repository = reviewRepository,
+                          repository_url = repository_url,
                           task_title=task_title)
 
     task_result = zenodo_upload_book_task.apply_async(args=[celery_payload])
