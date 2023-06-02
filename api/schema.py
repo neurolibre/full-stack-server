@@ -45,6 +45,8 @@ class BucketsSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
+class StatusSchema(Schema):
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
 
 class UploadSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.") 

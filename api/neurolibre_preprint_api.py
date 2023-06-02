@@ -12,7 +12,7 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema, ProdStartSchema
+from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema, ProdStartSchema, StatusSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -108,6 +108,24 @@ API Endpoints START
 # TODO: Replace yield stream with lists for most of the routes. 
 # You can get rid of run() and return a list instead. This way we can refactor 
 # and move server-side ops functions elsewhere to make endpoint descriptions clearer.
+
+@app.route('/api/zenodo/status', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Get zenodo status for a submission.', tags=['Zenodo'])
+@use_kwargs(StatusSchema())
+def api_zenodo_status(user,id):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    status_msg = zenodo_get_status(id)
+    response = gh_create_comment(github_client,reviewRepository,id,status_msg)
+    if response:
+        response = make_response(jsonify(f"Posted on the issue."),200)
+    else:
+        response = make_response(jsonify(f"Server problem."),500)
+    return response
+
+docs.register(api_zenodo_status)
 
 @app.route('/api/zenodo/buckets', methods=['POST'])
 @htpasswd.required

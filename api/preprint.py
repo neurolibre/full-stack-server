@@ -3,6 +3,9 @@ import requests
 import json
 from common import *
 from dotenv import load_dotenv
+import re
+from github import Github
+from github_client import gh_read_from_issue_body 
 
 load_dotenv()
 
@@ -115,5 +118,68 @@ def get_deposit_dir(issue_id):
     return path
     # docker rmi $(docker images 'busybox' -a -q)
 
-def lel():
-    print('lel')
+def zenodo_get_status(issue_id):
+
+    zenodo_dir = f"/DATA/zenodo_records/{issue_id:05d}"
+    file_list = [f for f in os.listdir(zenodo_dir) if os.path.isfile(os.path.join(zenodo_dir,f))]
+    res = ','.join(file_list)
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+
+    data_archive_exists = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"data-archive")
+
+    regex_repository_upload = re.compile(r"(zenodo_uploaded_repository)(.*?)(?=.json)")
+    regex_data_upload = re.compile(r"(zenodo_uploaded_data)(.*?)(?=.json)")
+    regex_book_upload = re.compile(r"(zenodo_uploaded_book)(.*?)(?=.json)")
+    regex_docker_upload = re.compile(r"(zenodo_uploaded_docker)(.*?)(?=.json)")
+    regex_deposit = re.compile(r"(zenodo_deposit)(.*?)(?=.json)")
+    regex_publish = re.compile(r"(zenodo_published)(.*?)(?=.json)")
+    hash_regex = re.compile(r"_(?!.*_)(.*)")
+
+    if data_archive_exists:
+        zenodo_regexs = [regex_repository_upload, regex_book_upload, regex_docker_upload]
+        types = ['Repository', 'Book', 'Docker']
+    else:
+        zenodo_regexs = [regex_repository_upload, regex_data_upload, regex_book_upload, regex_docker_upload]
+        types = ['Repository', 'Data', 'Book', 'Docker']
+
+    rsp = []
+
+    if not regex_deposit.search(res):
+        rsp.append("<h3>Deposit</h3>:red_square: <b>Zenodo deposit records have not been created yet.</b>")
+    else:
+        rsp.append("<h3>Deposit</h3>:green_square: Zenodo deposit records are found.")
+
+    rsp.append("<h3>Upload</h3><ul>")
+    for cur_regex, idx in zip(zenodo_regexs, range(len(zenodo_regexs))):
+        print(cur_regex)
+        print(idx)
+        if not cur_regex.search(res):
+            rsp.append("<li>:red_circle: <b>{}</b></li>".format(types[idx] + " archive is missing"))
+        else:
+            tmp = cur_regex.search(res)
+            json_file = tmp.string[tmp.span()[0]:tmp.span()[1]] + '.json'
+            print(tmp)
+            # Display file size for uploaded items, so it is informative.
+            with open(os.path.join(zenodo_dir,json_file), 'r') as f:
+                # Load the JSON data
+                cur_record = json.load(f)
+            #cur_record = json.loads(response.text)
+            # Display MB or GB depending on the size.
+            print(cur_record['size'])
+            size = round((cur_record['size'] / 1e6),2)
+            if size > 999:
+                size = "{:.2f} GB".format(cur_record['size'] / 1e9)
+            else:
+                size = "{:.2f} MB".format(size)
+            # Format
+            rsp.append("<li>:green_circle: {} archive <ul><li><code>{}</code> <code>{}</code></li></ul></li>".format(types[idx], size, json_file))
+    rsp.append("</ul><h3>Publish</h3>")
+
+    if not regex_publish.search(res):
+        rsp.append(":small_red_triangle_down: <b>Zenodo DOIs have not been published yet.</b>")
+    else:
+        rsp.append(":white_check_mark: Zenodo DOIs are published.")
+
+    return ''.join(rsp)
