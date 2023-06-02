@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import logging
 import requests
 from flask import Response
+import shutil
 
 
 DOI_PREFIX = "10.55458"
@@ -462,3 +463,35 @@ def zenodo_create_buckets_task(self, payload):
         with open(local_file, 'w') as outfile:
             json.dump(collect, outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
+
+
+@celery_app.task(bind=True)
+def zenodo_upload_book_task(self, payload):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+
+    owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
+    
+    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    commit_fork = format_commit_hash(fork_url,"HEAD")
+
+    local_path = os.path.join("/DATA", "book-artifacts", "roboneurolibre", provider, repo, commit_fork, "_build", "html")
+    # Descriptive file name
+    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"JupyterBook_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}")
+    # Zip it!
+    shutil.make_archive(zenodo_file, 'zip', local_path)
+    zpath = zenodo_file + ".zip"
+
+    response = zenodo_upload_book(zpath,payload['bucket_url'],payload['issue_id'],commit_fork)
+
+    if not response:
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {zpath} to {payload['bucket_url']}")
+    else:
+        tmp = f"zenodo_uploaded_book_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+        log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+        with open(log_file, 'w') as outfile:
+                json.dump(response.json(), outfile)
+        gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zpath} to {payload['bucket_url']}")
+    

@@ -183,3 +183,16 @@ def zenodo_get_status(issue_id):
         rsp.append(":white_check_mark: Zenodo DOIs are published.")
 
     return ''.join(rsp)
+
+
+
+def zenodo_upload_book(zip_file,bucket_url,issue_id,commit_fork):
+    ZENODO_TOKEN = os.getenv('ZENODO_API')
+    params = {'access_token': ZENODO_TOKEN}
+
+    with open(zip_file, "rb") as fp:
+        r = requests.put(f"{bucket_url}/JupyterBook_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.zip",
+                                params=params,
+                                data=fp)
+
+    return r
