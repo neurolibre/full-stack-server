@@ -498,3 +498,40 @@ def zenodo_upload_book_task(self, payload):
                 json.dump(response.json(), outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zpath} to {payload['bucket_url']}")
     
+@celery_app.task(bind=True)
+def zenodo_upload_repository_task(self, payload):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+
+    owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
+    
+    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    commit_fork = format_commit_hash(fork_url,"HEAD")
+    
+    default_branch = get_default_branch(github_client,fork_url)
+
+    download_url = f"{fork_url}/archive/refs/heads/{default_branch}.zip"
+
+    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"GitHubRepo_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+
+    # REFACTOR HERE AND MANAGE CONDITIONS CLEANER.
+    # Try main first
+    resp = os.system(f"wget -O {zenodo_file} {download_url}")
+    if resp != 0:
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot download: {download_url}")
+        self.request.revoke(terminate=True)
+        return
+    else:
+        response = zenodo_upload_repository(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork) 
+        if not response:
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {zenodo_file} to {payload['bucket_url']}")
+        else:
+            tmp = f"zenodo_uploaded_repository_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+            with open(log_file, 'w') as outfile:
+                    json.dump(response.json(), outfile)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")

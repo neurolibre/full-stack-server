@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task
+from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task
 from github import Github
 
 """
@@ -105,9 +105,45 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 API Endpoints START
 """
 
-# TODO: Replace yield stream with lists for most of the routes. 
-# You can get rid of run() and return a list instead. This way we can refactor 
-# and move server-side ops functions elsewhere to make endpoint descriptions clearer.
+@app.route('/api/zenodo/upload/repository', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Upload the book repository to the respective zenodo deposit.', tags=['Zenodo'])
+@use_kwargs(DatasyncSchema())
+def zenodo_upload_repository_post(user,id,repository_url):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    fname = f"zenodo_deposit_NeuroLibre_{issue_id:05d}.json"
+    local_file = os.path.join(get_deposit_dir(issue_id), fname)
+    with open(local_file, 'r') as f:
+        zenodo_record = json.load(f)
+    # Fetch bucket url of the requested type of item
+    bucket_url = zenodo_record['repository']['links']['bucket']
+    
+    task_title = "Reproducibility Assets - Archive GitHub Repository"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(issue_id = id,
+                        bucket_url = bucket_url,
+                        comment_id = comment_id,
+                        review_repository = reviewRepository,
+                        repository_url = repository_url,
+                        task_title=task_title)
+
+    task_result = zenodo_upload_repository_task.apply_async(args=[celery_payload])
+    
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Started uploading the repository.")
+        response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
+
+docs.register(zenodo_upload_repository_post)
 
 @app.route('/api/zenodo/upload/book', methods=['POST'])
 @htpasswd.required

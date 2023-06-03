@@ -275,3 +275,9 @@ def gh_read_from_issue_body(github_client,issue_repo,issue_id,tag):
     else:
         extracted_text = None
     return extracted_text
+
+
+def get_default_branch(github_client,repository):
+    repo = github_client.get_repo(gh_filter(repository))
+    default_branch = repo.default_branch
+    return default_branch
