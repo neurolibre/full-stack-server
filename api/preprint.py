@@ -135,21 +135,36 @@ def docker_login():
     return {"status": status, "message": output}
 
 def docker_logout():
-    command = [f"docker logout {DOCKER_REGISTRY}"]
+    command = ["docker", "logout", DOCKER_REGISTRY]
     result  = execute_subprocess(command)
     return result
 
 def docker_pull(image):
-    command = [f"docker pull {image}"]
+    command = ["docker", "pull", image]
     result  = execute_subprocess(command)
     return result
 
 def docker_save(image,issue_id,commit_fork):
     record_name = item_to_record_name("docker")
     save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
-    command = [f"docker save {image} | gzip > {save_name}"]
-    result  = execute_subprocess(command)
-    return result, save_name
+    command = ["docker", "save", image, "|", "gzip"]
+    try:
+        output_file = open(save_name, 'wb')
+        process = subprocess.Popen(command, shell=True, stdout=output_file, stderr=subprocess.PIPE)
+        ret = process.wait()
+        output_file.close()
+        if ret == 0:
+            status = True
+            output = "Success"
+        else:
+            status = False
+            output = "Fail"
+    except subprocess.CalledProcessError as e:
+        # If there's a problem with issueing the subprocess.
+        output = e.output
+        status = False
+
+    return {"status": status, "message": output}, save_name
 
 def get_archive_dir(issue_id):
     path = f"/DATA/zenodo/{issue_id:05d}"
