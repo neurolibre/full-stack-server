@@ -22,6 +22,7 @@ DOI_SUFFIX = "neurolibre"
 JOURNAL_NAME = "NeuroLibre"
 PAPERS_PATH = "https://neurolibre.org/papers"
 PRODUCTION_BINDERHUB = "https://binder-mcgill.conp.cloud"
+PREVIEW_SERVER = "https://preview.neurolibre.org"
 
 """
 Configuration START
@@ -535,3 +536,100 @@ def zenodo_upload_repository_task(self, payload):
             with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
+
+@celery_app.task(bind=True)
+def zenodo_upload_docker_task(self, payload):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+
+    owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
+    
+    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    commit_fork = format_commit_hash(fork_url,"HEAD")
+
+    record_name = item_to_record_name("docker")
+
+    tar_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.tar.gz")
+    check_docker = os.path.exists(tar_file)
+
+    if check_docker:
+        msg = "Docker image already exists, uploading to zenodo."
+        gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+        # If image exists but could not upload due to a previous issue.
+        response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
+        if not response:
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {tar_file} to {payload['bucket_url']}")
+        else:
+            tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+            with open(log_file, 'w') as outfile:
+                    json.dump(response.json(), outfile)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
+    else:
+        # Get the lookup_table.tsv entry (from the preview server) for the fork_url
+        lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
+
+        if not lut:
+            # Terminate ERROR
+            msg = f"Looks like there's not a successful book build record for {fork_url}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.request.revoke(terminate=True)
+            return
+
+        msg = f"Found docker image: \n {lut}"
+        gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+
+        # Login to the private registry to pull images
+        r = docker_login()
+        
+        if not r['status']:
+            msg = f"Cannot login to NeuroLibre private docker registry. \n {r['message']}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.request.revoke(terminate=True)
+            return
+
+        msg = f"Pulling docker image: \n {lut['docker_image']}"
+        gh_template_respond(github_client,"started",payload['task_title'] + " `pulling (1/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+
+        # The lookup table (lut) should contain a docker image (see get_resource_lookup)
+        r = docker_pull(lut['docker_image'])
+        if not r['status']:
+            msg = f"Cannot pull the docker image \n {r['message']}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.request.revoke(terminate=True)
+            return
+        
+        msg = f"Exporting docker image: \n {lut['docker_image']}"
+        gh_template_respond(github_client,"started",payload['task_title'] + " `exporting (2/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+
+        r = docker_save(lut['docker_image'],payload['issue_id'],commit_fork)
+        if not r[0]['status']:
+            msg = f"Cannot save the docker image \n {r[0]['message']}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.request.revoke(terminate=True)
+            return
+
+        tar_file = r[1]
+
+        msg = f"Uploading docker image: \n {tar_file}"
+        gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+
+        response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
+        
+        if not response:
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {tar_file} to {payload['bucket_url']}")
+        else:
+            tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+            with open(log_file, 'w') as outfile:
+                    json.dump(response.json(), outfile)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
+
+        r = docker_logout()
+        # No need to break the operation this fails, just log.
+        if not r['status']:
+            logging.info("Problem with docker logout.")
