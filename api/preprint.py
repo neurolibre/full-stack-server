@@ -99,7 +99,7 @@ def execute_subprocess(command):
     # This will be called by Celery, subprocess must be handled properly
     # os.system will not work.
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         # Capture the output stream
         output = process.communicate()[0]
         # Wait for the subprocess to complete and return the return code of the process
@@ -118,9 +118,21 @@ def execute_subprocess(command):
 def docker_login():
     uname = os.getenv('DOCKER_USERNAME')
     pswd = os.getenv('DOCKER_PASSWORD')
-    command = [f"echo {pswd} | docker login {DOCKER_REGISTRY} --username {uname} --password-stdin"]
-    result  = execute_subprocess(command)
-    return result
+    command = ["docker", "login", DOCKER_REGISTRY, "--username", uname, "--password-stdin"]
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output = process.communicate(input=pswd)[0]
+        ret = process.wait()
+        if ret == 0:
+            status = True
+        else:
+            status = False
+    except subprocess.CalledProcessError as e:
+        # If there's a problem with issueing the subprocess.
+        output = e.output
+        status = False
+
+    return {"status": status, "message": output}
 
 def docker_logout():
     command = [f"docker logout {DOCKER_REGISTRY}"]
