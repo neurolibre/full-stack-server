@@ -121,7 +121,7 @@ def docker_login():
     command = ["docker", "login", DOCKER_REGISTRY, "--username", uname, "--password-stdin"]
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = process.communicate(input=pswd)[0]
+        output = process.communicate(input=pswd.encode('utf-8'))[0]
         ret = process.wait()
         if ret == 0:
             status = True
