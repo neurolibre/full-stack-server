@@ -147,24 +147,22 @@ def docker_pull(image):
 def docker_save(image,issue_id,commit_fork):
     record_name = item_to_record_name("docker")
     save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
-    command = ["docker", "save", image, "|", "gzip", ">",save_name]
-    result  = execute_subprocess(command)
-    # try:
-    #     output_file = open(save_name, 'wb')
-    #     process = subprocess.Popen(command, shell=True, stdout=output_file, stderr=subprocess.PIPE)
-    #     ret = process.wait()
-    #     output_file.close()
-    #     if ret == 0:
-    #         status = True
-    #         output = "Success"
-    #     else:
-    #         status = False
-    #         output = "Fail"
-    # except subprocess.CalledProcessError as e:
-    #     # If there's a problem with issueing the subprocess.
-    #     output = e.output
-    #     status = False
-    return result, save_name
+    try:
+        save_process = subprocess.Popen(['docker', 'save', image], stdout=subprocess.PIPE, name='docker_save')
+        gzip_process = subprocess.Popen(['gzip', '-c'], stdin=save_process.stdout, stdout=open(save_name, 'wb'), name='gzip_image')
+        # Wait for the gzip process to complete
+        ret = gzip_process.wait()
+        if ret == 0:
+            status = True
+            output = "Success"
+        else:
+            status = False
+            output = "Fail"
+    except subprocess.CalledProcessError as e:
+        # If there's a problem with issueing the subprocess.
+        output = e.output
+        status = False
+    return {"status": status, "message": output}, save_name
 
 def get_archive_dir(issue_id):
     path = f"/DATA/zenodo/{issue_id:05d}"
