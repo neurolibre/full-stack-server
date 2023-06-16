@@ -245,7 +245,7 @@ def api_zenodo_status(user,id):
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
-@use_kwargs(PublishSchema())
+@use_kwargs(DatasyncSchema())
 def api_zenodo_publish(user,id,repository_url):
 
     GH_BOT=os.getenv('GH_BOT')

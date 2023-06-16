@@ -429,7 +429,7 @@ def zenodo_confirm_status(issue_id,status_type):
                 bool_array.append(True)
             else:
                 bool_array.append(False)
-        
+
         all_true = all(bool_array)
         all_false = not any(bool_array)
 
