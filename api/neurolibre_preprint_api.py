@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task
+from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task
 from github import Github
 
 """
@@ -240,6 +240,40 @@ def api_zenodo_status(user,id):
     else:
         response = make_response(jsonify(f"Server problem."),500)
     return response
+
+@app.route('/api/zenodo/publish', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
+@use_kwargs(PublishSchema())
+def api_zenodo_publish(user,id,repository_url):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    task_title = "Publish Reproducibility Assets"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(task_title = task_title,
+                          issue_id= issue_id,
+                          review_repository = reviewRepository,
+                          comment_id = comment_id,
+                          repository_url = repository_url)
+
+    task_result = zenodo_publish_task.apply_async(args=[celery_payload])
+
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Started uploading the repository.")
+        response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+
+    return response
+# Register endpoint to the documentation
+docs.register(api_zenodo_publish)
 
 docs.register(api_zenodo_status)
 
@@ -594,56 +628,6 @@ def api_zenodo_flush_post(user,issue_id,items):
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_flush_post)
-
-@app.route('/api/zenodo/publish', methods=['POST'])
-@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
-@use_kwargs(PublishSchema())
-def api_zenodo_publish(user,issue_id):
-    def run():
-        ZENODO_TOKEN = os.getenv('ZENODO_API')
-        params = {'access_token': ZENODO_TOKEN}
-        # Read json record of the deposit
-        fname = f"zenodo_deposit_NeuroLibre_{'%05d'%issue_id}.json"
-        local_file = os.path.join(get_deposit_dir(issue_id), fname)
-        dat2recmap = {"data":"Dataset","repository":"GitHub repository","docker":"Docker image","book":"Jupyter Book"}
-        with open(local_file, 'r') as f:
-            zenodo_record = json.load(f)
-        if not os.path.exists(local_file):
-            yield "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo deposit</code>?"
-        else:
-            # If there's a record, make sure that uploads are complete for all kind of items found in the deposit records.
-            bool_array = []
-            for item in zenodo_record.keys():
-                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_uploaded_{item}_NeuroLibre_{'%05d'%issue_id}_*.json"))
-                if tmp:
-                    bool_array.append(True)
-                else:
-                    bool_array.append(False)
-            
-            if all(bool_array):
-                # We need self links from each record to publish.
-                for item in zenodo_record.keys():
-                    publish_link = zenodo_record[item]['links']['publish']
-                    yield f"\n :ice_cube: {dat2recmap[item]} publish status:"
-                    r = requests.post(publish_link,params=params)
-                    response = r.json()
-                    if r.status_code==202: 
-                        yield f"\n :confetti_ball: <a href=\"{response['doi_url']}\"><img src=\"{response['links']['badge']}\"></a>"
-                        tmp = f"zenodo_published_{item}_NeuroLibre_{'%05d'%issue_id}.json"
-                        log_file = os.path.join(get_deposit_dir(issue_id), tmp)
-                        with open(log_file, 'w') as outfile:
-                            json.dump(r.json(), outfile)
-                    else:
-                        yield f"\n <details><summary> :wilted_flower: Could not publish {dat2recmap[item]} </summary><pre><code>{r.json()}</code></pre></details>"
-            else:
-                yield "\n :neutral_face: Not all archives are uploaded for the resources listed in the deposit record. Please ask <code>roboneuro zenodo status</code> and upload the missing (xxx) archives by <code>roboneuro zenodo archive-xxx</code>."
-
-    return flask.Response(run(), mimetype='text/plain')
-
-# Register endpoint to the documentation
-docs.register(api_zenodo_publish)
 
 @app.route('/api/data/sync', methods=['POST'])
 @htpasswd.required

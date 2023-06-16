@@ -633,3 +633,37 @@ def zenodo_upload_docker_task(self, payload):
         # No need to break the operation this fails, just log.
         if not r['status']:
             logging.info("Problem with docker logout.")
+
+@celery_app.task(bind=True)
+def zenodo_publish_task(self, payload):
+    
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+
+    response = zenodo_publish(payload['issue_id'])
+    if response == "no-record-found":
+        msg = "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+        return
+    else:
+        # Confirm that all items are published.
+        publish_status = zenodo_confirm_status(payload['issue_id'],"published")
+        # If all items are published, success. Add DOIs.
+        if publish_status[0]:
+            response.append("\n I will issue commands to set DOIs for the reproducibility assets. I'll talk to myself a bit, but don't worry, I am not an evil AGI (yet :smiling_imp:).")
+            msg = "\n".join(response)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
+            # Set DOIs. This part is a little crazy, because roboneuro will be 
+            # telling itself what to do. Like father, like son.
+            dois = zenodo_collect_dois(payload['issue_id'])
+            for key in dois.keys():
+                command = f"@roboneuro set {dois[key]} as {key} archive"
+                gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],command)
+                time.sleep(1)
+        else:
+            # Some one None 
+            response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)

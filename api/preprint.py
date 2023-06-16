@@ -373,3 +373,87 @@ def get_resource_lookup(preview_server,verify_ssl,repository_address):
         lut = None
     
     return lut
+
+def zenodo_publish(issue_id):
+    ZENODO_TOKEN = os.getenv('ZENODO_API')
+    params = {'access_token': ZENODO_TOKEN}
+    # Read json record of the deposit
+    message = []
+
+    upload_status = zenodo_confirm_status(issue_id,"uploaded")
+
+    if upload_status[1] == "no-record-found":
+        return "no-record-found"
+
+    if upload_status[0]:
+        zenodo_record = get_zenodo_deposit(issue_id)
+        # We need self links from each record to publish.
+        for item in zenodo_record.keys():
+            publish_link = zenodo_record[item]['links']['publish']
+            message.append(f"\n :ice_cube: {item_to_record_name(item)} publish status:")
+            r = requests.post(publish_link,params=params)
+            response = r.json()
+            if r.status_code==202: 
+                message.append(f"\n :confetti_ball: <a href=\"{response['doi_url']}\"><img src=\"{response['links']['badge']}\"></a>")
+                tmp = f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"
+                log_file = os.path.join(get_deposit_dir(issue_id), tmp)
+                with open(log_file, 'w') as outfile:
+                    json.dump(r.json(), outfile)
+            else:
+                message.append(f"\n <details><summary> :wilted_flower: Could not publish {item_to_record_name(item)} </summary><pre><code>{r.json()}</code></pre></details>")
+    else:
+        message.append(f"\n :neutral_face: {upload_status[1]} all archives are uploaded for the resources listed in the deposit record. Please ask <code>roboneuro zenodo status</code> and upload the missing  archives by <code>roboneuro zenodo upload <item></code>.")
+
+    return message
+
+def zenodo_confirm_status(issue_id,status_type):
+    """
+    Helper function to confirm the uploaded or published status
+    for all zenodo archive types declares in a deposit file for
+    a given issue id.
+
+    status_type can be:
+        - uploaded
+        - published
+    """
+
+    zenodo_record = get_zenodo_deposit(issue_id)
+
+    if not zenodo_record:
+        return [False,"no-record-found"]
+    else:
+        bool_array = []
+        for item in zenodo_record.keys():
+            tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+            if tmp:
+                bool_array.append(True)
+            else:
+                bool_array.append(False)
+        
+        all_true = all(bool_array)
+        all_false = not any(bool_array)
+
+        if all_true:
+           return [True,"All"]
+        elif all_false:
+           return [False,"None"]
+        elif not (all_true or all_false):
+           return [False,"Some"]
+
+def get_zenodo_deposit(issue_id):
+    fname = f"zenodo_deposit_NeuroLibre_{issue_id:05d}.json"
+    local_file = os.path.join(get_deposit_dir(issue_id), fname)
+    if not os.path.exists(local_file):
+        zenodo_record = None
+    else:
+        with open(local_file, 'r') as f:
+            zenodo_record = json.load(f)
+    return zenodo_record
+
+def zenodo_collect_dois(issue_id):
+    zenodo_record = get_zenodo_deposit(issue_id)
+    collect = {}
+    for item in zenodo_record.keys():
+        tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+        collect[item] = tmp['doi_url']
+    return collect

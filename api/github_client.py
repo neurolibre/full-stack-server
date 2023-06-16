@@ -13,7 +13,7 @@ GH_ORGANIZATION = "roboneurolibre"
 def isNotBlank(myString):
     return bool(myString and myString.strip())
 
-def gh_response_template(task_name,task_id,message=""):
+def gh_response_template(task_name,task_id,message="",collapse=True):
     """
     Please see the docstring of the gh_template_response.
     Convention follows Celery task states.
@@ -23,7 +23,10 @@ def gh_response_template(task_name,task_id,message=""):
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
     
     if isNotBlank(message):
-        message = f"\n <details><summary> :information_source: See details </summary><pre><code>{message}</code></pre></details>"
+        if collapse:
+            message = f"\n <details><summary> :information_source: See details </summary><pre><code>{message}</code></pre></details>"
+        else:
+            message = f"\n {message}"
     else: 
         message = str()
 
@@ -81,7 +84,7 @@ def gh_update_comment(github_client, issue_repo,issue_id,comment_id,comment_body
     comment = issue.get_comment(comment_id)
     comment.edit(comment_body)
 
-def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",comment_id="", message=""):
+def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",comment_id="", message="",collapsable=True):
     """
     This function is quite practical to connect a GitHub issue
     comment to a running celery background task. 
@@ -129,7 +132,7 @@ def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",c
     message (optional)
         To display custom message/logs in a collapsable line.
     """
-    template = gh_response_template(task_name,task_id,message=message)
+    template = gh_response_template(task_name,task_id,message=message,collapse=collapsable)
     if phase == "pending":
         # This one adds a new comment, returns comment_id
         return gh_create_comment(github_client,repo,issue_id,template['pending'])
