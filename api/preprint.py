@@ -424,7 +424,13 @@ def zenodo_confirm_status(issue_id,status_type):
     else:
         bool_array = []
         for item in zenodo_record.keys():
-            tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+            if status_type == "published":
+                # Does not append commit hash
+                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}.json"))
+            elif status_type == "uploaded":
+                # Appends commit hash
+                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+
             if tmp:
                 bool_array.append(True)
             else:

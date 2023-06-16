@@ -650,6 +650,7 @@ def zenodo_publish_task(self, payload):
         return
     else:
         # Confirm that all items are published.
+        # TODO: Check this 
         publish_status = zenodo_confirm_status(payload['issue_id'],"published")
         # If all items are published, success. Add DOIs.
         if publish_status[0]:
@@ -666,4 +667,5 @@ def zenodo_publish_task(self, payload):
         else:
             # Some one None 
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
+            msg = "\n".join(response)
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
