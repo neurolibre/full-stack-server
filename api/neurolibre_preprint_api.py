@@ -122,7 +122,7 @@ def summary_pdf_sync_post(user,id):
         # In case where both exist, this should be the one
         download_url = url_master
     else:
-        result = make_response(jsonify(f"A PDF could not be found for review ID {issue_id}. Note that it is only available after `recommend-accept`."),404)
+        result = make_response(f"A PDF could not be found for review ID {issue_id}. Note that it is only available after `recommend-accept`.",404)
         result.mimetype = "text/plain"
         return result 
     
@@ -136,9 +136,9 @@ def summary_pdf_sync_post(user,id):
             os.remove(file_path)
         with open(file_path, "wb") as file:
             file.write(response.content)
-        result = make_response(jsonify(f"Synced the summary PDF from the [source]({download_url}), should be now avaiable at https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}.pdf"),200)
+        result = make_response(f":seedling::recycle::page_facing_up: Synced the summary PDF from the [source]({download_url}), should be now available at https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}.pdf?no-cache",200)
     else:
-        result = make_response(jsonify(f"Summary PDF was available at the [source]({download_url}), but could not download it to our servers."),500)
+        result = make_response(f"Summary PDF was available at the [source]({download_url}), but could not download it to our servers.",500)
     
     result.mimetype = "text/plain"
     return result
