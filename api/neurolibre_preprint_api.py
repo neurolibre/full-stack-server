@@ -104,6 +104,43 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 """
 API Endpoints START
 """
+@app.route('/api/pdf/sync', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Copy summary PDF from neurolibre/preprints to NeuroLibre server.', tags=['Production'])
+@use_kwargs(IDSchema())
+def summary_pdf_sync_post(user,id):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+    url_branch = f"https://raw.githubusercontent.com/neurolibre/preprints/neurolibre.{issue_id:05d}/neurolibre.{issue_id:05d}/10.55458.neurolibre.{issue_id:05d}.pdf"
+    url_master = f"https://raw.githubusercontent.com/neurolibre/preprints/master/neurolibre.{issue_id:05d}/10.55458.neurolibre.{issue_id:05d}.pdf"
+
+    if requests.head(url_branch).status_code == 200:
+        download_url = url_branch
+    elif requests.head(url_master).status_code == 200:
+        # In case where both exist, this should be the one
+        download_url = url_master
+    else:
+        result = make_response(jsonify(f"A PDF could not be found for review ID {issue_id}. Note that it is only available after `recommend-accept`."),404)
+        result.mimetype = "text/plain"
+        return result 
+    
+    # PDF pool
+    file_path = os.path.join("/DATA","10.55458",f"neurolibre.{issue_id:05d}.pdf")
+    response = requests.get(download_url)
+
+    if response.status_code == 200:
+        with open(file_path, "wb") as file:
+            file.write(response.content)
+        result = make_response(jsonify(f"Synced the summary PDF from the [source]({download_url}), should be now avaiable at https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}.pdf"),200)
+    else:
+        result = make_response(jsonify(f"Summary PDF was available at the [source]({download_url}), but could not download it to our servers."),500)
+    
+    result.mimetype = "text/plain"
+    return result
+
+docs.register(summary_pdf_sync_post)
 
 @app.route('/api/zenodo/upload/repository', methods=['POST'])
 @htpasswd.required
