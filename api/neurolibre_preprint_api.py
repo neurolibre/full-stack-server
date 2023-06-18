@@ -131,6 +131,9 @@ def summary_pdf_sync_post(user,id):
     response = requests.get(download_url)
 
     if response.status_code == 200:
+        # Delete the old one if exists.
+        if os.path.exists(file_path):
+            os.remove(file_path)
         with open(file_path, "wb") as file:
             file.write(response.content)
         result = make_response(jsonify(f"Synced the summary PDF from the [source]({download_url}), should be now avaiable at https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}.pdf"),200)
