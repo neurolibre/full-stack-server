@@ -377,6 +377,7 @@ def preview_build_book_task(self, payload):
         binder_response = Response(generate(), mimetype='text/event-stream')
         # Fetch all the yielded messages
     binder_logs = binder_response.get_data(as_text=True)
+    binder_logs = "\n".join(binder_logs)
     # After the upstream closes, check the server if there's 
     # a book built successfully.
     book_status = book_get_by_params(commit_hash=payload['commit_hash'])
@@ -389,6 +390,7 @@ def preview_build_book_task(self, payload):
     if not book_status:
         # These flags will determine how the response will be 
         # interpreted and returned outside the generator
+        gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")
         issue_comment = []
         msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
         issue_comment.append(msg)
@@ -401,6 +403,7 @@ def preview_build_book_task(self, payload):
         # Send a new comment
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
     else:
+        gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         issue_comment = []
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
 
