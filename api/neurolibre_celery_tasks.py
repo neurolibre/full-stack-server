@@ -304,6 +304,7 @@ def binder_stream(response, github_client,lock_filename, task_id, payload):
                     return
                 message = event.get('message')
                 if message:
+                    yield message
                     messages.append(message)
                     elapsed_time = time.time() - start_time
                     # Update issue every two minutes
@@ -311,8 +312,6 @@ def binder_stream(response, github_client,lock_filename, task_id, payload):
                         n_updates = n_updates + 1
                         gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
                         start_time = time.time()
-                    # To the response.
-                    yield message
             except GeneratorExit:
                 pass
             except:
@@ -336,8 +335,8 @@ def preview_build_book_task(self, payload):
                                                           payload['binder_name'],
                                                           payload['domain_name'])
     lock_filename = get_lock_filename(payload['repo_url'])
-    gh_template_respond(github_client,"started",payload['task_title'] + f"(Update interval: 2 mins)",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: ${binderhub_request}")
     response = requests.get(binderhub_request, stream=True)
+    gh_template_respond(github_client,"started",payload['task_title'] + f" | Update interval: 2m",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
     if response.ok:
         # Create binder_stream generator object
         def generate():
@@ -352,6 +351,7 @@ def preview_build_book_task(self, payload):
                         # https://binderhub.readthedocs.io/en/latest/api.html
                         if event.get('phase') == 'failed':
                             message = event.get('message')
+                            yield message
                             response.close()
                             messages.append(message)
                             gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
@@ -361,6 +361,7 @@ def preview_build_book_task(self, payload):
                             return
                         message = event.get('message')
                         if message:
+                            yield message
                             messages.append(message)
                             elapsed_time = time.time() - start_time
                             # Update issue every two minutes
@@ -368,8 +369,6 @@ def preview_build_book_task(self, payload):
                                 n_updates = n_updates + 1
                                 gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
                                 start_time = time.time()
-                            # To the response.
-                            yield message
                     except GeneratorExit:
                         pass
                     except:
@@ -377,33 +376,33 @@ def preview_build_book_task(self, payload):
         # Use the generator object as the source of flask eventstream response
         binder_response = Response(generate(), mimetype='text/event-stream')
         # Fetch all the yielded messages
-        binder_logs = binder_response.get_data(as_text=True)
-        # After the upstream closes, check the server if there's 
-        # a book built successfully.
-        book_status = book_get_by_params(commit_hash=payload['commit_hash'])
-        # For now, remove the block either way.
-        # The main purpose is to avoid triggering
-        # a build for the same request. Later on
-        # you may choose to add dead time after a successful build.
-        os.remove(lock_filename)
-            # Append book-related response downstream
-        if not book_status:
-            # These flags will determine how the response will be 
-            # interpreted and returned outside the generator
-            issue_comment = []
-            msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
-            issue_comment.append(msg)
-            owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
-            # Retreive book build and execution report logs.
-            book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
-            issue_comment.append(book_logs)
-            msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
-            issue_comment.append(msg)
-            # Send a new comment
-            gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
-        else:
-            issue_comment = []
-            gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
+    binder_logs = binder_response.get_data(as_text=True)
+    # After the upstream closes, check the server if there's 
+    # a book built successfully.
+    book_status = book_get_by_params(commit_hash=payload['commit_hash'])
+    # For now, remove the block either way.
+    # The main purpose is to avoid triggering
+    # a build for the same request. Later on
+    # you may choose to add dead time after a successful build.
+    os.remove(lock_filename)
+        # Append book-related response downstream
+    if not book_status:
+        # These flags will determine how the response will be 
+        # interpreted and returned outside the generator
+        issue_comment = []
+        msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
+        issue_comment.append(msg)
+        owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
+        # Retreive book build and execution report logs.
+        book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
+        issue_comment.append(book_logs)
+        msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
+        issue_comment.append(msg)
+        # Send a new comment
+        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
+    else:
+        issue_comment = []
+        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
 
 @celery_app.task(bind=True)
 def zenodo_create_buckets_task(self, payload):
