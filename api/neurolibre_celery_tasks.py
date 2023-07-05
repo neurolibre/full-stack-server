@@ -330,34 +330,62 @@ def preview_build_book_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-
     binderhub_request = run_binder_build_preflight_checks(payload['repo_url'],
                                                           payload['commit_hash'],
                                                           payload['rate_limit'],
                                                           payload['binder_name'],
                                                           payload['domain_name'])
-
     lock_filename = get_lock_filename(payload['repo_url'])
-
+    gh_template_respond(github_client,"started",payload['task_title'] + f"(Update interval: 2 mins)",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: ${binderhub_request}")
     response = requests.get(binderhub_request, stream=True)
     if response.ok:
         # Create binder_stream generator object
-        generator = binder_stream(response, github_client,lock_filename, task_id, payload)
+        def generate():
+            start_time = time.time()
+            messages = []
+            n_updates = 0
+            for line in response.iter_lines():
+                if line:
+                    event_string = line.decode("utf-8")
+                    try:
+                        event = json.loads(event_string.split(': ', 1)[1])
+                        # https://binderhub.readthedocs.io/en/latest/api.html
+                        if event.get('phase') == 'failed':
+                            message = event.get('message')
+                            response.close()
+                            messages.append(message)
+                            gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+                            # Remove the lock as binder build failed.
+                            #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
+                            os.remove(lock_filename)
+                            return
+                        message = event.get('message')
+                        if message:
+                            messages.append(message)
+                            elapsed_time = time.time() - start_time
+                            # Update issue every two minutes
+                            if elapsed_time >= 120:
+                                n_updates = n_updates + 1
+                                gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+                                start_time = time.time()
+                            # To the response.
+                            yield message
+                    except GeneratorExit:
+                        pass
+                    except:
+                        pass
         # Use the generator object as the source of flask eventstream response
-        binder_response = Response(generator, mimetype='text/event-stream')
+        binder_response = Response(generate(), mimetype='text/event-stream')
         # Fetch all the yielded messages
         binder_logs = binder_response.get_data(as_text=True)
-
         # After the upstream closes, check the server if there's 
         # a book built successfully.
         book_status = book_get_by_params(commit_hash=payload['commit_hash'])
-
         # For now, remove the block either way.
         # The main purpose is to avoid triggering
         # a build for the same request. Later on
         # you may choose to add dead time after a successful build.
         os.remove(lock_filename)
-
             # Append book-related response downstream
         if not book_status:
             # These flags will determine how the response will be 
@@ -376,7 +404,6 @@ def preview_build_book_task(self, payload):
         else:
             issue_comment = []
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
-
 
 @celery_app.task(bind=True)
 def zenodo_create_buckets_task(self, payload):
@@ -465,7 +492,6 @@ def zenodo_create_buckets_task(self, payload):
         with open(local_file, 'w') as outfile:
             json.dump(collect, outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
-
 
 @celery_app.task(bind=True)
 def zenodo_upload_book_task(self, payload):
