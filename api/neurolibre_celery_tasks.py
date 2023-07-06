@@ -336,7 +336,7 @@ def preview_build_book_task(self, payload):
                                                           payload['domain_name'])
     lock_filename = get_lock_filename(payload['repo_url'])
     response = requests.get(binderhub_request, stream=True)
-    gh_template_respond(github_client,"started",payload['task_title'] + f" | Update interval: 2m",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
+    gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
     if response.ok:
         # Create binder_stream generator object
         def generate():
