@@ -400,6 +400,7 @@ def preview_build_book_task(self, payload):
         issue_comment.append(book_logs)
         msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
         issue_comment.append(msg)
+        issue_comment = "\n".join(issue_comment)
         # Send a new comment
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
     else:
