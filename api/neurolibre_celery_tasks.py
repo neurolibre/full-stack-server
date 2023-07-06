@@ -340,9 +340,9 @@ def preview_build_book_task(self, payload):
     if response.ok:
         # Create binder_stream generator object
         def generate():
-            start_time = time.time()
-            messages = []
-            n_updates = 0
+            #start_time = time.time()
+            #messages = []
+            #n_updates = 0
             for line in response.iter_lines():
                 if line:
                     event_string = line.decode("utf-8")
@@ -353,8 +353,8 @@ def preview_build_book_task(self, payload):
                             message = event.get('message')
                             yield message
                             response.close()
-                            messages.append(message)
-                            gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+                            #messages.append(message)
+                            #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
                             # Remove the lock as binder build failed.
                             #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
                             os.remove(lock_filename)
@@ -362,13 +362,13 @@ def preview_build_book_task(self, payload):
                         message = event.get('message')
                         if message:
                             yield message
-                            messages.append(message)
-                            elapsed_time = time.time() - start_time
+                            #messages.append(message)
+                            #elapsed_time = time.time() - start_time
                             # Update issue every two minutes
-                            if elapsed_time >= 120:
-                                n_updates = n_updates + 1
-                                gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
-                                start_time = time.time()
+                            #if elapsed_time >= 120:
+                            #    n_updates = n_updates + 1
+                            #    gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+                            #    start_time = time.time()
                     except GeneratorExit:
                         pass
                     except:
@@ -377,7 +377,7 @@ def preview_build_book_task(self, payload):
         binder_response = Response(generate(), mimetype='text/event-stream')
         # Fetch all the yielded messages
     binder_logs = binder_response.get_data(as_text=True)
-    binder_logs = "\n".join(binder_logs)
+    binder_logs = "".join(binder_logs)
     # After the upstream closes, check the server if there's 
     # a book built successfully.
     book_status = book_get_by_params(commit_hash=payload['commit_hash'])
