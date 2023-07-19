@@ -32,7 +32,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     # WANING: 
     # FOR NOW assuming that HEAD corresponds to the latest successful
     # book build. That may not be the case. Requires better 
-    # data handling or extra functionality to retreive the latest successful
+    # data handling or extra functionality to retrieve the latest successful
     # book commit.
     commit_user = format_commit_hash(repository_url,"HEAD")
     commit_fork = format_commit_hash(fork_url,"HEAD")
@@ -109,7 +109,7 @@ def execute_subprocess(command):
         else:
             status = False
     except subprocess.CalledProcessError as e:
-        # If there's a problem with issueing the subprocess.
+        # If there's a problem with issuing the subprocess.
         output = e.output
         status = False
 
@@ -128,7 +128,7 @@ def docker_login():
         else:
             status = False
     except subprocess.CalledProcessError as e:
-        # If there's a problem with issueing the subprocess.
+        # If there's a problem with issuing the subprocess.
         output = e.output
         status = False
 
@@ -159,7 +159,7 @@ def docker_save(image,issue_id,commit_fork):
             status = False
             output = "Fail"
     except subprocess.CalledProcessError as e:
-        # If there's a problem with issueing the subprocess.
+        # If there's a problem with issuing the subprocess.
         output = e.output
         status = False
     return {"status": status, "message": output}, save_name

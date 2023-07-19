@@ -114,7 +114,7 @@ def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",c
         Use this phase when the task execution is failed.
 
     task_name
-        This will be displayed as the title of the comment assoicated with 
+        This will be displayed as the title of the comment associated with 
         the task.
     
     repo
