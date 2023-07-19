@@ -15,6 +15,7 @@ import logging
 import requests
 from flask import Response
 import shutil
+import base64
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -828,9 +829,11 @@ def send_email_with_html_attachment_celery(to_email, subject, body, attachment_p
     with open(attachment_path, "rb") as file:
         data = file.read()
 
+    encoded_data = base64.b64encode(data).decode()
+
     # Add the attachment to the email with MIME type "text/html"
     attachment = Attachment(
-        FileContent(data),
+        FileContent(encoded_data),
         FileName(os.path.basename(attachment_path)),
         FileType("text/html"),
         Disposition("attachment")
