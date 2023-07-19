@@ -784,7 +784,7 @@ def preview_build_book_test_task(self, payload):
         issue_comment = "\n".join(issue_comment)
         tmp_log = write_html_to_temp_directory(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please see the log file attached.</p>"
-        send_email_with_html_attachment_celery(payload(['email']), payload['mail_subject'], body, tmp_log)
+        send_email_with_html_attachment_celery(payload['email'], payload['mail_subject'], body, tmp_log)
 
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
