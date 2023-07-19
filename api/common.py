@@ -294,17 +294,3 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
         print(response.headers)
     except Exception as e:
         print("Error sending email:", str(e))
-
-def write_html_to_temp_directory(commit_sha, logs):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        file_path = os.path.join(temp_dir, f"logs_{commit_sha[:7]}.html")
-
-        with open(file_path, "w+") as f:
-            f.write("<!DOCTYPE html>\n")
-            f.write("<html lang=\"en\" class=\"no-js\">\n")
-            f.write("<style>body { background-color: #fbdeda; color: black; font-family: monospace; } pre { background-color: #222222; border: none; color: white; padding: 10px; margin: 10px; overflow: auto; } code { font-family: monospace; font-size: 12px; background-color: #222222; color: white; border-radius: 5px; padding: 2px; } </style>\n")
-            f.write("<body>\n")
-            f.write(logs)
-            f.write("</body></html>\n")
-    
-    return file_path
