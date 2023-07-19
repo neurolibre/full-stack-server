@@ -714,7 +714,7 @@ def preview_build_book_test_task(self, payload):
     lock_filename = get_lock_filename(payload['repo_url'])
     response = requests.get(binderhub_request, stream=True)
     mail_body = f"Runtime environment build has been started <code>{task_id}</code> If successful, it will be followed by the Jupyter Book build."
-    send_email(payload['email'],payload['mail_subject'],mail_body)
+    send_email_celery(payload['email'],payload['mail_subject'],mail_body)
     #gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
     if response.ok:
         # Create binder_stream generator object
@@ -782,10 +782,66 @@ def preview_build_book_test_task(self, payload):
         issue_comment = "\n".join(issue_comment)
         tmp_log = write_html_to_temp_directory(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please see the log file attached.</p>"
-        send_email_with_html_attachment(payload(['email']), payload['mail_subject'], body, tmp_log)
+        send_email_with_html_attachment_celery(payload(['email']), payload['mail_subject'], body, tmp_log)
 
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         #issue_comment = []
         mail_body = f"Book build successful: {book_status[0]['book_url']}"
-        send_email(payload['email'],payload['mail_subject'],mail_body)
+        send_email_celery(payload['email'],payload['mail_subject'],mail_body)
+
+def send_email_celery(to_email, subject, body):
+    sg_api_key = os.getenv('SENDGRID_API_KEY')
+    sender_email = "no-reply@neurolibre.org"
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=to_email,
+        subject=subject,
+        html_content=body
+    )
+
+    try:
+        sg = SendGridAPIClient(sg_api_key)
+        response = sg.send(message)
+        print("Email sent successfully!")
+        print(response.status_code)
+        print(response.body)
+        print(response.headers)
+    except Exception as e:
+        print("Error sending email:", str(e))
+
+
+
+def send_email_with_html_attachment_celery(to_email, subject, body, attachment_path):
+    sg_api_key = os.getenv('SENDGRID_API_KEY')
+    sender_email = "no-reply@neurolibre.org"
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=to_email,
+        subject=subject,
+        html_content=body
+    )
+
+    with open(attachment_path, "rb") as file:
+        data = file.read()
+
+    # Add the attachment to the email with MIME type "text/html"
+    attachment = Attachment(
+        FileContent(data),
+        FileName(os.path.basename(attachment_path)),
+        FileType("text/html"),
+        Disposition("attachment")
+    )
+    message.attachment = attachment
+
+    try:
+        sg = SendGridAPIClient(sg_api_key)
+        response = sg.send(message)
+        print("Email sent successfully!")
+        print(response.status_code)
+        print(response.body)
+        print(response.headers)
+    except Exception as e:
+        print("Error sending email:", str(e))
