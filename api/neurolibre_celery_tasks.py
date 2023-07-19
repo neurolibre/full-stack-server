@@ -706,6 +706,7 @@ def zenodo_publish_task(self, payload):
 def preview_build_book_test_task(self, payload):
 
     task_id = self.request.id
+    owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
     binderhub_request = run_binder_build_preflight_checks(payload['repo_url'],
                                                           payload['commit_hash'],
                                                           payload['rate_limit'],
