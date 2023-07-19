@@ -15,7 +15,6 @@ import logging
 import requests
 from flask import Response
 import shutil
-import tempfile
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -850,7 +849,7 @@ def send_email_with_html_attachment_celery(to_email, subject, body, attachment_p
 
 def write_html_to_temp_directory(commit_sha, logs):
     with tempfile.TemporaryDirectory() as temp_dir:
-        file_path = os.path.join(temp_dir, f"logs_{commit_sha[:7]}.html")
+        file_path = os.path.join("/DATA","api_build_logs", f"logs_{commit_sha[:7]}.html")
 
         with open(file_path, "w+") as f:
             f.write("<!DOCTYPE html>\n")
