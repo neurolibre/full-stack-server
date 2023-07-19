@@ -44,7 +44,7 @@ I know you are bored to death, so I tried to make this last bit more fun:
 
 This Flask + Gunicorn + NGINX trio plays the music we need for a production-level NeuroLibre full-stack web server. Of these 3, NGINX and Gunicorn always have to be all ears to the requests coming from the audience. In more computer sciency terms, they need to have their own [daemons](https://en.wikipedia.org/wiki/Daemon_(computing)) 👹.
 
-NGINX has its daemons, but we need a unix systemD (d for daemon) ritual to summon deamons upon Gunicorn 🕯👹👉🦄🕯. To do that, we need go to the `/etc/` dungeon of our ubuntu virtual machine and drop a service spell (`/systemd/neurolibre.service`). This will open a portal (a unix socket) through which Gunicorn's deamons can listen to the requests 24/7. We will tell NGINX where that socket is, so that we can guide right mortals to the right portals.
+NGINX has its daemons, but we need a unix systemD (d for daemon) ritual to summon daemons upon Gunicorn 🕯👹👉🦄🕯. To do that, we need go to the `/etc/` dungeon of our ubuntu virtual machine and drop a service spell (`/systemd/neurolibre.service`). This will open a portal (a unix socket) through which Gunicorn's daemons can listen to the requests 24/7. We will tell NGINX where that socket is, so that we can guide right mortals to the right portals.
 
 Let's finish the introductory part of our full-stack web server with reference to [this Imagine Dragons song](https://www.youtube.com/watch?v=mWRsgZuwf_8):
 
@@ -590,7 +590,7 @@ dokku letsencrypt:enable my-dashboard
 
 * That's it! If successful, the app should be live on https://my-dashboard.db.neurolibre.org 
 
-* Check all the resources to see if thigns are in order:
+* Check all the resources to see if things are in order:
 
 ```
 dokku report my-dashboard

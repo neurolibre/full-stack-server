@@ -475,7 +475,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
                         yield "\n" + json.dumps(r.json())
                         yield ""
                 else:
-                # Cannot save docker image succesfully
+                # Cannot save docker image successfully
                     error = {"reason":f"404: Cannot save requested docker image as tar.gz: {item_arg}", "commit_hash":commit_fork, "repo_url":fork_repo,"issue_id":issue_id}
                     yield "\n" + json.dumps(error)
                     yield ""

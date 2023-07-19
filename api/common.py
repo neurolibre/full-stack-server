@@ -54,7 +54,7 @@ def load_all(globpath=BOOK_PATHS):
 
 def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
     """
-    Returns a book objet if it exists for one or for the intersection
+    Returns a book object if it exists for one or for the intersection
     of multiple parameters passed as an argument to the function.
     Typical use case is with commit_hash.
     """
@@ -184,7 +184,7 @@ def book_execution_errored(owner,repo,provider,commit_hash):
 
 def book_log_collector(owner,repo,provider,commit_hash):
     """
-    Retreive the content of Jupyter Book build logs. 
+    Retrieve the content of Jupyter Book build logs. 
     The main log (book-build.log) exists both on build success or failure.
     Execution report logs only come to existence if something went wrong 
     while executing the respective notebook.
