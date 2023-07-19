@@ -4,11 +4,15 @@ import time
 import git
 from flask import abort
 import yaml
-
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import tempfile
+from dotenv import load_dotenv
 """
 Helper functions for the tasks 
 performed by both servers (preview and preprint).
 """
+
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
@@ -223,3 +227,73 @@ def parse_front_matter(markdown_string):
 
     front_matter = '\n'.join(front_matter_lines)
     return yaml.safe_load(front_matter)
+
+def send_email(to_email, subject, body):
+    sg_api_key = os.getenv('SENDGRID_API_KEY')
+    sender_email = "no-reply@neurolibre.org"
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=to_email,
+        subject=subject,
+        html_content=body
+    )
+
+    try:
+        sg = SendGridAPIClient(sg_api_key)
+        response = sg.send(message)
+        print("Email sent successfully!")
+        print(response.status_code)
+        print(response.body)
+        print(response.headers)
+    except Exception as e:
+        print("Error sending email:", str(e))
+
+
+
+def send_email_with_html_attachment(to_email, subject, body, attachment_path):
+    sg_api_key = os.getenv('SENDGRID_API_KEY')
+    sender_email = "no-reply@neurolibre.org"
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=to_email,
+        subject=subject,
+        html_content=body
+    )
+
+    with open(attachment_path, "rb") as file:
+        data = file.read()
+
+    # Add the attachment to the email with MIME type "text/html"
+    attachment = Attachment(
+        FileContent(data),
+        FileName(os.path.basename(attachment_path)),
+        FileType("text/html"),
+        Disposition("attachment")
+    )
+    message.attachment = attachment
+
+    try:
+        sg = SendGridAPIClient(sg_api_key)
+        response = sg.send(message)
+        print("Email sent successfully!")
+        print(response.status_code)
+        print(response.body)
+        print(response.headers)
+    except Exception as e:
+        print("Error sending email:", str(e))
+
+def write_html_to_temp_directory(commit_sha, logs):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        file_path = os.path.join(temp_dir, f"logs_{commit_sha[:7]}.html")
+
+        with open(file_path, "w+") as f:
+            f.write("<!DOCTYPE html>\n")
+            f.write("<html lang=\"en\" class=\"no-js\">\n")
+            f.write("<style>body { background-color: #fbdeda; color: black; font-family: monospace; } pre { background-color: #222222; border: none; color: white; padding: 10px; margin: 10px; overflow: auto; } code { font-family: monospace; font-size: 12px; background-color: #222222; color: white; border-radius: 5px; padding: 2px; } </style>\n")
+            f.write("<body>\n")
+            f.write(logs)
+            f.write("</body></html>\n")
+    
+    return file_path

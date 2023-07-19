@@ -16,3 +16,4 @@ celery
 redis
 PyGithub
 pytz
+sendgrid

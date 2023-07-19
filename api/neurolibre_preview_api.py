@@ -8,7 +8,7 @@ import logging
 import neurolibre_common_api
 from flask import jsonify, make_response
 from common import *
-from schema import BuildSchema
+from schema import BuildSchema, BuildTestSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -16,7 +16,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
 
@@ -208,6 +208,49 @@ def api_book_build(user, id, repo_url, commit_hash):
 
 # Register endpoint to the documentation
 docs.register(api_book_build)
+
+@app.route('/api/book/build/test', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
+@doc(description='Endpoint for building NRP through webpage', tags=['Book'])
+@use_kwargs(BuildTestSchema())
+def api_book_build_test(user, repo_url, commit_hash, email):
+    """
+    Connect to binderhub build eventstream and forward it to 
+    the client.
+    TODO: Celery.
+    """
+
+    [owner, repo, provider] = get_owner_repo_provider(repo_url)
+    mail_subject = f"NRP test build for {owner}/{repo}"
+    mail_body = f"We have received your request to build a NeuroLibre reproducible preprint from {repo_url} at {commit_hash}. \n Your request has been queued, we will inform you when the process starts."
+    
+    send_email(email, mail_subject, mail_body)
+
+    celery_payload = dict(repo_url=repo_url, 
+                          commit_hash=commit_hash, 
+                          rate_limit=build_rate_limit,
+                          binder_name=binderName, 
+                          domain_name = domainName,
+                          email = email,
+                          review_repository=reviewRepository,
+                          mail_subject=mail_subject)
+    
+    task_result = preview_build_book_test_task.apply_async(args=[celery_payload])
+
+    if task_result.task_id is not None:
+        mail_body = f"We started processing your NRP test request. Work ID: <code>{task_result.task_id}</code>. \n We will send you the results."
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        mail_body = f"We could not start processing your NRP test request due to a technical issue on the server side. Please contact info@neurolibre.org."
+        response = make_response(jsonify("Celery could not start the task."),500)
+    
+    send_email(email, mail_subject, mail_body)
+    return response
+
+docs.register(api_book_build_test)
 
 @app.route('/api/test', methods=['GET'])
 @htpasswd.required
