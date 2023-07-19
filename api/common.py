@@ -166,7 +166,7 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
     # Get the latest commit hash if HEAD, pass otherwise.
     commit_hash = format_commit_hash(repo_url,commit_hash)
 
-    # Get the url to post build rquest and connect to eventstream.
+    # Get the url to post build request and connect to eventstream.
     binderhub_request = get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash)
 
     return binderhub_request
@@ -187,7 +187,7 @@ def book_log_collector(owner,repo,provider,commit_hash):
     Retreive the content of Jupyter Book build logs. 
     The main log (book-build.log) exists both on build success or failure.
     Execution report logs only come to existence if something went wrong 
-    while executing the respective notebook ot myST.
+    while executing the respective notebook.
     """
     logs = []
     root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
