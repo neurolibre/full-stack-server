@@ -760,13 +760,14 @@ def preview_build_book_test_task(self, payload):
     # After the upstream closes, check the server if there's 
     # a book built successfully.
     book_status = book_get_by_params(commit_hash=payload['commit_hash'])
+    exec_error = book_execution_errored(owner,repo,provider,payload['commit_hash'])
     # For now, remove the block either way.
     # The main purpose is to avoid triggering
     # a build for the same request. Later on
     # you may choose to add dead time after a successful build.
     os.remove(lock_filename)
         # Append book-related response downstream
-    if not book_status:
+    if not book_status or exec_error:
         # These flags will determine how the response will be 
         # interpreted and returned outside the generator
         #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")

@@ -171,6 +171,17 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
 
     return binderhub_request
 
+def book_execution_errored(owner,repo,provider,commit_hash):
+    root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
+    reports_path = f"{root_dir}/_build/html/reports"
+    file_list = None
+    if os.path.exists(reports_path) and os.path.isdir(reports_path):
+        file_list = [f for f in os.listdir(reports_path) if os.path.isfile(os.path.join(reports_path,f))]
+    if file_list and len(file_list) > 0:
+        return True
+    else:
+        return False
+
 def book_log_collector(owner,repo,provider,commit_hash):
     """
     Retreive the content of Jupyter Book build logs. 
