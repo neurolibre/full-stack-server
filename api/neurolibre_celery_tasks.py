@@ -283,46 +283,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
     
     gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured.")
 
-def binder_stream(response, github_client,lock_filename, task_id, payload):
-    start_time = time.time()
-    messages = []
-    n_updates = 0
-    for line in response.iter_lines():
-        if line:
-            event_string = line.decode("utf-8")
-            try:
-                event = json.loads(event_string.split(': ', 1)[1])
-                # https://binderhub.readthedocs.io/en/latest/api.html
-                if event.get('phase') == 'failed':
-                    message = event.get('message')
-                    response.close()
-                    messages.append(message)
-                    gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
-                    # Remove the lock as binder build failed.
-                    #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                    os.remove(lock_filename)
-                    return
-                message = event.get('message')
-                if message:
-                    yield message
-                    messages.append(message)
-                    elapsed_time = time.time() - start_time
-                    # Update issue every two minutes
-                    if elapsed_time >= 120:
-                        n_updates = n_updates + 1
-                        gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
-                        start_time = time.time()
-            except GeneratorExit:
-                pass
-            except:
-                pass
 
-"""
-TODO IMPORTANT 
-
-EITHER CALL GENERATOR MULTIPLE TIMES, OR MOVE IT TO THE 
-BODY OF THE TASK, OTHERWISE UPDATES ARE NOT RECEIVED. 
-"""
 @celery_app.task(bind=True)
 def preview_build_book_task(self, payload):
 
@@ -357,7 +318,8 @@ def preview_build_book_task(self, payload):
                             #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
                             # Remove the lock as binder build failed.
                             #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                            os.remove(lock_filename)
+                            if os.path.exists(lock_filename):
+                                os.remove(lock_filename)
                             return
                         message = event.get('message')
                         if message:
@@ -385,7 +347,8 @@ def preview_build_book_task(self, payload):
     # The main purpose is to avoid triggering
     # a build for the same request. Later on
     # you may choose to add dead time after a successful build.
-    os.remove(lock_filename)
+    if os.path.exists(lock_filename):
+        os.remove(lock_filename)
         # Append book-related response downstream
     if not book_status:
         # These flags will determine how the response will be 
@@ -716,6 +679,8 @@ def preview_build_book_test_task(self, payload):
     response = requests.get(binderhub_request, stream=True)
     mail_body = f"Runtime environment build has been started <code>{task_id}</code> If successful, it will be followed by the Jupyter Book build."
     send_email_celery(payload['email'],payload['mail_subject'],mail_body)
+    now = get_time()
+    self.update_state(state=states.STARTED, meta={'message': f"IN PROGRESS: Build for {owner}/{repo} at {payload['commit_hash']} has been running since {now}"})
     #gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
     if response.ok:
         # Create binder_stream generator object
@@ -737,7 +702,8 @@ def preview_build_book_test_task(self, payload):
                             #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
                             # Remove the lock as binder build failed.
                             #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                            os.remove(lock_filename)
+                            if os.path.exists(lock_filename):
+                                os.remove(lock_filename)
                             return
                         message = event.get('message')
                         if message:
@@ -766,7 +732,8 @@ def preview_build_book_test_task(self, payload):
     # The main purpose is to avoid triggering
     # a build for the same request. Later on
     # you may choose to add dead time after a successful build.
-    os.remove(lock_filename)
+    if os.path.exists(lock_filename):
+        os.remove(lock_filename)
         # Append book-related response downstream
     if not book_status or exec_error:
         # These flags will determine how the response will be 
@@ -785,12 +752,13 @@ def preview_build_book_test_task(self, payload):
         tmp_log = write_html_to_temp_directory(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please download the log file attached and open in your web browser.</p>"
         send_email_with_html_attachment_celery(payload['email'], payload['mail_subject'], body, tmp_log)
-
+        self.update_state(state=states.FAILURE, meta={'message': f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed"})
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         #issue_comment = []
         mail_body = f"Book build successful: {book_status[0]['book_url']}"
         send_email_celery(payload['email'],payload['mail_subject'],mail_body)
+        self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Build for {owner}/{repo} at {payload['commit_hash']} has succeeded."})
 
 def send_email_celery(to_email, subject, body):
     sg_api_key = os.getenv('SENDGRID_API_KEY')
