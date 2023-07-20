@@ -147,8 +147,8 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     # Check if GET works for the complicated address
     results = book_get_by_params(commit_hash=commit_hash)
     if not results:
-        self.update_state(state=states.FAILURE, meta={'message': f"Cannot retreive book at {commit_hash}"})
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retreive book at {commit_hash}")
+        self.update_state(state=states.FAILURE, meta={'message': f"Cannot retrieve book at {commit_hash}"})
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retrieve book at {commit_hash}")
     else:
         # Symlink production book to attain a proper URL
         book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , "_build" , "html")
@@ -358,7 +358,7 @@ def preview_build_book_task(self, payload):
         msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
         issue_comment.append(msg)
         owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
-        # Retreive book build and execution report logs.
+        # Retrieve book build and execution report logs.
         book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
         issue_comment.append(book_logs)
         msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
@@ -743,7 +743,7 @@ def preview_build_book_test_task(self, payload):
         msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
         issue_comment.append(msg)
         owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
-        # Retreive book build and execution report logs.
+        # Retrieve book build and execution report logs.
         book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
         issue_comment.append(book_logs)
         msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://test.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
