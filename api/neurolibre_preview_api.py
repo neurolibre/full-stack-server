@@ -281,15 +281,15 @@ def get_task_status_test(user,task_id):
         response = {
             'status': 'Waiting to start.'
         }
-    elif task.state == 'PROGRESS':
-        remaining = task.info.get('remaining', 0) if task.info else 0
+    elif task.state == 'STARTED':
         response = {
-            'status': 'sleeping',
-            'remaining': remaining
+            'status': 'In progress',
+            'message': f"{task.info}"
         }
     elif task.state == 'SUCCESS':
         response = {
-            'status': 'done sleeping for 60 seconds'
+            'status': 'done sleeping for 60 seconds',
+            'message': f"{task.info}"
         }
     else:
         response = {
