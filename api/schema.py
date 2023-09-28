@@ -15,7 +15,7 @@ class TaskSchema(Schema):
     task_id = fields.String(required=True,description="Celery task ID.")
 
 class BookSchema(Schema):
-    user_name = fields.String(required=False,description="Return NeuroLibre reproducible preperints that match a user (owner) name (suggested to be used in addition to the repo_name)")
+    user_name = fields.String(required=False,description="Return NeuroLibre reproducible preprints that match a user (owner) name (suggested to be used in addition to the repo_name)")
     commit_hash = fields.String(required=False,description="Return NeuroLibre reproducible preprints built at the requested commit hash.")
     repo_name = fields.String(required=False,description="Return NeuroLibre reproducible preprints for a repository name (suggested to be used in addition to the user_name).")
 
