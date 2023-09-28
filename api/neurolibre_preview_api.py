@@ -106,9 +106,7 @@ API Endpoints START
 @use_kwargs(BuildSchema())
 def api_book_build(user, id, repo_url, commit_hash):
     """
-    Connect to binderhub build eventstream and forward it to 
-    the client.
-    TODO: Celery.
+    This endpoint is to build books via GitHub (technical screening) requests.
     """
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -217,9 +215,7 @@ docs.register(api_book_build)
 @use_kwargs(BuildTestSchema())
 def api_book_build_test(user, repo_url, commit_hash, email):
     """
-    Connect to binderhub build eventstream and forward it to 
-    the client.
-    TODO: Celery.
+    This endpoint is used by robo.neurolibre.org.
     """
 
     [owner, repo, provider] = get_owner_repo_provider(repo_url)
