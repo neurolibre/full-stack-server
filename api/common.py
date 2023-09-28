@@ -3,6 +3,7 @@ import glob
 import time
 import git
 from flask import abort
+from itertools import chain
 import yaml
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
@@ -25,6 +26,8 @@ def load_all(globpath=BOOK_PATHS):
     respective server.
     """
     book_collection = []
+    single_page_path = "/_build/_page/index/jupyter_execute"
+    multi_page_path  = "/_build/jupyter_execute"
     paths = glob.glob(globpath)
     for path in paths:
         curr_dir = path.replace(".tar.gz", "")
@@ -34,12 +37,19 @@ def load_all(globpath=BOOK_PATHS):
         provider = path_list[-3]
         user = path_list[-4]
         nb_list = []
-        for (dirpath, dirnames, filenames) in os.walk(curr_dir + "/_build/jupyter_execute"):
+        for (dirpath, dirnames, filenames) in chain(os.walk(curr_dir + multi_page_path),os.walk(curr_dir + single_page_path)):
             for input_file in filenames:
                 if input_file.split(".")[-1] == "ipynb":
                     nb_list += [os.path.join(dirpath, input_file).replace("/DATA/book-artifacts", BOOK_URL)]
         nb_list = sorted(nb_list)
-        book_dict = {"book_url": BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+        # The directory of html pages depends on whether the book was built as a 
+        # single page or multi-page. This is to ensure the right one is 
+        # returned.
+        if multi_page_path in dirpath:
+            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+        elif single_page_path in dirpath:
+            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/"
+        book_dict = {"book_url": cur_url
                      , "book_build_logs": BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
                      , "download_link": BOOK_URL + path.replace("/DATA/book-artifacts", "")
                      , "notebook_list": nb_list
@@ -171,12 +181,29 @@ def run_binder_build_preflight_checks(repo_url,commit_hash,build_rate_limit, bin
 
     return binderhub_request
 
+def get_reports_dir(root_dir):
+    """
+    Depending on the format of the Jupyter Book (single or multipage),
+    the location of the reports vary. This helper function
+    checks both possible options.
+    """
+    multi_page_path = f"{root_dir}/_build/html/reports" 
+    single_page_path = f"{root_dir}/_build/_page/index/singlehtml/reports"
+    if os.path.exists(multi_page_path) and os.path.isdir(multi_page_path):
+        return multi_page_path
+    elif os.path.exists(single_page_path) and os.path.isdir(single_page_path):
+        return multi_page_path
+    else: 
+        return None
+
 def book_execution_errored(owner,repo,provider,commit_hash):
     root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
-    reports_path = f"{root_dir}/_build/html/reports"
+    reports_path = get_reports_dir(root_dir)
+    if not reports_path:
+        return False
+    # When the directory exists, check its contents.
     file_list = None
-    if os.path.exists(reports_path) and os.path.isdir(reports_path):
-        file_list = [f for f in os.listdir(reports_path) if os.path.isfile(os.path.join(reports_path,f))]
+    file_list = [f for f in os.listdir(reports_path) if os.path.isfile(os.path.join(reports_path,f))]
     if file_list and len(file_list) > 0:
         return True
     else:
@@ -199,12 +226,12 @@ def book_log_collector(owner,repo,provider,commit_hash):
         book_log = f"<details><summary> <b>Jupyter Book build log</b> </summary><pre><code>{mainlog}</code></pre></details>"
         logs.append(book_log)
         # Look at the reports directory
-        reports_path = f"{root_dir}/_build/html/reports"
-        if os.path.exists(reports_path) and os.path.isdir(reports_path):
+        reports_path = get_reports_dir(root_dir)
+        if reports_path:
             file_list = [f for f in os.listdir(reports_path) if os.path.isfile(os.path.join(reports_path,f))]
             # Collect each one of these logs
             for file_name in file_list:
-                with open(f"{root_dir}/_build/html/reports/{file_name}") as file:
+                with open(f"{reports_path}/{file_name}") as file:
                     cur_log = [line.rstrip() for line in file]
                 cur_log  = "\n".join(cur_log)
                 base_name = file_name.split(".")[0]
