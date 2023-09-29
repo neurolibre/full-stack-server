@@ -48,7 +48,7 @@ def load_all(globpath=BOOK_PATHS):
         if multi_page_path in dirpath:
             cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
         elif single_page_path in dirpath:
-            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/"
+            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
         book_dict = {"book_url": cur_url
                      , "book_build_logs": BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
                      , "download_link": BOOK_URL + path.replace("/DATA/book-artifacts", "")
