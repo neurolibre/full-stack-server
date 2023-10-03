@@ -576,11 +576,8 @@ def merge_and_check_bib(target_path):
     # Create a backup for the original markdown.
     shutil.copyfile(orig_bib, backup_bib)
     # Simply merge two bib files.
-    script_directory = os.path.dirname(os.path.abspath(sys.argv[0]))
-    parent_directory = os.path.abspath(os.path.join(script_directory, os.pardir))
-    # The convention to fetch partial.bib is a bit convoluted, but relative 
-    # directories are not playing nicely with celery.
-    partial_bib = os.path.join(parent_directory,"assets","partial.bib")
+    # TODO: GET THE DIRECTORY FROM FLASK 
+    partial_bib = "/home/ubuntu/full-stack-server/assets/partial.bib"
     append_bib_files(orig_bib, partial_bib, orig_bib)
 
 def create_extended_pdf_sources(target_path, issue_id,repository_url):
