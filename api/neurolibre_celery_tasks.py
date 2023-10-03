@@ -850,7 +850,7 @@ def preprint_build_pdf_draft(self, payload):
     res = create_extended_pdf_sources(target_path, payload['issue_id'],payload['repository_url'])
     if res['status']:
         try:
-            process = subprocess.Popen(["docker", "run","--rm","--it", "-v", f"{target_path}:/data", "-u", "$(id -u):$(id -g)", "neurolibre/inara:latest","-o", "neurolibre", "./paper.md"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
+            process = subprocess.Popen(["docker", "run","--rm","-it", "-v", f"{target_path}:/data", "-u", "$(id -u):$(id -g)", "neurolibre/inara:latest","-o", "neurolibre", "./paper.md"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
             output = process.communicate()[0]
             ret = process.wait()
             logging.info(output)
