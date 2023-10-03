@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 import json
 from common import *
@@ -8,6 +9,12 @@ from github import Github
 from github_client import gh_read_from_issue_body 
 import csv
 import subprocess
+import nbformat
+import re
+from bs4 import BeautifulSoup
+import shutil
+import markdown
+import markdownify
 
 load_dotenv()
 
@@ -463,3 +470,146 @@ def zenodo_collect_dois(issue_id):
         tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}_*.json"))
         collect[item] = tmp['doi_url']
     return collect
+
+# Function to extract citations from a cell's source code
+def extract_citations(text, pattern):
+    # Find all instances of {cite:*}`some-text`
+    matches = re.findall(pattern, text)
+    return matches
+
+# Function to remove HTML tags from Markdown content
+def remove_html_tags(markdown):
+    soup = BeautifulSoup(markdown, "html.parser")
+    return soup.get_text()
+
+def extract_paragraphs_with_citations(notebook):
+    paragraphs_with_citations = []
+    current_paragraph = ''
+    current_section = ''
+    # Process each cell in the notebook
+    for cell in notebook['cells']:
+        if cell['cell_type'] == 'markdown':
+            # Extract citations based on the appropriate pattern
+            matches = extract_citations(cell['source'], r'\[@([^[\]]*)\]')
+            # If there are citations, store the current paragraph and its section
+            if matches:
+                if current_paragraph:
+                    paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
+                    current_paragraph = ''
+                current_paragraph += cell['source']
+                current_section = cell.get('metadata', {}).get('section', '')
+    # Add the last paragraph if it has citations
+    if current_paragraph:
+        paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
+    return paragraphs_with_citations
+
+def substitute_cite_commands(input_folder="content"):
+    # Process each file in the input folder
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+        if file_name.endswith('.ipynb'):
+            # Read Jupyter notebook(s)
+            notebook = nbformat.read(file_path, as_version=nbformat.NO_CONVERT)
+            notebook.cells = [cell for cell in notebook.cells if cell.cell_type != "code"]
+            # Process each cell in the notebook
+            for cell in notebook['cells']:
+                if cell['cell_type'] == 'markdown':
+                    # Deal with (Author et al. YYYY) and (Someone et al. YYYY, Someone-else et al. ZZZZ)
+                    matches = extract_citations(cell['source'], r'\{cite:p\}`([^`]*)`')
+                    if matches:
+                        # Embed citations in the cell's source code
+                        for match in matches:
+                            # Split the citations by comma and format them accordingly
+                            citations = match.split(',')
+                            formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+
+                            # Replace the original pattern with the formatted citations
+                            cell['source'] = re.sub(r'\{cite:p\}`([^`]*)`', f'[{formatted_citations}]', cell['source'], count=1)
+                # Deal with Author et al. (YYYY)
+                    matches = extract_citations(cell['source'], r'\{cite:t\}`([^`]*)`')
+                    if matches:
+                        # Embed citations in the cell's source code
+                        for match in matches:
+                            # Split the citations by comma and format them accordingly
+                            citations = match.split(',')
+                            formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+                            # Replace the original pattern with the formatted citations
+                            cell['source'] = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', cell['source'], count=1)
+
+            # Export the notebook as Markdown
+            filtered_paragraphs = extract_paragraphs_with_citations(notebook)
+
+            markdown_output = ''
+            for paragraph_info in filtered_paragraphs:
+                if paragraph_info['section']:
+                    markdown_output += "\n\n"
+                    markdown_output += f"## {paragraph_info['section']}\n\n"
+
+                # Remove admonition, table, figure etc. blocks
+                cleaned_paragraph = re.sub(r'```{.*?}*```', '', paragraph_info['paragraph'], flags=re.DOTALL)
+                markdown_output += f"{cleaned_paragraph}\n"
+
+            # Get rid of HTML tags
+            markdown_output = remove_html_tags(markdown_output)
+            return markdown_output
+
+def append_bib_files(file1_path, file2_path, output_path):
+    # Read the contents of the first BibTeX file
+    with open(file1_path, 'r', encoding='utf-8') as file1:
+        content1 = file1.read()
+    # Read the contents of the second BibTeX file
+    with open(file2_path, 'r', encoding='utf-8') as file2:
+        content2 = file2.read()
+    # Combine the contents of both files
+    combined_content = content1 + '\n' + content2
+    # Write the combined content to the output file
+    with open(output_path, 'w', encoding='utf-8') as output_file:
+        output_file.write(combined_content)
+
+def merge_and_check_bib(target_path):
+    """
+    For now simply appending one bib to another 
+    later on, add duplication check.
+    """
+    orig_bib = os.path.join(target_path,"paper.bib")
+    backup_bib = os.path.join(target_path,"paper_backup.bib")
+    # Create a backup for the original markdown.
+    shutil.copyfile(orig_bib, backup_bib)
+    # Simply merge two bib files.
+    script_directory = os.path.dirname(os.path.abspath(sys.argv[0]))
+    parent_directory = os.path.abspath(os.path.join(script_directory, os.pardir))
+    # The convention to fetch partial.bib is a bit convoluted, but relative 
+    # directories are not playing nicely with celery.
+    partial_bib = os.path.join(parent_directory,"assets","partial.bib")
+    append_bib_files(orig_bib, partial_bib, orig_bib)
+
+def create_extended_pdf_sources(target_path, issue_id,repository_url):
+    """
+    target_path is where repository_url is cloned by the celery worker.
+    """
+    # This will crawl all the Jupyter Notebooks to collect text that cites
+    # articles, then will substitute MyST cite commands with Pandoc directives 
+    # recognized by OpenJournals PDF compilers.\
+    try: 
+        markdown_output = substitute_cite_commands(os.path.join(target_path,"content"))
+        orig_paper = os.path.join(target_path,"paper.md")
+        backup_paper = os.path.join(target_path,"paper_backup.md")
+        # Create a backup for the original markdown.
+        shutil.copyfile(orig_paper, backup_paper)
+        with open(orig_paper, 'a') as file:
+            file.write("\n")
+            file.write(f"\n\n > **_NOTE:_** The following section in this document reproduces the narrative content exactly as \
+                    found in the corresponding [NeuroLibre reproducible preprint](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). The content was \
+                    automatically incorporated into this PDF using the NeuroLibre publication workflow [@Karakuzu2022-xq] to \
+                    credit the referenced resources. The submitting author of the preprint has verified and approved the \
+                    inclusion of this section through a GitHub pull request made to the [source repository]({repository_url}) of the reproducible preprint. \
+                    For more information on integrated research objects, such as [this reproducible preprint](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}), \
+                    please refer to @Dupre2022-iro.\n\n")
+            file.write(markdownify.markdownify(markdown.markdown(markdown_output)))
+            file.write("\n\n## References\n\n")
+        # Update the bibliography for NeuroLibre entries.
+        merge_and_check_bib(target_path)
+        return {"status":True, "message":"Extended PDF resources have been created."}
+    except Exception as e:
+        # In case returning these logs to the user is desired.
+        return {"status":False, "message": str(e)}

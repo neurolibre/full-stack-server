@@ -17,3 +17,7 @@ redis
 PyGithub
 pytz
 sendgrid
+nbformat
+markdown
+markdownify
+bs4

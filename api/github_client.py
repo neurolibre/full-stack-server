@@ -4,6 +4,7 @@ import pytz
 import datetime
 import json
 import yaml
+import git
 
 # Name of the GitHub organization where repositories 
 # will be forked into for production. Editorial bot 
@@ -284,3 +285,23 @@ def get_default_branch(github_client,repository):
     repo = github_client.get_repo(gh_filter(repository))
     default_branch = repo.default_branch
     return default_branch
+
+def gh_clone_repository(repo_url, target_path, depth=1):
+    """
+    Shallow clones a GitHub repository to the specified target path with the given depth.
+
+    Parameters:
+    - repo_url (str): The URL of the GitHub repository.
+    - target_path (str): The target directory where the repository will be cloned.
+    - depth (int): The depth of the shallow clone (default: 1).
+
+    Returns:
+    - None
+    """
+    # Create target directory if it doesn't exist
+    # If the directory already exists, will throw an error.
+    if not os.path.exists(target_path):
+        os.makedirs(target_path)
+
+    # Clone the repository with the specified depth
+    git.Repo.clone_from(repo_url, target_path, depth=depth)

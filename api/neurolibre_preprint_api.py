@@ -20,7 +20,7 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task
+from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, preprint_build_pdf_draft
 from github import Github
 
 """
@@ -817,8 +817,37 @@ def api_binder_build(user,repo_url, commit_hash):
     os.remove(lock_filename)
     return flask.Response(generate(), mimetype='text/event-stream')
 
+@app.route('/api/pdf/draft', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Build extended PDF for a submission.', tags=['Extended PDF'])
+@use_kwargs(BucketsSchema())
+def api_pdf_draft(user,id,repository_url):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    task_title = "Extended PDF - Build draft"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(issue_id = id,
+                        comment_id = comment_id,
+                        review_repository = reviewRepository,
+                        repository_url = repository_url,
+                        task_title=task_title)
+
+    task_result = preprint_build_pdf_draft.apply_async(args=[celery_payload])
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
 # Register endpoint to the documentation
-docs.register(api_binder_build)
+docs.register(api_pdf_draft)
 
 @app.route('/api/test', methods=['GET'])
 @htpasswd.required
@@ -829,7 +858,6 @@ def api_preprint_test(user):
      return response
 
 docs.register(api_preprint_test)
-
 
 @app.route('/api/celery/test', methods=['GET'],endpoint='api_celery_test')
 @htpasswd.required

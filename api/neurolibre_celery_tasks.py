@@ -831,3 +831,36 @@ def write_html_to_temp_directory(commit_sha, logs):
             f.write("</body></html>\n")
     
     return file_path
+
+@celery_app.task(bind=True)
+def preprint_build_pdf_draft(self, payload):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+    target_path = os.path.join('/DATA/10.55458/draft',f"{payload['issue_id']:05d}")
+    try:
+        gh_clone_repository(payload['repository_url'], target_path, depth=1)
+    except Exception as e: 
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], str(e))
+        self.update_state(state=states.FAILURE, meta={'message': str(e)})
+        return
+    # Crawl notebooks for the citation text and append it to paper.md, update bib.
+    res = create_extended_pdf_sources(target_path, payload['issue_id'],payload['repository_url'])
+    if res['status']:
+        try:
+            process = subprocess.Popen(["docker", "run","--rm","--it", "-v", f"{target_path}:/data", "-u", "$(id -u):$(id -g)", "neurolibre/inara:latest","-o", "neurolibre", "./paper.md"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
+            output = process.communicate()[0]
+            ret = process.wait()
+            logging.info(output)
+            # If it hits here, paper.pdf should have been created.
+            gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
+            comment = f"&#128209; Extended PDF has been compiled! \n https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.pdf"
+            gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],comment)
+        except subprocess.CalledProcessError as e:
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{e.output}")
+            self.update_state(state=states.FAILURE, meta={'message': e.output})
+    else: 
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
+        self.update_state(state=states.FAILURE, meta={'message': res['message']})
