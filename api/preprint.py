@@ -595,12 +595,13 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
         shutil.copyfile(orig_paper, backup_paper)
         with open(orig_paper, 'a') as file:
             file.write("\n")
-            file.write(f"\n\n > **_NOTE:_** The following section in this document reproduces the narrative content exactly as \
-                    found in the corresponding [NeuroLibre reproducible preprint](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). The content was \
+            file.write(f"\n\n > **_NOTE:_** The following section in this document repeats the narrative content exactly as \
+                    found in the [corresponding NeuroLibre Reproducible Preprint (NRP)](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). The content was \
                     automatically incorporated into this PDF using the NeuroLibre publication workflow [@Karakuzu2022-xq] to \
                     credit the referenced resources. The submitting author of the preprint has verified and approved the \
-                    inclusion of this section through a GitHub pull request made to the [source repository]({repository_url}) of the reproducible preprint. \
-                    For more information on integrated research objects, such as [this reproducible preprint](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}), \
+                    inclusion of this section through a GitHub pull request made to the [source repository]({repository_url}) from which this document was built. \
+                    Please note that the figures and tables have been excluded from this (static) document. To interactively explore such outputs and re-generate them, please visit the corresponding [NRP](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). \
+                    For more information on integrated research objects (e.g., NRPs) that bundle narrative and executable content for reproducible and transparent publications, \
                     please refer to @Dupre2022-iro.\n\n")
             file.write(markdownify.markdownify(markdown.markdown(markdown_output)))
             file.write("\n\n## References\n\n")
