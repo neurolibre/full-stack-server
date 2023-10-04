@@ -840,6 +840,9 @@ def preprint_build_pdf_draft(self, payload):
     task_id = self.request.id
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
     target_path = os.path.join('/DATA/10.55458/draft',f"{payload['issue_id']:05d}")
+    # Remove the directory if it already exists.
+    if os.path.exists(target_path):
+        shutil.rmtree(target_path)
     try:
         gh_clone_repository(payload['repository_url'], target_path, depth=1)
     except Exception as e: 
