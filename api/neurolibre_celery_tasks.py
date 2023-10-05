@@ -16,6 +16,7 @@ import requests
 from flask import Response
 import shutil
 import base64
+import openai
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -367,9 +368,18 @@ def preview_build_book_task(self, payload):
         # Send a new comment
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
     else:
-        gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
+        gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f":confetti_ball: Roboneuro will send you the book URL.")
         issue_comment = []
-        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],book_status[0]['book_url'])
+        try:
+            openai.api_key=os.getenv('OAI_TOKEN')
+            paper_string = gh_get_paper_markdown(github_client,payload['repository_url'])
+            fm = parse_front_matter(paper_string)
+            msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) they just successfully built! Keep it short (2 sentences), witty and entertaining."
+            completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": msg}])
+            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion.choices[0].message.content} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
+        except:
+            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
+        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
 @celery_app.task(bind=True)
 def zenodo_create_buckets_task(self, payload):
@@ -864,7 +874,7 @@ def preprint_build_pdf_draft(self, payload):
                     \n 1. 👀  Please review the [extended PDF](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.pdf) and verify that all references are accurately included. If everything is correct, please proceed to the next steps. **If not, please make the necessary adjustments in the source documents.** \
                     \n 2. ⬇️ [Download the updated `paper.md`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.md). \n \
                     \n 3. ⬇️ [Download the updated `paper.bib`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.bib). \n \
-                    \n 4. ℹ️ Please read and confirm the following: \
+                    \n 4. ℹ️ Please read and confirm the following: \n \
                     \n :warning: We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
                     explaining the [NeuroLibre workflow](https://doi.org/10.31219/osf.io/h89js) and [integrated research objects](https://doi.org/10.1371/journal.pcbi.1009651). _If you prefer not to include them, please remove the respective citation directives \
                     in the updated `paper.md` before pushing the file to your repository._ \
@@ -872,7 +882,7 @@ def preprint_build_pdf_draft(self, payload):
                     \n - [ ] I, the submitting author, confirm that I have read the note above. \
                     \n 5. ♻️ Update the respective files in [your source repository](payload['repository_url']) with the files you just downloaded and inform the screener. \
                     \n ### For the technical screener \
-                    \n Once the submitting author has updated the repository with the `paper.md` and `paper.bib`, please confirm that the PDF successfully builds using the `@roboneuro generate pdf`. \
+                    \n Once the submitting author has updated the repository with the `paper.md` and `paper.bib`, please confirm that the PDF successfully builds using the `@roboneuro generate pdf`. \n \
                     \n :warning: However, DO NOT issue  `@roboneuro build extended pdf` command after the submitting author has updated the `paper.md` and `paper.bib`."
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],comment)
         except subprocess.CalledProcessError as e:
