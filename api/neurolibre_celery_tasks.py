@@ -236,14 +236,13 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
         self.request.revoke(terminate=True)
         return
 
-    if not jb_config['launch_buttons']:
+    if 'launch_buttons' not in jb_config:
         jb_config['launch_buttons'] = {}
-
     # Configure the book to use the production BinderHUB
     jb_config['launch_buttons']['binderhub_url'] = PRODUCTION_BINDERHUB
 
     # Update repository address
-    if not jb_config['repository']:
+    if 'repository' not in jb_config:
         jb_config['repository'] = {}
     jb_config['repository']['url'] = f"https://github.com/{forked_name}"
 
@@ -255,8 +254,9 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
         self.request.revoke(terminate=True)
         return
 
+    jb_toc_new = jb_toc
     if 'parts' in jb_toc:
-        jb_toc['parts'].append({
+        jb_toc_new['parts'].append({
             "caption": JOURNAL_NAME,
             "chapters": [{
                 "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
@@ -265,19 +265,21 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
         })
     
     if 'chapters' in jb_toc:
-        jb_toc['chapters'].append({
+        jb_toc_new['chapters'].append({
             "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
             "title": "Citable PDF and archives"
         })
 
     if jb_toc['format'] == 'jb-article' and 'sections' in jb_toc:
-        jb_toc['sections'].append({
+        jb_toc_new['sections'].append({
             "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
             "title": "Citable PDF and archives"
         })
     
-    # Update TOC file in the forked repo
-    response = gh_update_jb_toc(github_client,forked_name,jb_toc)
+    # Update TOC file in the forked repo only if the new toc is different
+    # otherwise github api will complain.
+    if not jb_toc_new != jb_toc:
+        response = gh_update_jb_toc(github_client,forked_name,jb_toc)
 
     if not response['status']:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not update toc.yml for {forked_name}: \n {response['message']}")
