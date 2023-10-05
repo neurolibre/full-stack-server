@@ -21,4 +21,3 @@ nbformat
 markdown
 markdownify
 bs4
-openai==0.28.1

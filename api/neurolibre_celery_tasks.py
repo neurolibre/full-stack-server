@@ -16,7 +16,6 @@ import requests
 from flask import Response
 import shutil
 import base64
-import openai
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -371,12 +370,16 @@ def preview_build_book_task(self, payload):
         gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f":confetti_ball: Roboneuro will send you the book URL.")
         issue_comment = []
         try:
-            openai.api_key=os.getenv('OAI_TOKEN')
             paper_string = gh_get_paper_markdown(github_client,payload['repository_url'])
             fm = parse_front_matter(paper_string)
-            msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) they just successfully built! Keep it short (2 sentences), witty and entertaining."
-            completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": msg}])
-            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion.choices[0].message.content} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
+            msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
+            token =os.getenv('OAI_TOKEN')
+            headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
+            payload = {'model':'gpt-3.5-turbo',
+                        "messages": [{"role": "user", "content": msg}]}
+            response = requests.post('https://api.openai.com/v1/chat/completions',headers=headers,json=payload)
+            completion = json.loads(response.text)
+            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion['choices'][0]['message']['content']} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
         except:
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
