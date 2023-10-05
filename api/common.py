@@ -321,3 +321,22 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
         print(response.headers)
     except Exception as e:
         print("Error sending email:", str(e))
+
+def remove_first_last_slash(input_string):
+    if input_string.startswith('/'):
+        input_string = input_string[1:]
+    if input_string.endswith('/'):
+        input_string = input_string[:-1]
+    return input_string
+
+def get_book_target_tail(book_url,commit_hash):
+    """
+    Based on a book URL returned by the server, get the 
+    last parts of its expected local directory.
+    If multi-page /_build/html/, if single page, should be /_build/_page/index/singlehtml/
+    Remove first and last /. 
+    """
+    # After the commit hash, the pattern informs whether it is single or multi page.
+    format_url = book_url.split(commit_hash)
+    book_target = remove_first_last_slash(format_url[1])
+    return book_target

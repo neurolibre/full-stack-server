@@ -151,7 +151,10 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retrieve book at {commit_hash}")
     else:
         # Symlink production book to attain a proper URL
-        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , "_build" , "html")
+        book_target_tail = get_book_target_tail(results[0]['book_url'],commit_hash)
+        # After the commit hash, the pattern informs whether it is single or multi page.
+        # If multi-page _build/html, if single page, should be _build/_page/index/singlehtml
+        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , book_target_tail)
         iid = "{:05d}".format(issue_id)
         doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}")
         process_mkd = subprocess.Popen(["mkdir", doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -485,8 +488,11 @@ def zenodo_upload_book_task(self, payload):
     
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
-
-    local_path = os.path.join("/DATA", "book-artifacts", "roboneurolibre", provider, repo, commit_fork, "_build", "html")
+    
+    results = book_get_by_params(commit_hash=commit_fork)
+    # Need to manage for single or multipage location.
+    book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
+    local_path = os.path.join("/DATA", "book-artifacts", "roboneurolibre", provider, repo, commit_fork, book_target_tail)
     # Descriptive file name
     zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"JupyterBook_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}")
     # Zip it!
