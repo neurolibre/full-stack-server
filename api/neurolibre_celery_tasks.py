@@ -382,13 +382,12 @@ def preview_build_book_task(self, payload):
             gpt_headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
             gpt_payload = {'model':'gpt-3.5-turbo',
                         "messages": [{"role": "user", "content": gpt_msg}]}
-            print("Trying openai API")
+            logging.info("Trying openai API")
             gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
             completion = json.loads(gpt_response.text)
-            print(f"{completion}")
-            print(f"{completion['choices'][0]['message']['content']}")
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion['choices'][0]['message']['content']} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
-        except:
+        except Exception as e:
+            logging.info(f"{str(e)}")
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
