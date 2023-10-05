@@ -858,8 +858,22 @@ def preprint_build_pdf_draft(self, payload):
             ret = process.wait()
             logging.info(output)
             # If it hits here, paper.pdf should have been created.
-            gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
-            comment = f"&#128209; Extended PDF has been compiled! \n https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.pdf"
+            gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Roboneuro will post a new comment to share the results and provide an explanation of the next steps.")
+            comment = f"&#128209; Extended PDF has been compiled! \n \
+                    \n ### For the submitting author \n \
+                    \n 1. 👀  Please review the [extended PDF](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.pdf) and verify that all references are accurately included. If everything is correct, please proceed to the next steps. **If not, please make the necessary adjustments in the source documents.** \
+                    \n 2. ⬇️ [Download the updated `paper.md`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.md). \n \
+                    \n 3. ⬇️ [Download the updated `paper.bib`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.bib). \n \
+                    \n 4. ℹ️ Please read and confirm the following: \
+                    \n :warning: We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
+                    explaining the [NeuroLibre workflow](https://doi.org/10.31219/osf.io/h89js) and [integrated research objects](https://doi.org/10.1371/journal.pcbi.1009651). _If you prefer not to include them, please remove the respective citation directives \
+                    in the updated `paper.md` before pushing the file to your repository._ \
+                    \n \
+                    \n - [ ] I, the submitting author, confirm that I have read the note above. \
+                    \n 5. ♻️ Update the respective files in [your source repository](payload['repository_url']) with the files you just downloaded and inform the screener. \
+                    \n ### For the technical screener \
+                    \n Once the submitting author has updated the repository with the `paper.md` and `paper.bib`, please confirm that the PDF successfully builds using the `@roboneuro generate pdf`. \
+                    \n :warning: However, DO NOT issue  `@roboneuro build extended pdf` command after the submitting author has updated the `paper.md` and `paper.bib`."
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],comment)
         except subprocess.CalledProcessError as e:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{e.output}")
@@ -867,3 +881,4 @@ def preprint_build_pdf_draft(self, payload):
     else: 
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'message': res['message']})
+
