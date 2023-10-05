@@ -375,13 +375,13 @@ def preview_build_book_task(self, payload):
         try:
             paper_string = gh_get_paper_markdown(github_client,payload['repository_url'])
             fm = parse_front_matter(paper_string)
-            msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
+            gpt_msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
             token =os.getenv('OAI_TOKEN')
-            headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
-            payload = {'model':'gpt-3.5-turbo',
-                        "messages": [{"role": "user", "content": msg}]}
-            response = requests.post('https://api.openai.com/v1/chat/completions',headers=headers,json=payload)
-            completion = json.loads(response.text)
+            gpt_headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
+            gpt_payload = {'model':'gpt-3.5-turbo',
+                        "messages": [{"role": "user", "content": gpt_msg}]}
+            gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
+            completion = json.loads(gpt_response.text)
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion['choices'][0]['message']['content']} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
         except:
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
