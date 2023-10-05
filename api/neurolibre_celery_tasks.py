@@ -97,7 +97,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory exists but empty: {project_name}")
         else:
             # Directory exists and not empty
-            gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, output)
+            gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, "Success.")
             self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
     else:
         # Directory does not exist
@@ -375,7 +375,7 @@ def preview_build_book_task(self, payload):
         gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f":confetti_ball: Roboneuro will send you the book URL.")
         issue_comment = []
         try:
-            paper_string = gh_get_paper_markdown(github_client,payload['repository_url'])
+            paper_string = gh_get_paper_markdown(github_client,payload['repo_url'])
             fm = parse_front_matter(paper_string)
             gpt_msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
             token =os.getenv('OAI_TOKEN')
