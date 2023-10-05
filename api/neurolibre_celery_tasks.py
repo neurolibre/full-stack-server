@@ -878,7 +878,8 @@ def preprint_build_pdf_draft(self, payload):
                     \n 2. ⬇️ [Download the updated `paper.md`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.md). \n \
                     \n 3. ⬇️ [Download the updated `paper.bib`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.bib). \n \
                     \n 4. ℹ️ Please read and confirm the following: \n \
-                    \n :warning: We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
+                    \n > [!IMPORTANT] \
+                    \n > We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
                     explaining the [NeuroLibre workflow](https://doi.org/10.31219/osf.io/h89js) and [integrated research objects](https://doi.org/10.1371/journal.pcbi.1009651). _If you prefer not to include them, please remove the respective citation directives \
                     in the updated `paper.md` before pushing the file to your repository._ \
                     \n \
