@@ -890,7 +890,7 @@ def preprint_build_pdf_draft(self, payload):
                     \n 4. ℹ️ Please read and confirm the following: \n \
                     \n > [!IMPORTANT] \
                     \n > We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
-                    explaining the [NeuroLibre workflow](https://doi.org/10.31219/osf.io/h89js) and [integrated research objects](https://doi.org/10.1371/journal.pcbi.1009651). _If you prefer not to include them, please remove the respective citation directives \
+                    explaining the [NeuroLibre workflow](https://doi.org/10.31219/osf.io/h89js), [integrated research objects](https://doi.org/10.1371/journal.pcbi.1009651), and the Canadian Open Neuroscience Platform ([CONP](https://conp.ca)). _If you prefer not to include them, please remove the respective citation directives \
                     in the updated `paper.md` before pushing the file to your repository._ \
                     \n \
                     \n - [ ] I, the submitting author, confirm that I have read the note above. \
