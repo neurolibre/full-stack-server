@@ -446,7 +446,10 @@ def zenodo_create_buckets_task(self, payload):
         
         if 'equal-contrib' in author:
             author.pop('equal-contrib')
-        
+
+        if 'corresponding' in author:
+            author.pop('corresponding')
+
         # if author.get('orcid') is None:
         #     author.pop('orcid')
 
