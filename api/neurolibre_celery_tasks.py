@@ -444,8 +444,8 @@ def zenodo_create_buckets_task(self, payload):
             if valid_field:
                 author[valid_field] = author.pop(invalid_field)
 
-        if author.get('orcid') is None:
-            author.pop('orcid')
+        # if author.get('orcid') is None:
+        #     author.pop('orcid')
 
     collect = {}
     for archive_type in payload['archive_assets']:
