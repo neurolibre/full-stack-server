@@ -443,7 +443,10 @@ def zenodo_create_buckets_task(self, payload):
             
             if valid_field:
                 author[valid_field] = author.pop(invalid_field)
-
+        
+        if 'equal-contrib' in author:
+            author.pop('equal-contrib')
+        
         # if author.get('orcid') is None:
         #     author.pop('orcid')
 
