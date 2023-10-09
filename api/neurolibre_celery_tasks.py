@@ -805,6 +805,7 @@ def zenodo_publish_task(self, payload):
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
     response = zenodo_publish(payload['issue_id'])
+    
     if response == "no-record-found":
         msg = "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
@@ -816,7 +817,7 @@ def zenodo_publish_task(self, payload):
         publish_status = zenodo_confirm_status(payload['issue_id'],"published")
         # If all items are published, success. Add DOIs.
         if publish_status[0]:
-            prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet)."
+            prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet). Keep it to a few sentences."
             gpt_response = get_gpt_response(prompt)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Congrats! Reproducibility assets have been successfully archived and published :rocket: \n\n {gpt_response}", False)
             # Set DOIs. This part is a little crazy, because roboneuro will be 
