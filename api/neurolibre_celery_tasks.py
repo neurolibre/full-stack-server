@@ -421,7 +421,7 @@ def preview_build_book_task(self, payload):
             logging.info("Trying openai API")
             gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
             completion = json.loads(gpt_response.text)
-            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {completion['choices'][0]['message']['content']} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
+            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {completion['choices'][0]['message']['content']} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
         except Exception as e:
             logging.info(f"{str(e)}")
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
