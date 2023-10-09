@@ -192,7 +192,7 @@ def fork_configure_repository_task(self, payload):
     self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
     gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "")
     
-    book_tested_check = get_test_book_builds(PREVIEW_SERVER,True,payload['commit_hash'])
+    book_tested_check = get_test_book_build(PREVIEW_SERVER,True,payload['commit_hash'])
     # Production cannot be started if there's a book at the latest commit hash at which
     # the production is asked for.
     if not book_tested_check['status']:
