@@ -756,13 +756,14 @@ docs.register(api_books_sync_post)
 @use_kwargs(ProdStartSchema())
 def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
 
+    issue_id = id
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start BG process
     commit_hash = format_commit_hash(repository_url,commit_hash)
-    celery_payload = dict(issue_id = id,
+    celery_payload = dict(issue_id = issue_id,
                     comment_id = comment_id,
                     review_repository = reviewRepository,
                     repository_url = repository_url,
