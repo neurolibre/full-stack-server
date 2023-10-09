@@ -519,7 +519,7 @@ def zenodo_create_buckets_task(self, payload):
             json.dump(collect, outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
 
-@celery_app.tasks(bind=True)
+@celery_app.task(bind=True)
 def zenodo_flush_task(self,payload):
     
     GH_BOT=os.getenv('GH_BOT')
