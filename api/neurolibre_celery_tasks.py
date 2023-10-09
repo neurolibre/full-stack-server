@@ -192,11 +192,10 @@ def fork_configure_repository_task(self, payload):
     self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
     gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "")
     
-    book_status = book_get_by_params(commit_hash=payload['commit_hash'])
-
+    book_tested_check = get_test_book_builds(PREVIEW_SERVER,True,payload['commit_hash'])
     # Production cannot be started if there's a book at the latest commit hash at which
     # the production is asked for.
-    if not book_status:
+    if not book_tested_check['status']:
         msg = f"\n > [!WARNING] \n > A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
         self.update_state(state=states.FAILURE, meta={'message': msg})
@@ -209,7 +208,7 @@ def fork_configure_repository_task(self, payload):
         rec_info['source_repository'] = {}
         rec_info['source_repository']['address'] = payload['repository_url']
         rec_info['source_repository']['commit_hash'] = payload['commit_hash']
-        rec_info['source_repository']['book_url'] = book_status[0]['book_url']
+        rec_info['source_repository']['book_url'] = book_tested_check['book_url']
 
     forked_name = gh_forkify_name(payload['repository_url'])
     # First check if a fork already exists.

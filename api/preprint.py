@@ -333,6 +333,25 @@ def parse_tsv_content(content):
     
     return parsed_data
 
+def get_test_book_build(preview_server,verify_ssl,commit_hash):
+    """
+    Call test server API to see if a book has been built at a
+    specific commit hash. To be used by the preprint server before
+    starting the production phase.
+    """
+    url = f"{preview_server}/api/book"
+    headers = {'Content-Type': 'application/json'}
+    API_USER = os.getenv('TEST_API_USER')
+    API_PASS = os.getenv('TEST_API_PASS')
+    auth = (API_USER, API_PASS)
+    params = {"commit_hash": commit_hash}
+    # Send GET request
+    response = requests.get(url, headers=headers, auth=auth, params=params, verify=verify_ssl)
+    if response.status_code == 200:
+        return {'status': True, 'book_url': json.loads(response.text)[0]['book_url']}
+    else:
+        return {'status': False, 'book_url': None}
+
 def get_resource_lookup(preview_server,verify_ssl,repository_address):
     """
     For a given repository address, returns a dictionary 
