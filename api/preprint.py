@@ -612,3 +612,23 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
     except Exception as e:
         # In case returning these logs to the user is desired.
         return {"status":False, "message": str(e)}
+
+
+def nb_to_lab(file_path):
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    updated_content = re.sub(r'\?urlpath=tree/content/', '?urlpath=lab/tree/content/', content)
+    
+    with open(file_path, 'w') as f:
+        f.write(updated_content)
+
+def enforce_lab_interface(directory_path):
+    """
+    Rewrite =tree/content with =lab/tree/content
+    """
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            if file.endswith('.html'):
+                file_path = os.path.join(root, file)
+                nb_to_lab(file_path)

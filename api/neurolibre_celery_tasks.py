@@ -155,6 +155,9 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
         # After the commit hash, the pattern informs whether it is single or multi page.
         # If multi-page _build/html, if single page, should be _build/_page/index/singlehtml
         book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , book_target_tail)
+        # Here, make sure that all the binderhub links use the lab interface
+        enforce_lab_interface(book_path)
+
         iid = "{:05d}".format(issue_id)
         doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}")
         process_mkd = subprocess.Popen(["mkdir", doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -419,10 +422,10 @@ def preview_build_book_task(self, payload):
             logging.info("Trying openai API")
             gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
             completion = json.loads(gpt_response.text)
-            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: \n {completion['choices'][0]['message']['content']} \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})!"
+            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {completion['choices'][0]['message']['content']} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
         except Exception as e:
             logging.info(f"{str(e)}")
-            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
+            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
 @celery_app.task(bind=True)
