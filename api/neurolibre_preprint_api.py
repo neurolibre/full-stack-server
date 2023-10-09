@@ -755,14 +755,20 @@ docs.register(api_books_sync_post)
 @doc(description='Fork user repository into roboneurolibre and update _config and _toc.', tags=['Production'])
 @use_kwargs(ProdStartSchema())
 def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
-    issue_id = id
-    repo_url = repository_url
+
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
     # Start BG process
-    task_result = fork_configure_repository_task.apply_async(args=[repo_url, comment_id, issue_id, reviewRepository])
+    commit_hash = format_commit_hash(repository_url,commit_hash)
+    celery_payload = dict(issue_id = id,
+                    comment_id = comment_id,
+                    review_repository = reviewRepository,
+                    repository_url = repository_url,
+                    task_title=task_title,
+                    commit_hash = commit_hash)
+    task_result = fork_configure_repository_task.apply_async(args=[celery_payload])
     # Update the comment depending on task_id existence.
     if task_result.task_id is not None:
         gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")

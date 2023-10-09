@@ -178,7 +178,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
 
 @celery_app.task(bind=True)
-def fork_configure_repository_task(self, source_url, comment_id, issue_id, reviewRepository):
+def fork_configure_repository_task(self, payload):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
     
     GH_BOT=os.getenv('GH_BOT')
@@ -187,23 +187,42 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
     
     now = get_time()
     self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
-    gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
+    gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "")
     
-    forked_name = gh_forkify_name(source_url)
+    book_status = book_get_by_params(commit_hash=payload['commit_hash'])
+
+    # Production cannot be started if there's a book at the latest commit hash at which
+    # the production is asked for.
+    if not book_status:
+        msg = f":warning: A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
+        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
+        self.update_state(state=states.FAILURE, meta={'message': msg})
+        return
+    else:
+        # Create a record for this.
+        fname = f"production_started_record_{payload['issue_id']:05d}.json"
+        local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
+        rec_info = {}
+        rec_info['source_repository'] = {}
+        rec_info['source_repository']['address'] = payload['repository_url']
+        rec_info['source_repository']['commit_hash'] = payload['commit_hash']
+        rec_info['source_repository']['book_url'] = book_status[0]['book_url']
+
+    forked_name = gh_forkify_name(payload['repository_url'])
     # First check if a fork already exists.
     fork_exists  = False
     try: 
         github_client.get_repo(forked_name)
         fork_exists = True
     except UnknownObjectException as e:
-        gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "Started forking into roboneurolibre.")
+        gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "Started forking into roboneurolibre.")
         logging.info(e.data['message'] + "--> Forking")
 
     if not fork_exists:
         try:
-            forked_repo = gh_fork_repository(github_client,source_url)
+            forked_repo = gh_fork_repository(github_client,payload['repository_url'])
         except Exception as e:
-            gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}")
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}")
             self.update_state(state=states.FAILURE, meta={'message': f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}"})
             return
 
@@ -220,38 +239,44 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
                 pass
 
         if not forked_repo and retry_count == max_retries:
-            gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under roboneurolibre organization, then try again.")
-            self.update_state(state=states.FAILURE, meta={'message': f"Forked repo is still not available after {max_retries*15} seconds!"})
+            msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under roboneurolibre organization, then try again."
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
             return
     else:
-        logging.info(f"Fork already exists {source_url}, moving on with configurations.")
+        logging.info(f"Fork already exists {payload['repository_url']}, moving on with configurations.")
     
-    gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "Forked repo has become available. Proceeding with configuration updates.")
+    gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "Forked repo has become available. Proceeding with configuration updates.")
 
     jb_config = gh_get_jb_config(github_client,forked_name)
     jb_toc = gh_get_jb_toc(github_client,forked_name)
 
     if not jb_config or not jb_toc:
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}")
-        self.update_state(state=states.FAILURE, meta={'message': f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}"})
+        msg = f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}"
+        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'message': msg})
         return
 
     if 'launch_buttons' not in jb_config:
         jb_config['launch_buttons'] = {}
     # Configure the book to use the production BinderHUB
     jb_config['launch_buttons']['binderhub_url'] = PRODUCTION_BINDERHUB
+    # Override this choice.
+    jb_config['launch_buttons']['notebook_interface'] = "jupyterlab"
 
     # Update repository address
     if 'repository' not in jb_config:
         jb_config['repository'] = {}
+    # Make sure that there's a link to the forked source.
     jb_config['repository']['url'] = f"https://github.com/{forked_name}"
 
     # Update configuration file in the forked repo
     response = gh_update_jb_config(github_client,forked_name,jb_config)
 
     if not response['status']:
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not update _config.yml for {forked_name}: \n {response['message']}")
-        self.update_state(state=states.FAILURE, meta={'message': f"Could not update _config.yml for {forked_name}"})
+        msg = f"Could not update _config.yml for {forked_name}: \n {response['message']}"
+        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'message': msg})
         return
 
     jb_toc_new = jb_toc
@@ -259,20 +284,20 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
         jb_toc_new['parts'].append({
             "caption": JOURNAL_NAME,
             "chapters": [{
-                "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
+                "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
                 "title": "Citable PDF and archives"
             }]
         })
     
     if 'chapters' in jb_toc:
         jb_toc_new['chapters'].append({
-            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
+            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
             "title": "Citable PDF and archives"
         })
 
     if jb_toc['format'] == 'jb-article' and 'sections' in jb_toc:
         jb_toc_new['sections'].append({
-            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}",
+            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
             "title": "Citable PDF and archives"
         })
     
@@ -282,11 +307,20 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
         response = gh_update_jb_toc(github_client,forked_name,jb_toc)
 
     if not response['status']:
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not update toc.yml for {forked_name}: \n {response['message']}")
+        msg = f"Could not update toc.yml for {forked_name}: \n {response['message']}"
+        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         self.update_state(state=states.FAILURE, meta={'message': f"Could not update _toc.yml for {forked_name}"})
         return
-    
-    gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured.")
+
+    msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
+    gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+    # Write production record.
+    now = get_time()
+    rec_info['forked_at'] = now
+    rec_info['forked_repository'] = forked_repo
+    with open(local_file, 'w') as outfile:
+        json.dump(rec_info, outfile)
+    self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 
 @celery_app.task(bind=True)
