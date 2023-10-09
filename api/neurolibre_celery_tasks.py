@@ -122,7 +122,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
     if owner != "roboneurolibre": 
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under roboneurolibre organization!")
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': f"FAILURE: Repository {owner}/{repo} has no roboneurolibre fork."})
         return
     commit_hash = format_commit_hash(repo_url,commit_hash)
     logging.info(f"{owner}{provider}{repo}{commit_hash}")
@@ -204,7 +204,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
             forked_repo = gh_fork_repository(github_client,source_url)
         except Exception as e:
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}")
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}"})
             return
 
         forked_repo = None
@@ -221,7 +221,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
 
         if not forked_repo and retry_count == max_retries:
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under roboneurolibre organization, then try again.")
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': f"Forked repo is still not available after {max_retries*15} seconds!"})
             return
     else:
         logging.info(f"Fork already exists {source_url}, moving on with configurations.")
@@ -233,7 +233,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
 
     if not jb_config or not jb_toc:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}")
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}"})
         return
 
     if 'launch_buttons' not in jb_config:
@@ -251,7 +251,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
 
     if not response['status']:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not update _config.yml for {forked_name}: \n {response['message']}")
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': f"Could not update _config.yml for {forked_name}"})
         return
 
     jb_toc_new = jb_toc
@@ -283,7 +283,7 @@ def fork_configure_repository_task(self, source_url, comment_id, issue_id, revie
 
     if not response['status']:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Could not update toc.yml for {forked_name}: \n {response['message']}")
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': f"Could not update _toc.yml for {forked_name}"})
         return
     
     gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured.")
@@ -406,9 +406,9 @@ def zenodo_create_buckets_task(self, payload):
     if os.path.exists(local_file):
         msg = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
         gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': msg})
         return
-    
+
     data = payload['paper_data']
 
     # We need to go through some affiliation mapping here.
@@ -485,6 +485,63 @@ def zenodo_create_buckets_task(self, payload):
             json.dump(collect, outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
 
+@celery_app.taks(bind=True)
+def zenodo_flush_task(self,payload):
+    
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+
+    zenodo_record = get_zenodo_deposit(payload['issue_id'])
+    msg = []
+    prog = {}
+    items = zenodo_record.keys()
+    for item in items:
+        # Delete the bucket first.
+        record_name = item_to_record_name(item)
+        delete_response = zenodo_delete_bucket(zenodo_record[item]['links']['self'])
+        if delete_response.status_code == 204:
+            msg.append(f"\n Deleted {item} deposit successfully.")
+            prog[item] = True
+            # Flush ALL the upload records (json) associated with the item
+            tmp_record = glob.glob(os.path.join(get_deposit_dir(payload['issue_id']),f"zenodo_uploaded_{item}_NeuroLibre_{payload['issue_id']:05d}_*.json"))
+            if tmp_record:
+                os.remove(tmp_record)
+                msg.append(f"\n Deleted {tmp_record} record from the server.")
+            else:
+                msg.append(f"\n {tmp_record} did not exist.")
+            # Flush ALL the uploaded files associated with the item
+            tmp_file = glob.glob(os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_*.zip"))
+            if tmp_file:
+                os.remove(tmp_file)
+                msg.append(f"\n Deleted {tmp_file} record from the server.")
+            else:
+                msg.append(f"{tmp_file} did not exist.")
+        elif delete_response.status_code == 403:
+            prog[item] = False
+            msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+        elif delete_response.status_code == 410:
+            prog[item] = False
+            msg.append(f"\n The {item} deposit does not exist.")
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+    
+    # Update the issue comment
+    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+
+    check_deposits = prog.values()
+    if all(check_deposits):
+        fname = f"zenodo_deposit_NeuroLibre_{payload['issue_id']:05d}.json"
+        local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
+        os.remove(local_file)
+        msg.append(f"\n Deleted old deposit records from the server: {local_file}")
+        gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+    else:
+        msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
+        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+
 @celery_app.task(bind=True)
 def zenodo_upload_book_task(self, payload):
 
@@ -519,7 +576,52 @@ def zenodo_upload_book_task(self, payload):
         with open(log_file, 'w') as outfile:
                 json.dump(response.json(), outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zpath} to {payload['bucket_url']}")
-    
+
+@celery_app.task(bind=True)
+def zenodo_upload_data_task(self,payload):
+        
+        GH_BOT=os.getenv('GH_BOT')
+        github_client = Github(GH_BOT)
+        task_id = self.request.id
+
+        owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
+        fork_url = f"https://{provider}/roboneurolibre/{repo}"
+        commit_fork = format_commit_hash(fork_url,"HEAD")
+        record_name = item_to_record_name("data")
+
+        expect = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+        check_data = os.path.exists(expect)
+
+        # Get repo2data project name...
+        project_name = gh_get_project_name(github_client,payload['repository_url'])
+
+        if check_data:
+            logging.info(f"Compressed data already exists {record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+            tar_file = expect
+        else:
+            # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the 
+            # data is stored at the /DATA/project_name folder)
+            local_path = os.path.join("/DATA", project_name)
+            # Descriptive file name
+            zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}")
+            # Zip it!
+            shutil.make_archive(zenodo_file, 'zip', local_path)
+            tar_file = zenodo_file + ".zip"
+
+        response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"data")
+        if not response:
+            msg = f"Cannot upload {tar_file} to {payload['bucket_url']}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
+        else:
+            tmp = f"zenodo_uploaded_data_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+            with open(log_file, 'w') as outfile:
+                    json.dump(response.json(), outfile)
+            msg = f"Successful {tar_file} to {payload['bucket_url']}"
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.SUCCESS, meta={'message': msg})
+
 @celery_app.task(bind=True)
 def zenodo_upload_repository_task(self, payload):
 
@@ -545,7 +647,7 @@ def zenodo_upload_repository_task(self, payload):
     resp = os.system(f"wget -O {zenodo_file} {download_url}")
     if resp != 0:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot download: {download_url}")
-        self.request.revoke(terminate=True)
+        self.update_state(state=states.FAILURE, meta={'message': f"Cannot download {download_url}"})
         return
     else:
         response = zenodo_upload_repository(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork) 
@@ -555,9 +657,11 @@ def zenodo_upload_repository_task(self, payload):
             tmp = f"zenodo_uploaded_repository_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
             with open(log_file, 'w') as outfile:
-                    json.dump(response.json(), outfile)
-            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
-
+                json.dump(response.json(), outfile)
+            msg = f"Successful {zenodo_file} to {payload['bucket_url']}"        
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.SUCCESS, meta={'message': msg})
+            
 @celery_app.task(bind=True)
 def zenodo_upload_docker_task(self, payload):
 
@@ -590,6 +694,7 @@ def zenodo_upload_docker_task(self, payload):
             with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
+            self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker image upload for {owner}/{repo} at {payload['commit_hash']} has succeeded."})
     else:
         # Get the lookup_table.tsv entry (from the preview server) for the fork_url
         lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
@@ -598,7 +703,7 @@ def zenodo_upload_docker_task(self, payload):
             # Terminate ERROR
             msg = f"Looks like there's not a successful book build record for {fork_url}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
             return
 
         msg = f"Found docker image: \n {lut}"
@@ -610,7 +715,7 @@ def zenodo_upload_docker_task(self, payload):
         if not r['status']:
             msg = f"Cannot login to NeuroLibre private docker registry. \n {r['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
             return
 
         msg = f"Pulling docker image: \n {lut['docker_image']}"
@@ -621,7 +726,7 @@ def zenodo_upload_docker_task(self, payload):
         if not r['status']:
             msg = f"Cannot pull the docker image \n {r['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
             return
         
         msg = f"Exporting docker image: \n {lut['docker_image']}"
@@ -631,7 +736,7 @@ def zenodo_upload_docker_task(self, payload):
         if not r[0]['status']:
             msg = f"Cannot save the docker image \n {r[0]['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.request.revoke(terminate=True)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
             return
 
         tar_file = r[1]
@@ -642,14 +747,17 @@ def zenodo_upload_docker_task(self, payload):
         response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
         
         if not response:
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {tar_file} to {payload['bucket_url']}")
+            msg = f"Cannot upload {tar_file} to {payload['bucket_url']}"
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'message': msg})
         else:
             tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
             with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
-            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
-
+            msg = f"Successful {tar_file} to {payload['bucket_url']}"
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.SUCCESS, meta={'message': msg})
         r = docker_logout()
         # No need to break the operation this fails, just log.
         if not r['status']:
@@ -668,6 +776,7 @@ def zenodo_publish_task(self, payload):
     if response == "no-record-found":
         msg = "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'message': msg})
         return
     else:
         # Confirm that all items are published.
@@ -690,7 +799,7 @@ def zenodo_publish_task(self, payload):
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
             msg = "\n".join(response)
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
-
+            self.update_state(state=states.FAILURE, meta={'message': msg})
 
 ### DUPLICATION FOR NOW, SAVING THE DAY.
 

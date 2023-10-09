@@ -12,7 +12,8 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DeleteSchema, PublishSchema, DatasyncSchema, BooksyncSchema, ProdStartSchema, IDSchema
+from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DatasyncSchema, BooksyncSchema, \
+     ProdStartSchema, IDSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -20,7 +21,9 @@ from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
-from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, preprint_build_pdf_draft
+from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
+     zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
+     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task
 from github import Github
 
 """
@@ -264,6 +267,49 @@ def zenodo_upload_docker_post(user,id,repository_url):
     return response
 
 docs.register(zenodo_upload_docker_post)
+
+
+@app.route('/api/zenodo/upload/data', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Upload the submission data for zenodo deposit.', tags=['Zenodo'])
+@use_kwargs(DatasyncSchema())
+def zenodo_upload_data_post(user,id,repository_url):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    fname = f"zenodo_deposit_NeuroLibre_{issue_id:05d}.json"
+    local_file = os.path.join(get_deposit_dir(issue_id), fname)
+    with open(local_file, 'r') as f:
+        zenodo_record = json.load(f)
+    # Fetch bucket url of the requested type of item
+    bucket_url = zenodo_record['data']['links']['bucket']
+    
+    task_title = "Reproducibility Assets - Archive Data"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(issue_id = id,
+                          bucket_url = bucket_url,
+                          comment_id = comment_id,
+                          review_repository = reviewRepository,
+                          repository_url = repository_url,
+                          task_title=task_title)
+
+    task_result = zenodo_upload_data_task.apply_async(args=[celery_payload])
+
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Started data upload sequence.")
+        response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
+
+docs.register(zenodo_upload_data_post)
+
+
 
 @app.route('/api/zenodo/status', methods=['POST'])
 @htpasswd.required
@@ -608,63 +654,28 @@ docs.register(api_zenodo_list_post)
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Flush records and remove respective uploads from Zenodo, if available for a submission ID.', tags=['Zenodo'])
-@use_kwargs(DeleteSchema())
-def api_zenodo_flush_post(user,issue_id,items):
+@use_kwargs(DatasyncSchema())
+def api_zenodo_flush_post(user,id,repository_url):
     """
-    Delete buckets and uploaded files from zenodo if exist for a requested item type.
+    Delete buckets and uploaded files from zenodo.
     """
-    def run():
-    # Set env
-        ZENODO_TOKEN = os.getenv('ZENODO_API')
-        headers = {"Content-Type": "application/json","Authorization": "Bearer {}".format(ZENODO_TOKEN)}
-        # Read json record of the deposit
-        fname = f"zenodo_deposit_NeuroLibre_{'%05d'%issue_id}.json"
-        local_file = os.path.join(get_deposit_dir(issue_id), fname)
-        dat2recmap = {"data":"Dataset","repository":"GitHubRepo","docker":"DockerImage","book":"JupyterBook"}
-        
-        with open(local_file, 'r') as f:
-            zenodo_record = json.load(f)
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
 
-        for item in items: 
-            self_url = zenodo_record[item]['links']['self']
-            # Delete the deposit
-            r3 = requests.delete(self_url,headers=headers)
-            if r3.status_code == 204:
-                yield f"\n Deleted {item} deposit successfully at {self_url}."
-                yield ""
-                # We need to delete these from the Zenodo records file
-                if item in zenodo_record: del zenodo_record[item]
-                # Flush ALL the upload records (json) associated with the item
-                tmp_record = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_uploaded_{item}_NeuroLibre_{'%05d'%issue_id}_*.json"))
-                if tmp_record:
-                    for f in tmp_record:
-                        os.remove(f)
-                        yield f"\n Deleted {f} record from the server."
-                # Flush ALL the uploaded files associated with the item
-                tmp_file = glob.glob(os.path.join(get_archive_dir(issue_id),f"{dat2recmap[item]}_10.55458_NeuroLibre_{'%05d'%issue_id}_*.zip"))
-                if tmp_file:
-                    for f in tmp_file:
-                        os.remove(f)
-                        yield f"\n Deleted {f} record from the server."
-            elif r3.status_code == 403: 
-                yield f"\n The {item} archive has already been published, cannot be deleted."
-                yield ""
-            elif r3.status_code == 410:
-                yield f"\n The {item} deposit does not exist."
-                yield ""
-        # Write zenodo record json file or rm existing one if empty at this point
-        # Delete the old one
-        os.remove(local_file)
-        yield f"\n Deleted old {local_file} record from the server."
-        # Write the new one
-        if zenodo_record:
-            with open(local_file, 'w') as outfile:
-                json.dump(zenodo_record, outfile)
-            yield f"\n Created new {local_file}."
-        else:
-            yield f"\n All the deposit records have been deleted."
+    #app.logger.debug(f'{issue_id} {repository_url}')
+    project_name = gh_get_project_name(github_client,repository_url)
+    #app.logger.debug(f'{project_name}')
+    task_title = "ZENODO FLUSH RECORDS AND UPLOADS"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
 
-    return flask.Response(run(), mimetype='text/plain')
+    celery_payload = dict(issue_id = id,
+                    comment_id = comment_id,
+                    review_repository = reviewRepository,
+                    repository_url = repository_url,
+                    task_title=task_title)
+
+    task_result = zenodo_flush_task.apply_async(args=[celery_payload])
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_flush_post)

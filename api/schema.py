@@ -67,13 +67,6 @@ class UploadSchema(Schema):
 class ListSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
 
-class DeleteSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
-    items = fields.List(fields.Str(),required=True,description="List of the items to be deleted from Zenodo.")
-
-class PublishSchema(Schema):
-    issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
-
 class DatasyncSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
