@@ -413,15 +413,9 @@ def preview_build_book_task(self, payload):
         try:
             paper_string = gh_get_paper_markdown(github_client,payload['repo_url'])
             fm = parse_front_matter(paper_string)
-            gpt_msg = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
-            token =os.getenv('OAI_TOKEN')
-            gpt_headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
-            gpt_payload = {'model':'gpt-3.5-turbo',
-                        "messages": [{"role": "user", "content": gpt_msg}]}
-            logging.info("Trying openai API")
-            gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
-            completion = json.loads(gpt_response.text)
-            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {completion['choices'][0]['message']['content']} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
+            prompt = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
+            gpt_response = get_gpt_response(prompt)
+            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {gpt_response} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
         except Exception as e:
             logging.info(f"{str(e)}")
             issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
@@ -619,6 +613,8 @@ def zenodo_upload_data_task(self,payload):
         GH_BOT=os.getenv('GH_BOT')
         github_client = Github(GH_BOT)
         task_id = self.request.id
+
+        gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
         owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
         fork_url = f"https://{provider}/roboneurolibre/{repo}"
@@ -820,9 +816,9 @@ def zenodo_publish_task(self, payload):
         publish_status = zenodo_confirm_status(payload['issue_id'],"published")
         # If all items are published, success. Add DOIs.
         if publish_status[0]:
-            response.append("\n I will issue commands to set DOIs for the reproducibility assets. I'll talk to myself a bit, but don't worry, I am not an evil AGI (yet :smiling_imp:).")
-            msg = "\n".join(response)
-            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
+            prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet)."
+            gpt_response = get_gpt_response(prompt)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Congrats! Reproducibility assets have been successfully archived and published :rocket: \n\n {gpt_response}", False)
             # Set DOIs. This part is a little crazy, because roboneuro will be 
             # telling itself what to do. Like father, like son.
             dois = zenodo_collect_dois(payload['issue_id'])

@@ -1,5 +1,6 @@
 import os
 import glob
+import json
 import time
 import git
 from flask import abort
@@ -8,12 +9,14 @@ import yaml
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 import tempfile
+import requests
 from dotenv import load_dotenv
 """
 Helper functions for the tasks 
 performed by both servers (preview and preprint).
 """
 
+load_dotenv()
 
 # GLOBAL VARIABLES
 BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
@@ -340,3 +343,12 @@ def get_book_target_tail(book_url,commit_hash):
     format_url = book_url.split(commit_hash)
     book_target = remove_first_last_slash(format_url[1])
     return book_target
+
+def get_gpt_response(prompt):
+    token =os.getenv('OAI_TOKEN')
+    gpt_headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
+    gpt_payload = {'model':'gpt-3.5-turbo',
+                   "messages": [{"role": "user", "content": prompt}]}
+    gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
+    completion = json.loads(gpt_response.text)
+    return completion['choices'][0]['message']['content']
