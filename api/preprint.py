@@ -59,8 +59,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     data["metadata"]["contributors"] = [{'name':'NeuroLibre, Admin', 'affiliation': 'NeuroLibre', 'type': 'ContactPerson' }]
 
     if (archive_type == 'book'):
-        data["metadata"]["upload_type"] = "publication"
-        data["metadata"]["publication_type"] = "preprint"
+        data["metadata"]["upload_type"] = "other"
         data["metadata"]["description"] = f"NeuroLibre JupyterBook built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = "dataset"
@@ -487,7 +486,9 @@ def zenodo_collect_dois(issue_id):
     collect = {}
     for item in zenodo_record.keys():
         tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}_*.json"))
-        collect[item] = tmp['doi_url']
+        with open(tmp, 'r') as f:
+            tmp_record = json.load(f)
+        collect[item] = tmp_record['doi_url']
     return collect
 
 # Function to extract citations from a cell's source code
