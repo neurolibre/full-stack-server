@@ -194,7 +194,7 @@ def fork_configure_repository_task(self, payload):
     # Production cannot be started if there's a book at the latest commit hash at which
     # the production is asked for.
     if not book_status:
-        msg = f":warning: A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
+        msg = f"\n > [!WARNING] \n > A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
         self.update_state(state=states.FAILURE, meta={'message': msg})
         return
