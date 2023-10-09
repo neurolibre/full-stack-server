@@ -319,7 +319,7 @@ def fork_configure_repository_task(self, payload):
     # Write production record.
     now = get_time()
     rec_info['forked_at'] = now
-    rec_info['forked_repository'] = forked_repo
+    rec_info['forked_repository'] = f"https://github.com/{forked_name}"
     with open(local_file, 'w') as outfile:
         json.dump(rec_info, outfile)
     self.update_state(state=states.SUCCESS, meta={'message': msg})
