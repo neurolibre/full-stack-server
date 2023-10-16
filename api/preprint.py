@@ -295,10 +295,13 @@ def zenodo_upload_item(upload_file,bucket_url,issue_id,commit_fork,item_name):
         extension = "tar.gz"
 
     if record_name:
-        with open(upload_file, "rb") as fp:
-            r = requests.put(f"{bucket_url}/{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.{extension}",
-                                    params=params,
-                                    data=fp)
+        try:
+            with open(upload_file, "rb") as fp:
+                r = requests.put(f"{bucket_url}/{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.{extension}",
+                                        params=params,
+                                        data=fp)
+        except requests.exceptions.RequestException as e:
+            r = e
     else:
 
         r = None
