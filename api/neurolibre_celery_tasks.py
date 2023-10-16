@@ -718,6 +718,8 @@ def zenodo_upload_docker_task(self, payload):
         gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
         # If image exists but could not upload due to a previous issue.
         response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
+        logging.info(f"DEBUG DOCKER")
+        logging.info(f"{str(response)}")
         if (not response) or (isinstance(response, requests.exceptions.RequestException)) :
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)} Cannot upload {tar_file} to {payload['bucket_url']}")
         else:
@@ -777,7 +779,7 @@ def zenodo_upload_docker_task(self, payload):
         gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
 
         response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
-        
+        logging.info(f"{str(response)}")
         if not response:
             msg = f"Cannot upload {tar_file} to {payload['bucket_url']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
