@@ -718,10 +718,12 @@ def zenodo_upload_docker_task(self, payload):
         gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
         # If image exists but could not upload due to a previous issue.
         response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
-        logging.info(f"DEBUG DOCKER")
-        logging.info(f"{str(response)}")
         if (not response) or (isinstance(response, requests.exceptions.RequestException)) :
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)} Cannot upload {tar_file} to {payload['bucket_url']}")
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
+            self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
+        elif (isinstance(response, requests.Response)) and (response.status_code > 300):
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
+            self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {response.text}"})
         else:
             tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
