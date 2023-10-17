@@ -807,9 +807,28 @@ def zenodo_publish_task(self, payload):
     task_id = self.request.id
     
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
-
-    response = zenodo_publish(payload['issue_id'])
+    prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet). Keep it to a few sentences."
+    # Check if already published
+    publish_status_init = zenodo_confirm_status(payload['issue_id'],"published")
     
+    if publish_status_init[0]:
+        # Means already published. In this case just set the DOIs.
+        gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"As the reproducibility assets have already been published, I will just set the DOIs.")
+        gpt_response = get_gpt_response(prompt)
+        # Show already exists status
+        gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Looks like the reproducibility assets have already been published! So... \n\n {gpt_response}", False)
+        dois = zenodo_collect_dois(payload['issue_id'])
+        for key in dois.keys():
+            command = f"@roboneuro set {dois[key]} as {key} archive"
+            gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],command)
+            time.sleep(1)
+        return
+    else:
+        # Not published, issue the command.
+        gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"Let's freeze those reproducibility assets in time! Publishing the Zenodo records.")
+        # PUBLISH ZENODO RECORDS
+        response = zenodo_publish(payload['issue_id'])
+
     if response == "no-record-found":
         msg = "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
@@ -821,11 +840,8 @@ def zenodo_publish_task(self, payload):
         publish_status = zenodo_confirm_status(payload['issue_id'],"published")
         # If all items are published, success. Add DOIs.
         if publish_status[0]:
-            prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet). Keep it to a few sentences."
             gpt_response = get_gpt_response(prompt)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Congrats! Reproducibility assets have been successfully archived and published :rocket: \n\n {gpt_response}", False)
-            # Set DOIs. This part is a little crazy, because roboneuro will be 
-            # telling itself what to do. Like father, like son.
             dois = zenodo_collect_dois(payload['issue_id'])
             for key in dois.keys():
                 command = f"@roboneuro set {dois[key]} as {key} archive"
