@@ -730,7 +730,7 @@ def zenodo_upload_docker_task(self, payload):
             with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
-            self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker image upload for {owner}/{repo} at {payload['commit_hash']} has succeeded."})
+            self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker image upload for {owner}/{repo} at {commit_fork} has succeeded."})
     else:
         # Get the lookup_table.tsv entry (from the preview server) for the fork_url
         lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
