@@ -491,7 +491,7 @@ def zenodo_collect_dois(issue_id):
         tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"))
         with open(tmp[0], 'r') as f:
             tmp_record = json.load(f)
-        collect[item] = tmp_record['doi_url']
+        collect[item] = tmp_record['doi']
     return collect
 
 # Function to extract citations from a cell's source code
