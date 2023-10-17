@@ -488,7 +488,7 @@ def zenodo_collect_dois(issue_id):
     zenodo_record = get_zenodo_deposit(issue_id)
     collect = {}
     for item in zenodo_record.keys():
-        tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+        tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"))
         with open(tmp[0], 'r') as f:
             tmp_record = json.load(f)
         collect[item] = tmp_record['doi_url']
