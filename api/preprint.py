@@ -628,7 +628,7 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
                     For more information on integrated research objects (e.g., NRPs) that bundle narrative and executable content for reproducible and transparent publications, \
                     please refer to @Dupre2022-iro. NeuroLibre is sponsored by the Canadian Open Neuroscience Platform (CONP) [@Harding2023-conp].\n\n")
             file.write(markdownify.markdownify(markdown.markdown(markdown_output)))
-            file.write("\n\n## References\n\n")
+            file.write("\n\n# References\n\n")
         # Update the bibliography for NeuroLibre entries.
         merge_and_check_bib(target_path)
         return {"status":True, "message":"Extended PDF resources have been created."}
