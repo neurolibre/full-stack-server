@@ -513,14 +513,14 @@ def extract_paragraphs_with_citations(notebook):
     for cell in notebook['cells']:
         if cell['cell_type'] == 'markdown':
             # Extract citations based on the appropriate pattern
-            matches = extract_citations(cell['source'], r'\[@([^[\]]*)\]')
+            #matches = extract_citations(cell['source'], r'\[@([^[\]]*)\]')
             # If there are citations, store the current paragraph and its section
-            if matches:
-                if current_paragraph:
-                    paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
-                    current_paragraph = ''
-                current_paragraph += cell['source']
-                current_section = cell.get('metadata', {}).get('section', '')
+            #if matches:
+            if current_paragraph:
+                paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
+                current_paragraph = ''
+            current_paragraph += cell['source']
+            current_section = cell.get('metadata', {}).get('section', '')
     # Add the last paragraph if it has citations
     if current_paragraph:
         paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
