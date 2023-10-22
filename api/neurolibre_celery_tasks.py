@@ -682,18 +682,21 @@ def zenodo_upload_repository_task(self, payload):
         self.update_state(state=states.FAILURE, meta={'message': f"Cannot download {download_url}"})
         return
     else:
-        response = zenodo_upload_repository(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork) 
-        if not response:
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot upload {zenodo_file} to {payload['bucket_url']}")
+        response = zenodo_upload_item(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork,"repository")
+        if (not response) or (isinstance(response, requests.exceptions.RequestException)) :
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
+            self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
+        elif (isinstance(response, requests.Response)) and (response.status_code > 300):
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
+            self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {response.text}"})
         else:
             tmp = f"zenodo_uploaded_repository_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
             with open(log_file, 'w') as outfile:
-                json.dump(response.json(), outfile)
-            msg = f"Successful {zenodo_file} to {payload['bucket_url']}"        
-            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.SUCCESS, meta={'message': msg})
-            
+                    json.dump(response.json(), outfile)
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
+            self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker image upload for {owner}/{repo} at {commit_fork} has succeeded."})
+
 @celery_app.task(bind=True)
 def zenodo_upload_docker_task(self, payload):
 
