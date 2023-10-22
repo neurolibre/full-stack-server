@@ -599,7 +599,8 @@ def zenodo_upload_book_task(self, payload):
     
     logging.info(f"{zpath}")
     response = zenodo_upload_item(zpath,payload['bucket_url'],payload['issue_id'],commit_fork,"book")
-    logging.info(f"{response}")
+    logging.info(f"{response.status_code}")
+    logging.info(f"{response.text}")
     if (not response) or (isinstance(response, requests.exceptions.RequestException)):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
         self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
