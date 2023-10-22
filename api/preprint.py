@@ -264,27 +264,6 @@ def item_to_record_name(item):
     else: 
         return None
 
-def zenodo_upload_book(zip_file,bucket_url,issue_id,commit_fork):
-    ZENODO_TOKEN = os.getenv('ZENODO_API')
-    params = {'access_token': ZENODO_TOKEN}
-
-    with open(zip_file, "rb") as fp:
-        r = requests.put(f"{bucket_url}/JupyterBook_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.zip",
-                                params=params,
-                                data=fp)
-
-    return r
-
-def zenodo_upload_repository(zip_file,bucket_url,issue_id,commit_fork):
-    ZENODO_TOKEN = os.getenv('ZENODO_API')
-    params = {'access_token': ZENODO_TOKEN}
-
-    with open(zip_file, "rb") as fp:
-        r = requests.put(f"{bucket_url}/GitHubRepo_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.zip",
-                        params=params,
-                        data=fp)
-    return r
-
 def zenodo_upload_item(upload_file,bucket_url,issue_id,commit_fork,item_name):
     ZENODO_TOKEN = os.getenv('ZENODO_API')
     params = {'access_token': ZENODO_TOKEN}
