@@ -586,7 +586,7 @@ def zenodo_upload_book_task(self, payload):
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
     record_name = item_to_record_name("book")
-    
+
     results = book_get_by_params(commit_hash=commit_fork)
     # Need to manage for single or multipage location.
     book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
@@ -596,15 +596,17 @@ def zenodo_upload_book_task(self, payload):
     # Zip it!
     shutil.make_archive(zenodo_file, 'zip', local_path)
     zpath = zenodo_file + ".zip"
-    
-    logging.info(f"{zpath}")
+
+    logging.info(f"Uploading {zpath}")
     response = zenodo_upload_item(zpath,payload['bucket_url'],payload['issue_id'],commit_fork,"book")
     logging.info(f"{response.status_code}")
     logging.info(f"{response.text}")
     if (not response) or (isinstance(response, requests.exceptions.RequestException)):
+        logging.info(f"Case1")
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
         self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
     elif (isinstance(response, requests.Response)) and (response.status_code > 300):
+        logging.info(f"Case2")
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
         self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {response.text}"})
     else:
