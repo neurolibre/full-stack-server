@@ -280,7 +280,7 @@ def zenodo_upload_item(upload_file,bucket_url,issue_id,commit_fork,item_name):
                                         params=params,
                                         data=fp)
         except requests.exceptions.RequestException as e:
-            r = e
+            r = str(e)
     else:
 
         r = None

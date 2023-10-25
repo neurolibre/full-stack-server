@@ -16,6 +16,7 @@ import requests
 from flask import Response
 import shutil
 import base64
+from celery.exceptions import Ignore
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -601,21 +602,40 @@ def zenodo_upload_book_task(self, payload):
     response = zenodo_upload_item(zpath,payload['bucket_url'],payload['issue_id'],commit_fork,"book")
     logging.info(f"{response.status_code}")
     logging.info(f"{response.text}")
-    if (not response) or (isinstance(response, requests.exceptions.RequestException)):
-        logging.info(f"Case1")
-        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
-        self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
-    elif (isinstance(response, requests.Response)) and (response.status_code > 300):
-        logging.info(f"Case2")
-        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-        self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {response.text}"})
-    else:
-        tmp = f"zenodo_uploaded_book_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
-        log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
-        with open(log_file, 'w') as outfile:
+
+    if (isinstance(response, requests.Response)):
+        if (response.status_code > 300):
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
+            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+        elif (response.status_code < 300):
+            tmp = f"zenodo_uploaded_book_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+            with open(log_file, 'w') as outfile:
                 json.dump(response.json(), outfile)
-        gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
-        self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Book upload for {owner}/{repo} at {commit_fork} has succeeded."})
+            gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
+            self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Book upload for {owner}/{repo} at {commit_fork} has succeeded."})
+    elif (isinstance(response, str)):
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
+            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+    elif response is None:
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
+            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+
+    # if (not response) or (isinstance(response, requests.exceptions.RequestException)):
+    #     logging.info(f"Case1")
+    #     gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{str(response)}")
+    #     self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {str(response)}"})
+    # elif (isinstance(response, requests.Response)) and (response.status_code > 300):
+    #     logging.info(f"Case2")
+    #     gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
+    #     self.update_state(state=states.FAILURE, meta={'message': f"ERROR {fork_url}: {response.text}"})
+    # else:
+    #     tmp = f"zenodo_uploaded_book_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+    #     log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+    #     with open(log_file, 'w') as outfile:
+    #             json.dump(response.json(), outfile)
+    #     gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {zenodo_file} to {payload['bucket_url']}")
+    #     self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Book upload for {owner}/{repo} at {commit_fork} has succeeded."})
 
 @celery_app.task(bind=True)
 def zenodo_upload_data_task(self,payload):
