@@ -14,7 +14,7 @@ GH_ORGANIZATION = "roboneurolibre"
 def isNotBlank(myString):
     return bool(myString and myString.strip())
 
-def gh_response_template(task_name,task_id,message="",collapse=True):
+def gh_response_template(task_name,task_id,issue_id,comment_id,message="",collapse=True):
     """
     Please see the docstring of the gh_template_response.
     Convention follows Celery task states.
@@ -32,12 +32,12 @@ def gh_response_template(task_name,task_id,message="",collapse=True):
         message = str()
 
     response_template = dict(
-                pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message}",
-                received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
-                started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
-                success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
-                failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
-                exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}")
+                pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})")
     return response_template
 
 def gh_filter(input_str):
@@ -133,7 +133,7 @@ def gh_template_respond(github_client,phase,task_name,repo,issue_id,task_id="",c
     message (optional)
         To display custom message/logs in a collapsable line.
     """
-    template = gh_response_template(task_name,task_id,message=message,collapse=collapsable)
+    template = gh_response_template(task_name,task_id,issue_id,comment_id,message=message,collapse=collapsable)
     if phase == "pending":
         # This one adds a new comment, returns comment_id
         return gh_create_comment(github_client,repo,issue_id,template['pending'])
