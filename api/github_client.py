@@ -35,9 +35,9 @@ def gh_response_template(task_name,task_id,issue_id,comment_id,message="",collap
                 pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
                 received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
                 started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
-                success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
-                failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
-                exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})")
+                success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
+                failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
+                exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}")
     return response_template
 
 def gh_filter(input_str):
