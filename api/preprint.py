@@ -516,7 +516,7 @@ def substitute_cite_commands(input_folder="content"):
             if filepath.endswith(".ipynb") and not (".ipynb_checkpoints" in filepath):
                 filepaths.append(filepath)
 
-    for file_name in os.listdir(filepaths):
+    for file_name in filepaths:
         file_path = os.path.join(input_folder, file_name)
         if file_name.endswith('.ipynb'):
             # Read Jupyter notebook(s)
