@@ -507,7 +507,16 @@ def extract_paragraphs_with_citations(notebook):
 
 def substitute_cite_commands(input_folder="content"):
     # Process each file in the input folder
-    for file_name in os.listdir(input_folder):
+    # Limit to IPYNB for now
+    filepaths = []
+    for subdir, dirs, files in os.walk(input_folder):
+        for file in files:
+            #print os.path.join(subdir, file)
+            filepath = subdir + os.sep + file
+            if filepath.endswith(".ipynb") and not (".ipynb_checkpoints" in filepath):
+                filepaths.append(filepath)
+
+    for file_name in os.listdir(filepaths):
         file_path = os.path.join(input_folder, file_name)
         if file_name.endswith('.ipynb'):
             # Read Jupyter notebook(s)
@@ -523,9 +532,9 @@ def substitute_cite_commands(input_folder="content"):
                         for match in matches:
                             # Split the citations by comma and format them accordingly
                             if match:
-                                citations = match.split(',')
                                 try:
-                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+                                    citations = match.split(',')
+                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
                                 except:
                                     pass
 
@@ -538,9 +547,10 @@ def substitute_cite_commands(input_folder="content"):
                         for match in matches:
                             if match:
                             # Split the citations by comma and format them accordingly
-                                citations = match.split(',')
+                                
                                 try:
-                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+                                    citations = match.split(',')
+                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
                                 except:
                                     pass
                                 # Replace the original pattern with the formatted citations
