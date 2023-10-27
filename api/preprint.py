@@ -570,8 +570,8 @@ def substitute_cite_commands(input_folder="content"):
                 markdown_output += f"{cleaned_paragraph}\n"
 
             # Get rid of HTML tags
-            markdown_output = remove_html_tags(markdown_output)
-            return markdown_output
+        markdown_output = remove_html_tags(markdown_output)
+    return markdown_output
 
 def append_bib_files(file1_path, file2_path, output_path):
     # Read the contents of the first BibTeX file
