@@ -522,11 +522,12 @@ def substitute_cite_commands(input_folder="content"):
                         # Embed citations in the cell's source code
                         for match in matches:
                             # Split the citations by comma and format them accordingly
-                            citations = match.split(',')
-                            try:
-                                formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
-                            except:
-                                pass
+                            if match:
+                                citations = match.split(',')
+                                try:
+                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+                                except:
+                                    pass
 
                             # Replace the original pattern with the formatted citations
                             cell['source'] = re.sub(r'\{cite:p\}`([^`]*)`', f'[{formatted_citations}]', cell['source'], count=1)
@@ -535,14 +536,15 @@ def substitute_cite_commands(input_folder="content"):
                     if matches:
                         # Embed citations in the cell's source code
                         for match in matches:
+                            if match:
                             # Split the citations by comma and format them accordingly
-                            citations = match.split(',')
-                            try:
-                                formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
-                            except:
-                                pass
-                            # Replace the original pattern with the formatted citations
-                            cell['source'] = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', cell['source'], count=1)
+                                citations = match.split(',')
+                                try:
+                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations])
+                                except:
+                                    pass
+                                # Replace the original pattern with the formatted citations
+                                cell['source'] = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', cell['source'], count=1)
 
             # Export the notebook as Markdown
             filtered_paragraphs = extract_paragraphs_with_citations(notebook)
