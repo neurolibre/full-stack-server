@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 import shutil
 import markdown
 import markdownify
+import yaml
 
 load_dotenv()
 
@@ -473,105 +474,163 @@ def zenodo_collect_dois(issue_id):
         collect[item] = tmp_record['doi']
     return collect
 
-# Function to extract citations from a cell's source code
-def extract_citations(text, pattern):
-    # Find all instances of {cite:*}`some-text`
-    matches = re.findall(pattern, text)
-    return matches
+def find_values_by_key(data, key):
+    """
+    Helper (generator) function to extract values from
+    a key regardless of its depth.
+    """
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k == key:
+                yield v
+            elif isinstance(v, (dict, list)):
+                yield from find_values_by_key(v, key)
+    elif isinstance(data, list):
+        for item in data:
+            yield from find_values_by_key(item, key)
 
-# Function to remove HTML tags from Markdown content
-def remove_html_tags(markdown):
-    soup = BeautifulSoup(markdown, "html.parser")
-    return soup.get_text()
+def get_jb_file_extensions(path,file_list):
+    """
+    Jupyter Book _toc.yml does not include file extensions.
+    To perform latex conversion, extensions are needed. This function
+    is to create a list of source files with their extensions by matching
+    _toc filenames with glob patterns (in the cloned target repo).
+    """
+    for idx, file in enumerate(file_list):
+        file_list[idx] = glob.glob(os.path.join(path,"content",file + "*"))[0]
+    return file_list
 
-def extract_paragraphs_with_citations(notebook):
-    paragraphs_with_citations = []
+
+def parse_section_and_body(notebook):
+    """
+    Read cell metadata to ensure that they are properly
+    parsed under the respective section.
+    """
+    parsed_content = []
     current_paragraph = ''
     current_section = ''
     # Process each cell in the notebook
     for cell in notebook['cells']:
         if cell['cell_type'] == 'markdown':
-            # Extract citations based on the appropriate pattern
-            #matches = extract_citations(cell['source'], r'\[@([^[\]]*)\]')
+            # You can further filter the text based on conditions, e.g. only to keep paragraphs
+            # that has citations.
+            # matches = extract_citations(cell['source'], r'\[@([^[\]]*)\]')
             # If there are citations, store the current paragraph and its section
-            #if matches:
+            # if matches:
             if current_paragraph:
-                paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
+                parsed_content.append({'section': current_section, 'paragraph': current_paragraph})
                 current_paragraph = ''
             current_paragraph += cell['source']
             current_section = cell.get('metadata', {}).get('section', '')
     # Add the last paragraph if it has citations
     if current_paragraph:
-        paragraphs_with_citations.append({'section': current_section, 'paragraph': current_paragraph})
-    return paragraphs_with_citations
+        parsed_content.append({'section': current_section, 'paragraph': current_paragraph})
+    return parsed_content
+    
+def myst_to_joss_tex_cite(input,match_format, subs_format):
+    """
+    In a given string, find (MyST) citation directives that matches 
+    match_format, then replace them with JOSS-text template citation 
+    directives based on the subs_format.
 
-def substitute_cite_commands(input_folder="content"):
-    # Process each file in the input folder
-    # Limit to IPYNB for now
-    filepaths = []
-    for subdir, dirs, files in os.walk(input_folder):
-        for file in files:
-            #print os.path.join(subdir, file)
-            filepath = subdir + os.sep + file
-            if filepath.endswith(".ipynb") and not (".ipynb_checkpoints" in filepath):
-                filepaths.append(filepath)
+    This function is used by substitute_cite_commands to handle multiple formats.
+    See: https://joss.readthedocs.io/en/latest/submitting.html#example-paper-and-bibliography
+    Also see: https://jupyterbook.org/en/stable/content/citations.html
+    """
+    matches = re.findall(match_format, input)
+    if matches:
+        for match in matches:
+            if match:
+                try:
+                    citations = match.split(',')
+                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
+                    if subs_format == "p":              
+                        input = re.sub(match_format, f'[{formatted_citations}]', input, count=1)   
+                    if subs_format == "t":
+                        input = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', input, count=1)   
+                except:
+                    pass 
+                
+        return input
 
-    for file_name in filepaths:
-        file_path = os.path.join(input_folder, file_name)
+def substitute_cite_directives(input):
+    """
+    Calls md_to_tex_cite for multiple citation formats, each case has to be 
+    handled individually as substitute patterns vary.
+    """
+    tmp = myst_to_joss_tex_cite(input, r'\{cite:p\}`([^`]*)`', "p")
+    input = tmp if tmp else input
+    tmp = myst_to_joss_tex_cite(input, r'\{cite:t\}`([^`]*)`', "t")
+    input = tmp if tmp else input
+    return input 
+
+def remove_html_tags(markdown):
+    """
+    Jupyter Book is intended to write documents without using html tags.
+    When wrapped between tags, MyST/JB parsers will skip the content. 
+    Use b4s to get rid of html tags. 
+    """
+    soup = BeautifulSoup(markdown, "html.parser")
+    return soup.get_text()
+
+def remove_admonitions(input):
+    """
+    Removes admonition and code blocks, accounts for nested use.
+    """
+    matches = list(re.finditer(r'(`{1,2})([^`]*?)(\1)', input, re.DOTALL))
+    if matches:
+        first_match_start = matches[0].start()
+        last_match_end = matches[-1].end()
+        input = input[:first_match_start] + input[last_match_end:]
+    return input
+
+def ipynb_to_joss_md(file_name):
+    """
+    Explain
+    """
+    notebook = nbformat.read(file_name, as_version=nbformat.NO_CONVERT)
+    notebook.cells = [cell for cell in notebook.cells if cell.cell_type != "code"]
+    # Process each cell in the notebook
+    for cell in notebook['cells']:
+        if cell['cell_type'] == 'markdown':
+            cell['source'] = substitute_cite_directives(cell['source'])
+    # Export the notebook as Markdown
+    parsed_paragraphs = parse_section_and_body(notebook)
+    markdown_output = ''
+    for paragraph_info in parsed_paragraphs:
+        if paragraph_info['section']:
+            markdown_output += "\n\n"
+            markdown_output += f"## {paragraph_info['section']}\n\n"
+        # Remove admonitions and code blocks by accounting for nested patterns                    
+        paragraph_info['paragraph'] = remove_admonitions(paragraph_info['paragraph'])           
+        markdown_output += f"{paragraph_info['paragraph']}\n"
+    return remove_html_tags(markdown_output)
+
+def myst_md_to_joss_md(file_name):
+    """
+    Explain
+    """
+    with open(file_name, "r", encoding="utf-8") as file:
+        markdown_content = file.read()
+
+    markdown_content = substitute_cite_directives(markdown_content)
+    markdown_content = remove_admonitions(markdown_content)
+    return remove_html_tags(markdown_content)
+    
+def jbook_to_joss_md(input_files):
+    """
+    Explain
+    """
+    output = ""
+    for file_name in input_files:
         if file_name.endswith('.ipynb'):
-            # Read Jupyter notebook(s)
-            notebook = nbformat.read(file_path, as_version=nbformat.NO_CONVERT)
-            notebook.cells = [cell for cell in notebook.cells if cell.cell_type != "code"]
-            # Process each cell in the notebook
-            for cell in notebook['cells']:
-                if cell['cell_type'] == 'markdown':
-                    # Deal with (Author et al. YYYY) and (Someone et al. YYYY, Someone-else et al. ZZZZ)
-                    matches = extract_citations(cell['source'], r'\{cite:p\}`([^`]*)`')
-                    if matches:
-                        # Embed citations in the cell's source code
-                        for match in matches:
-                            # Split the citations by comma and format them accordingly
-                            if match:
-                                try:
-                                    citations = match.split(',')
-                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
-                                except:
-                                    pass
-
-                            # Replace the original pattern with the formatted citations
-                            cell['source'] = re.sub(r'\{cite:p\}`([^`]*)`', f'[{formatted_citations}]', cell['source'], count=1)
-                # Deal with Author et al. (YYYY)
-                    matches = extract_citations(cell['source'], r'\{cite:t\}`([^`]*)`')
-                    if matches:
-                        # Embed citations in the cell's source code
-                        for match in matches:
-                            if match:
-                            # Split the citations by comma and format them accordingly
-                                
-                                try:
-                                    citations = match.split(',')
-                                    formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
-                                except:
-                                    pass
-                                # Replace the original pattern with the formatted citations
-                                cell['source'] = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', cell['source'], count=1)
-
-            # Export the notebook as Markdown
-            filtered_paragraphs = extract_paragraphs_with_citations(notebook)
-
-            markdown_output = ''
-            for paragraph_info in filtered_paragraphs:
-                if paragraph_info['section']:
-                    markdown_output += "\n\n"
-                    markdown_output += f"## {paragraph_info['section']}\n\n"
-
-                # Remove admonition, table, figure etc. blocks
-                cleaned_paragraph = re.sub(r'```{.*?}*```', '', paragraph_info['paragraph'], flags=re.DOTALL)
-                markdown_output += f"{cleaned_paragraph}\n"
-
-            # Get rid of HTML tags
-        markdown_output = remove_html_tags(markdown_output)
-    return markdown_output
+            markdown_output = ipynb_to_joss_md(file_name)    
+            output = output + markdown_output
+        elif file_name.endswith('.md'):
+            markdown_output = myst_md_to_joss_md(file_name)    
+            output = output + markdown_output
+   
+    return output
 
 def append_bib_files(file1_path, file2_path, output_path):
     # Read the contents of the first BibTeX file
@@ -600,7 +659,7 @@ def merge_and_check_bib(target_path):
     partial_bib = "/home/ubuntu/full-stack-server/assets/partial.bib"
     append_bib_files(orig_bib, partial_bib, orig_bib)
 
-def create_extended_pdf_sources(target_path, issue_id,repository_url):
+def create_extended_pdf_sources(target_path, issue_id, repository_url):
     """
     target_path is where repository_url is cloned by the celery worker.
     """
@@ -608,7 +667,23 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
     # articles, then will substitute MyST cite commands with Pandoc directives 
     # recognized by OpenJournals PDF compilers.\
     try: 
-        markdown_output = substitute_cite_commands(os.path.join(target_path,"content"))
+        toc = get_local_yaml(os.path.join(target_path,"content","_toc.yml"))
+        nl_local_file = os.path.join(target_path,"content","_neurolibre.yml")
+        if os.path.isfile(nl_local_file):
+            nl_config = get_local_yaml(nl_local_file)
+        else:
+            nl_config = None
+
+        if toc['format'] == 'jb-book':
+            file_values = list(find_values_by_key(toc, "file"))
+            file_list = list(get_jb_file_extensions(target_path,file_values))
+        elif toc['format'] == 'jb-article':
+            if nl_config:
+                file_list = list(os.path.join(target_path,"content",nl_config['single_page']))
+            else:
+                return {"status":False, "message": "Cannot identify single-page book build source. Please add content/_neurolibre.yml file."}
+
+        markdown_output = jbook_to_joss_md(file_list)
         orig_paper = os.path.join(target_path,"paper.md")
         backup_paper = os.path.join(target_path,"paper_backup.md")
         # Create a backup for the original markdown.
@@ -616,7 +691,7 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
         with open(orig_paper, 'a') as file:
             file.write("\n")
             file.write("\n \\awesomebox[red]{2pt}{\\faExclamationCircle}{red}{\\textbf{NOTE}}")
-            file.write(f"\n\n > **_NOTE:_** The following section in this document repeats the narrative content exactly as \
+            file.write(f"\n\n > The following section in this document repeats the narrative content exactly as \
                     found in the [corresponding NeuroLibre Reproducible Preprint (NRP)](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). The content was \
                     automatically incorporated into this PDF using the NeuroLibre publication workflow [@Karakuzu2022-nlwf] to \
                     credit the referenced resources. The submitting author of the preprint has verified and approved the \
@@ -633,6 +708,10 @@ def create_extended_pdf_sources(target_path, issue_id,repository_url):
         # In case returning these logs to the user is desired.
         return {"status":False, "message": str(e)}
 
+def get_local_yaml(file):
+    with open(file, 'r') as fl:
+        content = yaml.safe_load(fl)
+    return content
 
 def nb_to_lab(file_path):
     with open(file_path, 'r') as f:
