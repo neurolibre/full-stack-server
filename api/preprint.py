@@ -489,6 +489,10 @@ def find_values_by_key(data, key):
         for item in data:
             yield from find_values_by_key(item, key)
 
+def is_md_or_ipynb_file(file_path):
+    _, file_extension = os.path.splitext(file_path)
+    return file_extension.lower() in ['.md', '.ipynb']
+
 def get_jb_file_extensions(path,file_list):
     """
     Jupyter Book _toc.yml does not include file extensions.
@@ -497,9 +501,11 @@ def get_jb_file_extensions(path,file_list):
     _toc filenames with glob patterns (in the cloned target repo).
     """
     for idx, file in enumerate(file_list):
-        file_list[idx] = glob.glob(os.path.join(path,"content",file + "*"))[0]
+        if is_md_or_ipynb_file(os.path.join(path,"content",file)):
+            file_list[idx] = os.path.join(path,"content",file)
+        else:
+            file_list[idx] = glob.glob(os.path.join(path,"content",file + "*"))[0]
     return file_list
-
 
 def parse_section_and_body(notebook):
     """
@@ -677,6 +683,9 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
         if toc['format'] == 'jb-book':
             file_values = list(find_values_by_key(toc, "file"))
             file_list = list(get_jb_file_extensions(target_path,file_values))
+            if 'root' in toc:
+                file_list.insert(0,list(get_jb_file_extensions(target_path,[toc['root']]))[0])
+
         elif toc['format'] == 'jb-article':
             if nl_config:
                 file_list = list(os.path.join(target_path,"content",nl_config['single_page']))
