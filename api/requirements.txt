@@ -2,7 +2,7 @@ python-dotenv==0.18.0
 Werkzeug==2.0.1
 gunicorn==19.10.0
 flask==2.0.3
-pycrypto==2.6.1
+pycryptodome
 pyOpenSSL==21.0.0
 asn1crypto==0.24.0
 requests
