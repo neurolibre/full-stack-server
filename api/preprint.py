@@ -16,6 +16,10 @@ import shutil
 import markdown
 import markdownify
 import yaml
+from myst_parser.parsers.mdit import create_md_parser
+from myst_parser.config.main import MdParserConfig
+from markdown_it.renderer import RendererHTML
+from markdownify import markdownify as to_md
 
 load_dotenv()
 
@@ -579,16 +583,17 @@ def remove_html_tags(markdown):
     soup = BeautifulSoup(markdown, "html.parser")
     return soup.get_text()
 
-def remove_admonitions(input):
-    """
-    Removes admonition and code blocks, accounts for nested use.
-    """
-    matches = list(re.finditer(r'(`{1,2})([^`]*?)(\1)', input, re.DOTALL))
-    if matches:
-        first_match_start = matches[0].start()
-        last_match_end = matches[-1].end()
-        input = input[:first_match_start] + input[last_match_end:]
-    return input
+def myst_rm_admonition_render_html(input):    
+    md_parser = create_md_parser(MdParserConfig(),RendererHTML)
+    parsed = md_parser.parse(input)
+    #print(parsed)
+    # Apply desired filters here. 
+    filtered_tokens = [token for token in parsed if token.type != 'fence']
+    #print(filtered_tokens)
+    filtered_html = ""
+    for token in filtered_tokens:
+        filtered_html += md_parser.renderer.render([token], md_parser.options, None)
+    return filtered_html
 
 def ipynb_to_joss_md(file_name):
     """
@@ -600,17 +605,15 @@ def ipynb_to_joss_md(file_name):
     for cell in notebook['cells']:
         if cell['cell_type'] == 'markdown':
             cell['source'] = substitute_cite_directives(cell['source'])
-    # Export the notebook as Markdown
     parsed_paragraphs = parse_section_and_body(notebook)
     markdown_output = ''
     for paragraph_info in parsed_paragraphs:
         if paragraph_info['section']:
             markdown_output += "\n\n"
             markdown_output += f"## {paragraph_info['section']}\n\n"
-        # Remove admonitions and code blocks by accounting for nested patterns                    
-        paragraph_info['paragraph'] = remove_admonitions(paragraph_info['paragraph'])           
         markdown_output += f"{paragraph_info['paragraph']}\n"
-    return remove_html_tags(markdown_output)
+    markdown_output = to_md(myst_rm_admonition_render_html(markdown_output))
+    return markdown_output
 
 def myst_md_to_joss_md(file_name):
     """
@@ -620,22 +623,29 @@ def myst_md_to_joss_md(file_name):
         markdown_content = file.read()
 
     markdown_content = substitute_cite_directives(markdown_content)
-    markdown_content = remove_admonitions(markdown_content)
-    return remove_html_tags(markdown_content)
-    
-def jbook_to_joss_md(input_files):
+    markdown_content = to_md(myst_rm_admonition_render_html(markdown_content))    
+    return markdown_content
+
+def hyperlink_figure_references(match, issue_id):
+    label = match.group(0)
+    url = f"https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}"
+    return f'[{label}]({url})'
+
+def jbook_to_joss_md(input_files,issue_id):
     """
     Explain
     """
     output = ""
     for file_name in input_files:
         if file_name.endswith('.ipynb'):
-            markdown_output = ipynb_to_joss_md(file_name)    
+            markdown_output = ipynb_to_joss_md(file_name)
             output = output + markdown_output
         elif file_name.endswith('.md'):
-            markdown_output = myst_md_to_joss_md(file_name)    
+            markdown_output = myst_md_to_joss_md(file_name)
             output = output + markdown_output
-   
+    # Hyerlink to reproducible preprint at Figure refs
+    pattern = r'(Figure|Fig\.)\s+(\d+[-\w]*)'
+    output = re.sub(pattern, lambda match: hyperlink_figure_references(match, issue_id), output)
     return output
 
 def append_bib_files(file1_path, file2_path, output_path):
@@ -692,7 +702,7 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
             else:
                 return {"status":False, "message": "Cannot identify single-page book build source. Please add content/_neurolibre.yml file."}
 
-        markdown_output = jbook_to_joss_md(file_list)
+        markdown_output = jbook_to_joss_md(file_list,issue_id)
         orig_paper = os.path.join(target_path,"paper.md")
         backup_paper = os.path.join(target_path,"paper_backup.md")
         # Create a backup for the original markdown.
@@ -708,7 +718,8 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
                     Please note that the figures and tables have been excluded from this (static) document. **To interactively explore such outputs and re-generate them, please visit the corresponding [NRP](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}).** \
                     For more information on integrated research objects (e.g., NRPs) that bundle narrative and executable content for reproducible and transparent publications, \
                     please refer to @Dupre2022-iro. NeuroLibre is sponsored by the Canadian Open Neuroscience Platform (CONP) [@Harding2023-conp].\n\n")
-            file.write(markdownify.markdownify(markdown.markdown(markdown_output)))
+            #file.write(markdownify.markdownify(markdown.markdown(markdown_output)))
+            file.write(markdown_output)
             file.write("\n\n# References\n\n")
         # Update the bibliography for NeuroLibre entries.
         merge_and_check_bib(target_path)
@@ -716,6 +727,11 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
     except Exception as e:
         # In case returning these logs to the user is desired.
         return {"status":False, "message": str(e)}
+
+def get_local_md(file):
+    with open(file, "r", encoding="utf-8") as fl:
+        markdown_content = fl.read()
+    return markdown_content
 
 def get_local_yaml(file):
     with open(file, 'r') as fl:

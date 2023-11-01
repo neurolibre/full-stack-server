@@ -21,3 +21,5 @@ nbformat
 markdown
 markdownify
 bs4
+myst-parser
+markdown-it-py
