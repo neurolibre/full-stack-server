@@ -52,13 +52,13 @@ build_rate_limit = app.config["RATE_LIMIT"]
 
 app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
 
-serverContact = app.config["SERVER_CONTACT"] 
+serverContact = app.config["SERVER_CONTACT"]
 serverName = app.config["SERVER_SLUG"]
 serverDescription = app.config["SERVER_DESC"]
 serverTOS = app.config["SERVER_TOS"]
 serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
-# API specifications displayed on the swagger UI 
+# API specifications displayed on the swagger UI
 spec = APISpec(
         title="Neurolibre preview & screening API",
         version='v1',
@@ -115,16 +115,16 @@ def api_book_build(user, id, repo_url, commit_hash):
     task_title = "Book Build (Preview)"
     comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
 
-    celery_payload = dict(repo_url=repo_url, 
-                          commit_hash=commit_hash, 
+    celery_payload = dict(repo_url=repo_url,
+                          commit_hash=commit_hash,
                           rate_limit=build_rate_limit,
-                          binder_name=binderName, 
+                          binder_name=binderName,
                           domain_name = domainName,
                           comment_id=comment_id,
                           issue_id=issue_id,
                           review_repository=reviewRepository,
                           task_title=task_title)
-    
+
     task_result = preview_build_book_task.apply_async(args=[celery_payload])
 
     if task_result.task_id is not None:
@@ -153,18 +153,18 @@ def api_book_build_test(user, repo_url, commit_hash, email):
     [owner, repo, provider] = get_owner_repo_provider(repo_url)
     mail_subject = f"NRP test build for {owner}/{repo}"
     mail_body = f"We have received your request to build a NeuroLibre reproducible preprint from {repo_url} at {commit_hash}. \n Your request has been queued, we will inform you when the process starts."
-    
+
     send_email(email, mail_subject, mail_body)
 
-    celery_payload = dict(repo_url=repo_url, 
-                          commit_hash=commit_hash, 
+    celery_payload = dict(repo_url=repo_url,
+                          commit_hash=commit_hash,
                           rate_limit=build_rate_limit,
-                          binder_name=binderName, 
+                          binder_name=binderName,
                           domain_name = domainName,
                           email = email,
                           review_repository=reviewRepository,
                           mail_subject=mail_subject)
-    
+
     task_result = preview_build_book_test_task.apply_async(args=[celery_payload])
 
     if task_result.task_id is not None:
@@ -174,7 +174,7 @@ def api_book_build_test(user, repo_url, commit_hash, email):
         # If not successfully assigned, fail the status immediately and return 500
         mail_body = f"We could not start processing your NRP test request due to a technical issue on the server side. Please contact info@neurolibre.org."
         response = make_response(jsonify("Celery could not start the task."),500)
-    
+
     send_email(email, mail_subject, mail_body)
     return response
 
@@ -226,3 +226,15 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
+
+@app.route('/api/list', methods=['GET'])
+@htpasswd.required
+@doc(description='List the name of folders under /DATA.', tags=['Test'])
+def api_preview_list(user):
+    """
+    This endpoint is to list the contents of the /DATA folder.
+    """
+    files = os.listdir('/DATA')
+    return jsonify(files)
+
+docs.register(api_preview_list)
