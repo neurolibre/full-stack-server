@@ -105,3 +105,12 @@ def api_unlock_build(user, repo_url):
     
     response.mimetype = "text/plain"
     return response
+
+@common_api.route('/public/data', methods=['GET'])
+@doc(description='List the name of folders under /DATA.', tags=['Data'])
+def api_preview_list(user):
+    """
+    This endpoint is to list the contents of the /DATA folder.
+    """
+    files = os.listdir('/DATA')
+    return make_response(jsonify(files),200)

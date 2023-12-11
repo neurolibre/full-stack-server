@@ -226,15 +226,3 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
-
-@app.route('/api/list', methods=['GET'])
-@htpasswd.required
-@doc(description='List the name of folders under /DATA.', tags=['Test'])
-def api_preview_list(user):
-    """
-    This endpoint is to list the contents of the /DATA folder.
-    """
-    files = os.listdir('/DATA')
-    return jsonify(files)
-
-docs.register(api_preview_list)
