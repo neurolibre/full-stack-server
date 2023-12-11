@@ -1,6 +1,6 @@
 from celery import Celery
 import time
-import os 
+import os
 import json
 import subprocess
 from celery import states
@@ -17,6 +17,7 @@ from flask import Response
 import shutil
 import base64
 from celery.exceptions import Ignore
+from repo2data.repo2data import Repo2Data
 
 DOI_PREFIX = "10.55458"
 DOI_SUFFIX = "neurolibre"
@@ -46,7 +47,7 @@ Configuration END
 # Set timezone US/Eastern (Montreal)
 def get_time():
     """
-    To be printed on issue comment updates for 
+    To be printed on issue comment updates for
     background tasks.
     """
     tz = pytz.timezone('US/Eastern')
@@ -65,9 +66,48 @@ def sleep_task(self, seconds):
     return 'done sleeping for {} seconds'.format(seconds)
 
 @celery_app.task(bind=True)
+def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server):
+    """
+    Downloading data to the preview server.
+    """
+    task_title = "DATA DOWNLOAD (REPO2DATA)"
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
+    commit_hash = format_commit_hash(repo_url,commit_hash)
+    logging.info(f"{owner}{provider}{repo}{commit_hash}")
+
+    repo_path = os.path.join(os.getcwd(),'repos', owner, repo)
+    if not os.path.exists(repo_path):
+        os.makedirs(repo_path)
+    repo = git.Repo(repo_path)
+    repo.remotes.origin.fetch()
+    repo.git.checkout(commit_hash)
+
+    # read binder/data_requirement.json
+    data_requirement_path = os.path.join(repo_path,'binder','data_requirement.json')
+    with open(data_requirement_path) as json_file:
+        project_name = json.load(json_file).get('projectName', False)
+        if os.path.exists(os.path.join("/DATA", project_name)):
+            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Data already exists in /DATA/{project_name}."})
+            gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id,
+                f"Data already exists in /DATA/{project_name}."
+            )
+        else:
+            # download data with repo2data
+            repo2data = Repo2Data(data_requirement_path, server=True)
+            data_path = repo2data.install()
+            # update status
+            self.update_state(state=states.SUCCESS, meta={'message': f"Data downloaded to {data_path}."})
+            gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
+                f"Data downloaded to {data_path}."
+            )
+
+@celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     """
-    Uploading data to the production server 
+    Uploading data to the production server
     from the test server.
     """
     task_title = "DATA TRANSFER (Preview --> Preprint)"
@@ -110,10 +150,10 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     """
     Moving the book from the test to the production
     server. This book is expected to be built from
-    a roboneurolibre repository. 
+    a roboneurolibre repository.
 
     Once the book is available on the production server,
-    content is symlinked to a DOI formatted directory (Nginx configured) 
+    content is symlinked to a DOI formatted directory (Nginx configured)
     to enable DOI formatted links.
     """
     task_title = "REPRODUCIBLE PREPRINT TRANSFER (Preview --> Preprint)"
@@ -121,7 +161,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     github_client = Github(GH_BOT)
     task_id = self.request.id
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
-    if owner != "roboneurolibre": 
+    if owner != "roboneurolibre":
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under roboneurolibre organization!")
         self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no roboneurolibre fork."})
         return
@@ -137,7 +177,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
         self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
         gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
         #logging.info("Calling subprocess")
-        process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
+        process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output = process.communicate()[0]
         ret = process.wait()
         logging.info(output)
@@ -184,15 +224,15 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
 @celery_app.task(bind=True)
 def fork_configure_repository_task(self, payload):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
-    
+
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    
+
     now = get_time()
     self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
     gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "")
-    
+
     book_tested_check = get_test_book_build(PREVIEW_SERVER,True,payload['commit_hash'])
     # Production cannot be started if there's a book at the latest commit hash at which
     # the production is asked for.
@@ -214,7 +254,7 @@ def fork_configure_repository_task(self, payload):
     forked_name = gh_forkify_name(payload['repository_url'])
     # First check if a fork already exists.
     fork_exists  = False
-    try: 
+    try:
         github_client.get_repo(forked_name)
         fork_exists = True
     except UnknownObjectException as e:
@@ -248,7 +288,7 @@ def fork_configure_repository_task(self, payload):
             return
     else:
         logging.info(f"Fork already exists {payload['repository_url']}, moving on with configurations.")
-    
+
     gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "Forked repo has become available. Proceeding with configuration updates.")
 
     jb_config = gh_get_jb_config(github_client,forked_name)
@@ -291,7 +331,7 @@ def fork_configure_repository_task(self, payload):
                 "title": "Citable PDF and archives"
             }]
         })
-    
+
     if 'chapters' in jb_toc:
         jb_toc_new['chapters'].append({
             "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
@@ -303,7 +343,7 @@ def fork_configure_repository_task(self, payload):
             "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
             "title": "Citable PDF and archives"
         })
-    
+
     # Update TOC file in the forked repo only if the new toc is different
     # otherwise github api will complain.
     if not jb_toc_new != jb_toc:
@@ -382,7 +422,7 @@ def preview_build_book_task(self, payload):
         # Fetch all the yielded messages
     binder_logs = binder_response.get_data(as_text=True)
     binder_logs = "".join(binder_logs)
-    # After the upstream closes, check the server if there's 
+    # After the upstream closes, check the server if there's
     # a book built successfully.
     book_status = book_get_by_params(commit_hash=payload['commit_hash'])
     # For now, remove the block either way.
@@ -393,7 +433,7 @@ def preview_build_book_task(self, payload):
         os.remove(lock_filename)
         # Append book-related response downstream
     if not book_status:
-        # These flags will determine how the response will be 
+        # These flags will determine how the response will be
         # interpreted and returned outside the generator
         gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")
         issue_comment = []
@@ -424,7 +464,7 @@ def preview_build_book_task(self, payload):
 
 @celery_app.task(bind=True)
 def zenodo_create_buckets_task(self, payload):
-    
+
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
@@ -456,25 +496,25 @@ def zenodo_create_buckets_task(self, payload):
 
     for ii in range(len(data['authors'])):
         data['authors'][ii]['affiliation'] = first_affiliations[ii]
-    
-    # To deal with some typos, also with orchid :) 
+
+    # To deal with some typos, also with orchid :)
     valid_field_names = {'name', 'orcid', 'affiliation'}
     for author in data['authors']:
         invalid_fields = []
         for field in author:
             if field not in valid_field_names:
                 invalid_fields.append(field)
-        
+
         for invalid_field in invalid_fields:
             valid_field = None
             for valid_name in valid_field_names:
                 if valid_name.lower() in invalid_field.lower() or (valid_name == 'orcid' and invalid_field.lower() == 'orchid'):
                     valid_field = valid_name
                     break
-            
+
             if valid_field:
                 author[valid_field] = author.pop(invalid_field)
-        
+
         if 'equal-contrib' in author:
             author.pop('equal-contrib')
 
@@ -495,7 +535,7 @@ def zenodo_create_buckets_task(self, payload):
                 collect[archive_type] = r
                 # Rate limit
                 time.sleep(2)
-    
+
     if {k: v for k, v in collect.items() if 'reason' in v}:
         # This means at least one of the deposits has failed.
         logging.info(f"Caught an issue with the deposit. A record (JSON) will not be created.")
@@ -518,7 +558,7 @@ def zenodo_create_buckets_task(self, payload):
 
 @celery_app.task(bind=True)
 def zenodo_flush_task(self,payload):
-    
+
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
@@ -558,7 +598,7 @@ def zenodo_flush_task(self,payload):
             prog[item] = False
             msg.append(f"\n The {item} deposit does not exist.")
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
-    
+
     # Update the issue comment
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
@@ -579,11 +619,11 @@ def zenodo_upload_book_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    
+
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
-    
+
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
     record_name = item_to_record_name("book")
@@ -619,7 +659,7 @@ def zenodo_upload_book_task(self, payload):
 
 @celery_app.task(bind=True)
 def zenodo_upload_data_task(self,payload):
-        
+
         GH_BOT=os.getenv('GH_BOT')
         github_client = Github(GH_BOT)
         task_id = self.request.id
@@ -641,7 +681,7 @@ def zenodo_upload_data_task(self,payload):
             logging.info(f"Compressed data already exists {record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
             tar_file = expect
         else:
-            # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the 
+            # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the
             # data is stored at the /DATA/project_name folder)
             local_path = os.path.join("/DATA", project_name)
             # Descriptive file name
@@ -675,14 +715,14 @@ def zenodo_upload_repository_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    
+
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
-    
+
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
-    
+
     default_branch = get_default_branch(github_client,fork_url)
 
     download_url = f"{fork_url}/archive/refs/heads/{default_branch}.zip"
@@ -722,11 +762,11 @@ def zenodo_upload_docker_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    
+
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
-    
+
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
 
@@ -773,7 +813,7 @@ def zenodo_upload_docker_task(self, payload):
 
         # Login to the private registry to pull images
         r = docker_login()
-        
+
         if not r['status']:
             msg = f"Cannot login to NeuroLibre private docker registry. \n {r['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
@@ -790,7 +830,7 @@ def zenodo_upload_docker_task(self, payload):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
             self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
             return
-        
+
         msg = f"Exporting docker image: \n {lut['docker_image']}"
         gh_template_respond(github_client,"started",payload['task_title'] + " `exporting (2/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
 
@@ -831,16 +871,16 @@ def zenodo_upload_docker_task(self, payload):
 
 @celery_app.task(bind=True)
 def zenodo_publish_task(self, payload):
-    
+
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    
+
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
     prompt = "First state that you will issue commands to set DOIs for the reproducibility assets, then you'll talk to yourself a bit. But reassure in a funny way that there's nothing to worry about because you are not an artificial general intelligence (yet). Keep it to a few sentences."
     # Check if already published
     publish_status_init = zenodo_confirm_status(payload['issue_id'],"published")
-    
+
     if publish_status_init[0]:
         # Means already published. In this case just set the DOIs.
         gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"As the reproducibility assets have already been published, I will just set the DOIs.")
@@ -866,7 +906,7 @@ def zenodo_publish_task(self, payload):
         return
     else:
         # Confirm that all items are published.
-        # TODO: Check this 
+        # TODO: Check this
         publish_status = zenodo_confirm_status(payload['issue_id'],"published")
         # If all items are published, success. Add DOIs.
         if publish_status[0]:
@@ -878,7 +918,7 @@ def zenodo_publish_task(self, payload):
                 gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],command)
                 time.sleep(1)
         else:
-            # Some one None 
+            # Some one None
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
             msg = "\n".join(response)
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
@@ -945,7 +985,7 @@ def preview_build_book_test_task(self, payload):
         # Fetch all the yielded messages
     binder_logs = binder_response.get_data(as_text=True)
     binder_logs = "".join(binder_logs)
-    # After the upstream closes, check the server if there's 
+    # After the upstream closes, check the server if there's
     # a book built successfully.
     book_status = book_get_by_params(commit_hash=payload['commit_hash'])
     exec_error = book_execution_errored(owner,repo,provider,payload['commit_hash'])
@@ -957,7 +997,7 @@ def preview_build_book_test_task(self, payload):
         os.remove(lock_filename)
         # Append book-related response downstream
     if not book_status or exec_error:
-        # These flags will determine how the response will be 
+        # These flags will determine how the response will be
         # interpreted and returned outside the generator
         #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")
         issue_comment = []
@@ -1050,7 +1090,7 @@ def write_html_to_temp_directory(commit_sha, logs):
             f.write("<body>\n")
             f.write(f"{logs}")
             f.write("</body></html>\n")
-    
+
     return file_path
 
 @celery_app.task(bind=True)
@@ -1066,7 +1106,7 @@ def preprint_build_pdf_draft(self, payload):
         shutil.rmtree(target_path)
     try:
         gh_clone_repository(payload['repository_url'], target_path, depth=1)
-    except Exception as e: 
+    except Exception as e:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], str(e))
         self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': str(e)})
         return
@@ -1074,7 +1114,7 @@ def preprint_build_pdf_draft(self, payload):
     res = create_extended_pdf_sources(target_path, payload['issue_id'],payload['repository_url'])
     if res['status']:
         try:
-            process = subprocess.Popen(["docker", "run","--rm", "-v", f"{target_path}:/data", "-u", "ubuntu:www-data", "neurolibre/inara:latest","-o", "neurolibre", "./paper.md"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT) 
+            process = subprocess.Popen(["docker", "run","--rm", "-v", f"{target_path}:/data", "-u", "ubuntu:www-data", "neurolibre/inara:latest","-o", "neurolibre", "./paper.md"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             output = process.communicate()[0]
             ret = process.wait()
             logging.info(output)
@@ -1100,7 +1140,7 @@ def preprint_build_pdf_draft(self, payload):
         except subprocess.CalledProcessError as e:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{e.output}")
             self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': e.output})
-    else: 
+    else:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': res['message']})
 
