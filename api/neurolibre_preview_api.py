@@ -84,6 +84,7 @@ docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
 docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
+docs.register(neurolibre_common_api.api_preview_list,blueprint="common_api")
 
 """
 Configuration END

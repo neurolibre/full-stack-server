@@ -108,7 +108,7 @@ def api_unlock_build(user, repo_url):
 
 @common_api.route('/public/data', methods=['GET'])
 @doc(description='List the name of folders under /DATA.', tags=['Data'])
-def api_preview_list(user):
+def api_preview_list():
     """
     This endpoint is to list the contents of the /DATA folder.
     """
