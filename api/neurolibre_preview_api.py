@@ -133,6 +133,40 @@ def api_download_data(user, repo_url, commit_hash):
         response = make_response(jsonify("Celery could not start the task."),500)
     return response
 
+@app.route('/api/book/data', methods=['POST'])
+@htpasswd.required
+@doc(description='Endpoint for overriding data on preview server.', tags=['Data'])
+def api_override_data(user, repo_url, commit_hash):
+    """
+    This endpoint is to overried downloaded data from GitHub (technical screening) requests.
+    """
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    task_title = "Override data for preview."
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(repo_url=repo_url,
+                          commit_hash=commit_hash,
+                          rate_limit=build_rate_limit,
+                          binder_name=binderName,
+                          domain_name = domainName,
+                          comment_id=comment_id,
+                          issue_id=issue_id,
+                          review_repository=reviewRepository,
+                          task_title=task_title)
+
+    task_result = preview_download_data.apply_async(args=[celery_payload])
+
+    if task_result.task_id is not None:
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        response = make_response(jsonify("Celery task assigned successfully."),200)
+    else:
+        # If not successfully assigned, fail the status immediately and return 500
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        response = make_response(jsonify("Celery could not start the task."),500)
+    return response
 
 @app.route('/api/book/build', methods=['POST'])
 @htpasswd.required

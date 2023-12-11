@@ -89,20 +89,15 @@ def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, rev
     data_requirement_path = os.path.join(repo_path,'binder','data_requirement.json')
     with open(data_requirement_path) as json_file:
         project_name = json.load(json_file).get('projectName', False)
-        if os.path.exists(os.path.join("/DATA", project_name)):
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Data already exists in /DATA/{project_name}."})
-            gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id,
-                f"Data already exists in /DATA/{project_name}."
-            )
-        else:
-            # download data with repo2data
-            repo2data = Repo2Data(data_requirement_path, server=True)
-            data_path = repo2data.install()
-            # update status
-            self.update_state(state=states.SUCCESS, meta={'message': f"Data downloaded to {data_path}."})
-            gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
-                f"Data downloaded to {data_path}."
-            )
+    # download data with repo2data
+    repo2data = Repo2Data(data_requirement_path, server=True)
+    data_path = repo2data.install()
+
+    # update status
+    self.update_state(state=states.SUCCESS, meta={'message': f"Data downloaded to {data_path}."})
+    gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
+        f"Data downloaded to {data_path}."
+    )
 
 @celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
