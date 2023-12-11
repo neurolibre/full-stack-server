@@ -157,7 +157,7 @@ def api_override_data(user, repo_url, commit_hash):
                           issue_id=issue_id,
                           review_repository=reviewRepository,
                           task_title=task_title,
-                          overide=True)
+                          override=True)
 
     task_result = preview_download_data.apply_async(args=[celery_payload])
 
