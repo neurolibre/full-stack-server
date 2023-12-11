@@ -66,7 +66,7 @@ def sleep_task(self, seconds):
     return 'done sleeping for {} seconds'.format(seconds)
 
 @celery_app.task(bind=True)
-def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server):
+def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server, override):
     """
     Downloading data to the preview server.
     """
@@ -78,6 +78,7 @@ def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, rev
     commit_hash = format_commit_hash(repo_url,commit_hash)
     logging.info(f"{owner}{provider}{repo}{commit_hash}")
 
+    # clone repo
     repo_path = os.path.join(os.getcwd(),'repos', owner, repo)
     if not os.path.exists(repo_path):
         os.makedirs(repo_path)
@@ -89,15 +90,28 @@ def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, rev
     data_requirement_path = os.path.join(repo_path,'binder','data_requirement.json')
     with open(data_requirement_path) as json_file:
         project_name = json.load(json_file).get('projectName', False)
+    data_path = os.path.join("/DATA", project_name)
+    if os.path.exists(data_path) and not override:
+        self.update_state(state=states.IGNORED, meta={'message': f"Data already downloaded downloaded to {data_path}."})
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
+            f"Data exists in {data_path}; not overriding."
+        )
+        return
+
     # download data with repo2data
     repo2data = Repo2Data(data_requirement_path, server=True)
-    data_path = repo2data.install()
-
+    download_data_path = repo2data.install()
     # update status
-    self.update_state(state=states.SUCCESS, meta={'message': f"Data downloaded to {data_path}."})
-    gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
-        f"Data downloaded to {data_path}."
-    )
+    if override:
+        self.update_state(state=states.SUCCESS, meta={'message': f"Override data in {data_path}."})
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
+            f"Override data in {data_path}."
+        )
+    else:
+        self.update_state(state=states.SUCCESS, meta={'message': f"Data download to {download_data_path}."})
+        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
+            f"Data download to {download_data_path}."
+        )
 
 @celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
