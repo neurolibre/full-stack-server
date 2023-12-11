@@ -66,7 +66,7 @@ def sleep_task(self, seconds):
     return 'done sleeping for {} seconds'.format(seconds)
 
 @celery_app.task(bind=True)
-def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, reviewRepository, server, override):
+def preview_download_data(self, payload):
     """
     Downloading data to the preview server.
     """
@@ -74,44 +74,54 @@ def preview_download_data(self, repo_url, commit_hash, comment_id, issue_id, rev
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
-    commit_hash = format_commit_hash(repo_url,commit_hash)
-    logging.info(f"{owner}{provider}{repo}{commit_hash}")
 
-    # clone repo
-    repo_path = os.path.join(os.getcwd(),'repos', owner, repo)
-    if not os.path.exists(repo_path):
-        os.makedirs(repo_path)
-    repo = git.Repo(repo_path)
-    repo.remotes.origin.fetch()
-    repo.git.checkout(commit_hash)
+    [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
+    #commit_hash = format_commit_hash(payload['repo_url'],commit_hash)
+    logging.info(f"{owner}{provider}{repo}")
 
-    # read binder/data_requirement.json
-    data_requirement_path = os.path.join(repo_path,'binder','data_requirement.json')
-    with open(data_requirement_path) as json_file:
-        project_name = json.load(json_file).get('projectName', False)
+    repo = github_client.get_repo(gh_filter(payload['repo_url']))
+    
+    try:
+        contents = repo.get_contents("binder/data_requirement.json")
+        data_manifest = json.loads(contents.decoded_content)
+        json_path = os.path.join("/DATA","tmp_repo2data",owner,repo,"data_requirement.json")
+        with open(json_path,"w") as f: 
+            json.dump(data_manifest,f)
+        if not data_manifest:
+            raise
+        project_name = data_manifest['projectName'] 
+    except Exception as e:
+        message = f"Data download has failed: {str(e)}"
+        if payload['email']:
+            send_email(payload['email'], "NeuroLibre: Data download request", message)
+        else:
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+                f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
+            )
+
     data_path = os.path.join("/DATA", project_name)
-    if os.path.exists(data_path) and not override:
-        self.update_state(state=states.IGNORED, meta={'message': f"Data already downloaded downloaded to {data_path}."})
-        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
-            f"Data exists in {data_path}; not overriding."
+    if os.path.exists(data_path) and not payload['overwrite']:
+        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+            f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
         )
+        self.update_state(state=states.IGNORED, meta={'message': f"Data already downloaded downloaded to {data_path}."})
         return
 
     # download data with repo2data
-    repo2data = Repo2Data(data_requirement_path, server=True)
-    download_data_path = repo2data.install()
+    repo2data = Repo2Data(json_path, server=True)
+    downloaded_data_path = repo2data.install()[0]
+    message = f"Downloaded data in {downloaded_data_path}."
+
     # update status
-    if override:
-        self.update_state(state=states.SUCCESS, meta={'message': f"Override data in {data_path}."})
-        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
-            f"Override data in {data_path}."
-        )
+    if payload['email']:
+        send_email(payload['email'], "NeuroLibre: Data download request", message)
+        self.update_state(state=states.SUCCESS, meta={'message': message})
     else:
-        self.update_state(state=states.SUCCESS, meta={'message': f"Data download to {download_data_path}."})
-        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_id,comment_id,
-            f"Data download to {download_data_path}."
+        gh_template_respond(github_client,"received",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+            message
         )
+        self.update_state(state=states.SUCCESS, meta={'message': message})
+
 
 @celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
