@@ -27,7 +27,7 @@ class DownloadSchema(Schema):
     """
     id = fields.Integer(required=False,description="Issue number of the technical screening of this preprint. If this used, the response will be returned to the respective github issue.")
     email = fields.Str(required=False,description="Email address, to which the result will be returned.")
-    repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
+    repository_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     overwrite = fields.Boolean(required=True,description="Whether or not the downloaded data will overwrite, if already exists.")
 
 class BuildSchema(Schema):
