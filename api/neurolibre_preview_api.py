@@ -100,6 +100,7 @@ API Endpoints START
 
 @app.route('/api/data/cache', methods=['POST'])
 @htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(DownloadSchema())
 @doc(description='Endpoint for downloading data through repo2data.', tags=['Data'])
 def api_download_data(user, id, repo_url, email, is_overwrite):
