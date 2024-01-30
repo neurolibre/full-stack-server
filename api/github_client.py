@@ -44,7 +44,7 @@ def gh_filter(input_str):
     """
     Returns repository name in owner/repository_name format
     """
-    github_url_pattern = r'^https?://github\.com/([^/]+)/([^/]+)'
+    github_url_pattern = r'^https?://(?:www\.)?github\.com/([^/]+)/([^/]+)'
     match = re.match(github_url_pattern, input_str)
     if match:
         owner = match.group(1)
