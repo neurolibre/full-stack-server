@@ -6,7 +6,7 @@ from common import *
 from dotenv import load_dotenv
 import re
 from github import Github
-from github_client import gh_read_from_issue_body 
+from github_client import gh_read_from_issue_body
 import csv
 import subprocess
 import nbformat
@@ -24,15 +24,15 @@ from markdownify import markdownify as to_md
 load_dotenv()
 
 """
-Helper functions for the tasks 
+Helper functions for the tasks
 performed by the preprint (production server).
 """
 
 def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id):
-    
+
     [owner,repo,provider] =  get_owner_repo_provider(repository_url,provider_full_name=True)
 
-    # ASSUMPTION 
+    # ASSUMPTION
     # Fork exists and has the same name.
     fork_url = f"https://{provider}/roboneurolibre/{repo}"
 
@@ -40,10 +40,10 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     params = {'access_token': ZENODO_TOKEN}
     # headers = {"Content-Type": "application/json",
     #                 "Authorization": "Bearer {}".format(ZENODO_TOKEN)}
-    
-    # WANING: 
+
+    # WANING:
     # FOR NOW assuming that HEAD corresponds to the latest successful
-    # book build. That may not be the case. Requires better 
+    # book build. That may not be the case. Requires better
     # data handling or extra functionality to retrieve the latest successful
     # book commit.
     commit_user = format_commit_hash(repository_url,"HEAD")
@@ -77,11 +77,11 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
         data["metadata"]["upload_type"] = "software"
         data["metadata"]["description"] = f"Docker image built from the {libre_text}, based on the {user_text}, using repo2docker (through BinderHub). <br> To run locally: <ol> <li><pre><code class=\"language-bash\">docker load < DockerImage_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.tar.gz</code><pre></li><li><pre><code class=\"language-bash\">docker run -it --rm -p 8888:8888 DOCKER_IMAGE_ID jupyter lab --ip 0.0.0.0</code></pre> </li></ol> <p><strong>by replacing <code>DOCKER_IMAGE_ID</code> above with the respective ID of the Docker image loaded from the zip file.</strong></p> {review_text} {sign_text}"
 
-    # Make an empty deposit to create the bucket 
+    # Make an empty deposit to create the bucket
     r = requests.post("https://zenodo.org/api/deposit/depositions",
                 params=params,
                 json=data)
-    
+
     print(f"Error: {r.status_code} - {r.text}")
     # response_dict = json.loads(r.text)
 
@@ -104,7 +104,7 @@ def execute_subprocess(command):
     To asynchronously execute system-levels using celery
     simple calls such as os.system will not work.
 
-    This helper function is to issue system-level command executions 
+    This helper function is to issue system-level command executions
     using celery.
     """
     # This will be called by Celery, subprocess must be handled properly
@@ -266,7 +266,7 @@ def item_to_record_name(item):
                 "book":"JupyterBook"}
     if item in dict_map.keys():
         return dict_map[item]
-    else: 
+    else:
         return None
 
 def zenodo_upload_item(upload_file,bucket_url,issue_id,commit_fork,item_name):
@@ -316,7 +316,7 @@ def parse_tsv_content(content):
     # Iterate over each row and add it to the parsed_data list
     for row in reader:
         parsed_data.append(row)
-    
+
     return parsed_data
 
 def get_test_book_build(preview_server,verify_ssl,commit_hash):
@@ -340,7 +340,7 @@ def get_test_book_build(preview_server,verify_ssl,commit_hash):
 
 def get_resource_lookup(preview_server,verify_ssl,repository_address):
     """
-    For a given repository address, returns a dictionary 
+    For a given repository address, returns a dictionary
     that contains the following fields:
         - "date","repository_url","docker_image","project_name","data_url","data_doi"
     IF there's a successful book build exists for the respective inquiry.
@@ -351,7 +351,7 @@ def get_resource_lookup(preview_server,verify_ssl,repository_address):
 
     Ideally, this should be dealt with using a proper database instead of a tsv file.
     """
-    
+
     url = f"{preview_server}/book-artifacts/lookup_table.tsv"
     headers = {'Content-Type': 'application/json'}
     API_USER = os.getenv('TEST_API_USER')
@@ -360,7 +360,7 @@ def get_resource_lookup(preview_server,verify_ssl,repository_address):
 
     # Send GET request
     response = requests.get(url, headers=headers, auth=auth, verify=verify_ssl)
-    
+
     # Process response
     if response.ok:
         # Get content body
@@ -373,17 +373,17 @@ def get_resource_lookup(preview_server,verify_ssl,repository_address):
         if idx:
             # Convert to list
             values = parsed_data[idx][0].split(",")
-            # Convert to dict 
+            # Convert to dict
             # The last two keys are not reliable (that may contain comma that is not separating tsv column)
             # also due to subpar documentation issue with repo2data.
             keys = ["date","repository_url","docker_image","project_name","data_url","data_doi"]
             lut = dict(zip(keys, values))
-        else: 
+        else:
             lut = None
     else:
-        
+
         lut = None
-    
+
     return lut
 
 def zenodo_publish(issue_id):
@@ -405,7 +405,7 @@ def zenodo_publish(issue_id):
             message.append(f"\n :ice_cube: {item_to_record_name(item)} publish status:")
             r = requests.post(publish_link,params=params)
             response = r.json()
-            if r.status_code==202: 
+            if r.status_code==202:
                 message.append(f"\n :confetti_ball: <a href=\"{response['doi_url']}\"><img src=\"{response['links']['badge']}\"></a>")
                 tmp = f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"
                 log_file = os.path.join(get_deposit_dir(issue_id), tmp)
@@ -536,11 +536,11 @@ def parse_section_and_body(notebook):
     if current_paragraph:
         parsed_content.append({'section': current_section, 'paragraph': current_paragraph})
     return parsed_content
-    
+
 def myst_to_joss_tex_cite(input,match_format, subs_format):
     """
-    In a given string, find (MyST) citation directives that matches 
-    match_format, then replace them with JOSS-text template citation 
+    In a given string, find (MyST) citation directives that matches
+    match_format, then replace them with JOSS-text template citation
     directives based on the subs_format.
 
     This function is used by substitute_cite_commands to handle multiple formats.
@@ -554,40 +554,40 @@ def myst_to_joss_tex_cite(input,match_format, subs_format):
                 try:
                     citations = match.split(',')
                     formatted_citations = '; '.join([f'@{citation.strip()}' for citation in citations if citation])
-                    if subs_format == "p":              
-                        input = re.sub(match_format, f'[{formatted_citations}]', input, count=1)   
+                    if subs_format == "p":
+                        input = re.sub(match_format, f'[{formatted_citations}]', input, count=1)
                     if subs_format == "t":
-                        input = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', input, count=1)   
+                        input = re.sub(rf'\{{cite:t\}}`{match}`', f'{formatted_citations}', input, count=1)
                 except:
-                    pass 
-                
+                    pass
+
         return input
 
 def substitute_cite_directives(input):
     """
-    Calls md_to_tex_cite for multiple citation formats, each case has to be 
+    Calls md_to_tex_cite for multiple citation formats, each case has to be
     handled individually as substitute patterns vary.
     """
     tmp = myst_to_joss_tex_cite(input, r'\{cite:p\}`([^`]*)`', "p")
     input = tmp if tmp else input
     tmp = myst_to_joss_tex_cite(input, r'\{cite:t\}`([^`]*)`', "t")
     input = tmp if tmp else input
-    return input 
+    return input
 
 def remove_html_tags(markdown):
     """
     Jupyter Book is intended to write documents without using html tags.
-    When wrapped between tags, MyST/JB parsers will skip the content. 
-    Use b4s to get rid of html tags. 
+    When wrapped between tags, MyST/JB parsers will skip the content.
+    Use b4s to get rid of html tags.
     """
     soup = BeautifulSoup(markdown, "html.parser")
     return soup.get_text()
 
-def myst_rm_admonition_render_html(input):    
+def myst_rm_admonition_render_html(input):
     md_parser = create_md_parser(MdParserConfig(),RendererHTML)
     parsed = md_parser.parse(input)
     #print(parsed)
-    # Apply desired filters here. 
+    # Apply desired filters here.
     filtered_tokens = [token for token in parsed if token.type != 'fence']
     #print(filtered_tokens)
     filtered_html = ""
@@ -623,7 +623,7 @@ def myst_md_to_joss_md(file_name):
         markdown_content = file.read()
 
     markdown_content = substitute_cite_directives(markdown_content)
-    markdown_content = to_md(myst_rm_admonition_render_html(markdown_content))    
+    markdown_content = to_md(myst_rm_admonition_render_html(markdown_content))
     return markdown_content
 
 def hyperlink_figure_references(match, issue_id):
@@ -643,7 +643,7 @@ def jbook_to_joss_md(input_files,issue_id):
         elif file_name.endswith('.md'):
             markdown_output = myst_md_to_joss_md(file_name)
             output = output + markdown_output
-    # Hyerlink to reproducible preprint at Figure refs
+    # Hyperlink to reproducible preprint at Figure refs
     pattern = r'(Figure|Fig\.)\s+(\d+[-\w]*)'
     output = re.sub(pattern, lambda match: hyperlink_figure_references(match, issue_id), output)
     return output
@@ -663,7 +663,7 @@ def append_bib_files(file1_path, file2_path, output_path):
 
 def merge_and_check_bib(target_path):
     """
-    For now simply appending one bib to another 
+    For now simply appending one bib to another
     later on, add duplication check.
     """
     orig_bib = os.path.join(target_path,"paper.bib")
@@ -671,7 +671,7 @@ def merge_and_check_bib(target_path):
     # Create a backup for the original markdown.
     shutil.copyfile(orig_bib, backup_bib)
     # Simply merge two bib files.
-    # TODO: GET THE DIRECTORY FROM FLASK 
+    # TODO: GET THE DIRECTORY FROM FLASK
     partial_bib = "/home/ubuntu/full-stack-server/assets/partial.bib"
     append_bib_files(orig_bib, partial_bib, orig_bib)
 
@@ -680,9 +680,9 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
     target_path is where repository_url is cloned by the celery worker.
     """
     # This will crawl all the Jupyter Notebooks to collect text that cites
-    # articles, then will substitute MyST cite commands with Pandoc directives 
+    # articles, then will substitute MyST cite commands with Pandoc directives
     # recognized by OpenJournals PDF compilers.\
-    try: 
+    try:
         toc = get_local_yaml(os.path.join(target_path,"content","_toc.yml"))
         nl_local_file = os.path.join(target_path,"content","_neurolibre.yml")
         if os.path.isfile(nl_local_file):
@@ -741,9 +741,9 @@ def get_local_yaml(file):
 def nb_to_lab(file_path):
     with open(file_path, 'r') as f:
         content = f.read()
-    
+
     updated_content = re.sub(r'\?urlpath=tree/content/', '?urlpath=lab/tree/content/', content)
-    
+
     with open(file_path, 'w') as f:
         f.write(updated_content)
 

@@ -44,7 +44,7 @@ def gh_filter(input_str):
     """
     Returns repository name in owner/repository_name format
     """
-    github_url_pattern = r'^https?://github\.com/([^/]+)/([^/]+)'
+    github_url_pattern = r'^https?://(?:www\.)?github\.com/([^/]+)/([^/]+)'
     match = re.match(github_url_pattern, input_str)
     if match:
         owner = match.group(1)
@@ -148,6 +148,7 @@ def gh_get_project_name(github_client,target_repo):
     folder as required by neurolibre.
     """
     repo = github_client.get_repo(gh_filter(target_repo))
+    print(target_repo)
     # This is a requirement
     contents = repo.get_contents("binder/data_requirement.json")
     data = json.loads(contents.decoded_content)

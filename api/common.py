@@ -97,12 +97,18 @@ def get_owner_repo_provider(repo_url,provider_full_name=False):
     repo = repo_url.split("/")[-1]
     owner = repo_url.split("/")[-2]
     provider = repo_url.split("/")[-3]
-    if provider not in ["github.com","gitlab.com"]:
+    if provider not in ["github.com","gitlab.com","www.github.com","www.gitlab.com"]:
         abort(400, "Unrecognized repository provider.")
+    
+    if provider == "www.github.com":
+        provider = "github.com"
+    if provider == "www.gitlab.com":
+        provider = "gitlab.com"
+
     if not provider_full_name:
-        if provider == "github.com":
+        if (provider == "github.com"):
             provider = "gh"
-        elif provider == "gitlab.com":
+        elif (provider == "gitlab.com"):
             provider = "gl"
 
     return [owner,repo,provider]
