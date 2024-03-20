@@ -56,7 +56,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     data = {}
     data["metadata"] = {}
-    data["metadata"]["title"] = title
+    data["metadata"]["title"] = f"({archive_type}) " + title
     data["metadata"]["creators"] = creators
     data["metadata"]["keywords"] = ["canadian-open-neuroscience-platform","neurolibre"]
     # (A) NeuroLibre artifact is a part of (isPartOf) the NeuroLibre preprint (B 10.55458/NeuroLibre.issue_id)
