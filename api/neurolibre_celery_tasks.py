@@ -475,10 +475,10 @@ def preview_build_book_task(self, payload):
             fm = parse_front_matter(paper_string)
             prompt = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
             gpt_response = get_gpt_response(prompt)
-            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {gpt_response} \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
+            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {gpt_response} \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
         except Exception as e:
             logging.info(f"{str(e)}")
-            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a loot at the [latest version of your NRP]({book_status[0]['book_url']})"
+            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})"
         gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
 @celery_app.task(bind=True)
