@@ -546,7 +546,8 @@ def zenodo_create_buckets_task(self, payload):
     collect = {}
     for archive_type in payload['archive_assets']:
                 gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Creating Zenodo buckets for {archive_type}")
-                r = zenodo_create_bucket(f"({item_to_record_name(archive_type)}) {data['title']}",
+                tmp = item_to_record_name(archive_type)
+                r = zenodo_create_bucket(f"({tmp}) {data['title']}",
                                          archive_type,
                                          data['authors'],
                                          payload['repository_url'],
