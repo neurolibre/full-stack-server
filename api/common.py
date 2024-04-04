@@ -11,6 +11,8 @@ from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileT
 import tempfile
 import requests
 from dotenv import load_dotenv
+from openai import OpenAI
+
 """
 Helper functions for the tasks 
 performed by both servers (preview and preprint).
@@ -351,10 +353,15 @@ def get_book_target_tail(book_url,commit_hash):
     return book_target
 
 def get_gpt_response(prompt):
-    token =os.getenv('OAI_TOKEN')
-    gpt_headers = {'Content-Type': 'application/json','Authorization': f"Bearer {token}"}
-    gpt_payload = {'model':'gpt-3.5-turbo',
-                   "messages": [{"role": "user", "content": prompt}]}
-    gpt_response = requests.post('https://api.openai.com/v1/chat/completions',headers=gpt_headers,json=gpt_payload)
-    completion = json.loads(gpt_response.text)
-    return completion['choices'][0]['message']['content']
+    client = OpenAI(api_key=os.getenv('OAI_TOKEN'))
+    response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "system", "content": "You are a helpful editorial bot for a scientific journal. Your task is to help publish reproducible articles."},
+        {"role": "user", "content": prompt}
+    ])
+    answer = response.choices[0].message.content
+    if answer:
+        return answer
+    else:
+        return "GPT is AFK, keep hanging out with roboneuro."

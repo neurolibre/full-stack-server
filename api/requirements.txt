@@ -24,3 +24,4 @@ bs4
 myst-parser==0.18.1
 markdown-it-py==2.0.1
 repo2data==2.9.1
+openai
