@@ -354,14 +354,18 @@ def get_book_target_tail(book_url,commit_hash):
 
 def get_gpt_response(prompt):
     client = OpenAI(api_key=os.getenv('OAI_TOKEN'))
-    response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": "You are a helpful editorial bot for a scientific journal. Your task is to help publish reproducible articles."},
-        {"role": "user", "content": prompt}
-    ])
-    answer = response.choices[0].message.content
-    if answer:
+    try:
+        response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful editorial bot for a scientific journal. Your task is to help publish reproducible articles."},
+            {"role": "user", "content": prompt}
+        ])
+        answer = response.choices[0].message.content
+    except:
+        answer = None
+
+    if answer != None:
         return answer
     else:
         return "GPT is AFK, keep hanging out with roboneuro."
