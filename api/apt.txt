@@ -1,0 +1,5 @@
+nginx
+fail2ban
+python3-venv
+nodjs
+npm
