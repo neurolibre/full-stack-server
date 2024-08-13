@@ -1,0 +1,43 @@
+
+# BINDER_NAME.BINDER_DOMAIN below defines 
+# the binderhub service to be used by the preprint server
+BINDER_NAME: "binder-mcgill"
+BINDER_DOMAIN: "conp.cloud"
+
+# Binderhub build rate limit (mins)
+RATE_LIMIT: 30
+
+# Whether ot not to enable debug mode for the flask app
+DEBUG: False
+JSONIFY_PRETTYPRINT_REGULAR: False
+SERVER_LOGO: "<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
+
+# SERVER_SLUG.SERVER_DOMAIN (note that SERVER_DOMAIN is found in the common_config.yaml)
+# determines the web address for this preprint server.
+SERVER_SLUG: 'preprint'
+
+# Server description
+SERVER_DESC: 'Preprint (production) server'
+
+# Server about message
+SERVER_ABOUT: "<h3>Endpoints to handle publishing tasks <u>following the completion of</u> the technical screening process.</h3>"
+
+# Swagger API documentation source endpoint (json formatted)
+APISPEC_SWAGGER_URL: "/swagger/"
+
+# Swagger API documentation page
+APISPEC_SWAGGER_UI_URL: "/documentation"
+
+# JupyterHub interface that will be enforced for the 
+# interactive sessions of a jupyter book.
+JB_INTERFACE_OVERRIDE: "jupyterlab"
+
+# The folder under which the zenodo records (json formatted)
+# will be kept per preprint. This is assumed to be under the 
+# ROOT_DATA_PATH (see common_config.yaml)
+ZENODO_RECORDS_FOLDER: "zenodo_records"
+
+# The folder under which the reproducibility artifacts (compressed)
+# will be kept per preprint. This is assumed to be under the 
+# ROOT_DATA_PATH (see common_config.yaml)
+ZENODO_ARCHIVES_FOLDER: "zenodo"

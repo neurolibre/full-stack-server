@@ -25,6 +25,7 @@ from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsy
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
      preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task
 from github import Github
+import yaml
 
 """
 Configuration START
@@ -35,8 +36,11 @@ load_dotenv()
 
 app = flask.Flask(__name__)
 
-# LOAD CONFIGURATION FILE
-app.config.from_pyfile('preprint_config.py')
+# Load configurations
+preprint_config = load_yaml('preprint_config.yaml')
+common_config = load_yaml('common_config.yaml')
+app.config.update(preprint_config)
+app.config.update(common_config)
 
 app.register_blueprint(neurolibre_common_api.common_api)
 
@@ -130,7 +134,7 @@ def summary_pdf_sync_post(user,id):
         return result 
     
     # PDF pool
-    file_path = os.path.join("/DATA","10.55458",f"neurolibre.{issue_id:05d}.pdf")
+    file_path = os.path.join(app.config['DATA_ROOT_PATH'],app.config['DOI_PREFIX'],f"{app.config['DOI_SUFFIX']}.{issue_id:05d}.pdf")
     response = requests.get(download_url)
 
     if response.status_code == 200:
@@ -443,15 +447,15 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
         bucket_url = zenodo_record[item]['links']['bucket']
         if item == "book":
            # We will archive the book created through the forked repository.
-           local_path = os.path.join("/DATA", "book-artifacts", fork_repo, fork_provider, repofork, commit_fork, "_build", "html")
+           local_path = os.path.join(app.config['DATA_ROOT_PATH'], app.config['JB_ROOT_FOLDER'], fork_repo, fork_provider, repofork, commit_fork, "_build", "html")
            # Descriptive file name
-           zenodo_file = os.path.join(get_archive_dir(issue_id),f"JupyterBook_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}")
+           zenodo_file = os.path.join(get_archive_dir(issue_id),f"JupyterBook_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}")
            # Zip it!
            shutil.make_archive(zenodo_file, 'zip', local_path)
            zpath = zenodo_file + ".zip"
         
            with open(zpath, "rb") as fp:
-            r = requests.put(f"{bucket_url}/JupyterBook_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+            r = requests.put(f"{bucket_url}/JupyterBook_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                     params=params,
                                     data=fp)
            if not r:
@@ -470,14 +474,14 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
         elif item == "docker":
 
             # If already exists, do not pull again, but let them know.
-            expect = os.path.join(get_archive_dir(issue_id),f"DockerImage_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.tar.gz")
+            expect = os.path.join(get_archive_dir(issue_id),f"DockerImage_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.tar.gz")
             check_docker = os.path.exists(expect)
 
             if check_docker:
                 yield f"\n already exists {expect}"
                 yield f"\n uploading to zenodo"
                 with open(expect, "rb") as fp:
-                        r = requests.put(f"{bucket_url}/DockerImage_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+                        r = requests.put(f"{bucket_url}/DockerImage_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                         params=params,
                                         data=fp)
                 # TO_DO: Write a function to handle this, too many repetitions rn.
@@ -504,7 +508,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
                 if in_r[0] == 0:
                     # Means that saved successfully, upload to zenodo.
                     with open(in_r[1], "rb") as fp:
-                        r = requests.put(f"{bucket_url}/DockerImage_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+                        r = requests.put(f"{bucket_url}/DockerImage_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                         params=params,
                                         data=fp)
                     # TO_DO: Write a function to handle this, too many repetitions rn.
@@ -531,7 +535,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
             download_url_main = f"{fork_url}/archive/refs/heads/main.zip"
             download_url_master = f"{fork_url}/archive/refs/heads/master.zip"
 
-            zenodo_file = os.path.join(get_archive_dir(issue_id),f"GitHubRepo_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip")
+            zenodo_file = os.path.join(get_archive_dir(issue_id),f"GitHubRepo_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip")
             
             # REFACTOR HERE AND MANAGE CONDITIONS CLEANER.
             # Try main first
@@ -547,7 +551,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
                 else:
                     # Upload to Zenodo
                     with open(zenodo_file, "rb") as fp:
-                        r = requests.put(f"{bucket_url}/GitHubRepo_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+                        r = requests.put(f"{bucket_url}/GitHubRepo_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                         params=params,
                                         data=fp)
                         if not r:
@@ -566,7 +570,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
                 # main worked
                 # Upload to Zenodo
                 with open(zenodo_file, "rb") as fp:
-                    r = requests.put(f"{bucket_url}/GitHubRepo_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+                    r = requests.put(f"{bucket_url}/GitHubRepo_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                     params=params,
                                     data=fp)
                     if not r:
@@ -584,18 +588,18 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
 
         elif item == "data":
 
-           expect = os.path.join(get_archive_dir(issue_id),f"Dataset_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip")
+           expect = os.path.join(get_archive_dir(issue_id),f"Dataset_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip")
            check_data = os.path.exists(expect)
 
            if check_data:
-            yield f"\n Compressed data already exists Dataset_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip"
+            yield f"\n Compressed data already exists Dataset_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip"
             zpath = expect
            else:
             # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the 
-            # data is stored at the /DATA/project_name folder)
-            local_path = os.path.join("/DATA", item_arg)
+            # data is stored at the DATA_ROOT_PATH/project_name folder)
+            local_path = os.path.join(app.config['DATA_ROOT_PATH'], item_arg)
             # Descriptive file name
-            zenodo_file = os.path.join(get_archive_dir(issue_id),f"Dataset_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}")
+            zenodo_file = os.path.join(get_archive_dir(issue_id),f"Dataset_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}")
             # Zip it!
             shutil.make_archive(zenodo_file, 'zip', local_path)
             zpath = zenodo_file + ".zip"
@@ -603,7 +607,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
            # UPLOAD data to zenodo
            yield f"\n Attempting zenodo upload."
            with open(zpath, "rb") as fp:
-            r = requests.put(f"{bucket_url}/Dataset_10.55458_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+            r = requests.put(f"{bucket_url}/Dataset_{app.config['DOI_PREFIX']}_NeuroLibre_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                     params=params,
                                     data=fp)
 
@@ -635,7 +639,7 @@ def api_zenodo_list_post(user,issue_id):
     List zenodo records for a given technical screening ID.
     """
     def run():
-        path = f"/DATA/zenodo_records/{'%05d'%issue_id}"
+        path = f"{app.config['DATA_ROOT_PATH']}/{app.config['ZENODO_RECORDS_FOLDER']}/{'%05d'%issue_id}"
         if not os.path.exists(path):
             yield "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with `roboneuro zenodo deposit`?"
         else:
@@ -722,7 +726,7 @@ def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
     issue_id = id
     [owner, repo, provider] = get_owner_repo_provider(repository_url,provider_full_name=True)
     # Create fork URL 
-    repo_url = f"https://{provider}/roboneurolibre/{repo}"
+    repo_url = f"https://{provider}/{app.config['GH_ORGANIZATION']}/{repo}"
     commit_hash = format_commit_hash(repo_url,commit_hash)
     server = f"https://{serverName}.{serverDomain}"
     # TODO: Implement this into a class not to 

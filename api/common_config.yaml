@@ -1,0 +1,54 @@
+# NOTE!
+# 1) Name of the GitHub organization where repositories 
+# will be forked into for production.
+# 2) Editorial bot must be authorized for this organization.
+GH_ORGANIZATION: "roboneurolibre"
+
+# NOTE!
+# Both preview and preprint servers are ASSUMED TO BE 
+# on the same domain.
+SERVER_DOMAIN: 'neurolibre.org'
+
+# Main documentation
+SERVER_TOS: "http://docs.neurolibre.org"
+
+# Contact information
+SERVER_CONTACT: dict(name="NeuroLibre",url="https://neurolibre.org",email="info@neurolibre.org")
+
+# Logo
+SERVER_LOGO: "<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
+
+# github-organization/review-repository
+REVIEW_REPOSITORY: "neurolibre/neurolibre-reviews"
+
+# >>__this__<</neurolibre.#####
+DOI_PREFIX: "10.55458"
+
+# Practically DOI pre-suffix (>>__this__<<.#####)
+DOI_SUFFIX: "neurolibre"
+
+# No whitespaces or any characters that 
+# breaks a filename. This JOURNAL_NAME will be used 
+# in the filenames of the artifacts, such as DockerImage_10.55458_NeuroLibre_ac6b5hd.tar.gz
+JOURNAL_NAME: "NeuroLibre"
+
+# This follow OpenJournals convention.
+PAPERS_PATH: "https://neurolibre.org/papers"
+
+# Private docker registry that hosts docker images 
+# built by repo2docker during a binderhub build.
+BINDER_REGISTRY: "https://binder-registry.conp.cloud"
+
+# IMPORTANT!
+# Same mount directory is expected to be found 
+# on both preprint and preview servers. This is typically
+# a folder named DATA at the root level (/DATA).
+DATA_ROOT_PATH: "/DATA"
+
+# Name of the folder that will contain JupyterBooks 
+# this is expected to be under the DATA_ROOT_PATH
+JB_ROOT_FOLDER: "book-artifacts"
+
+# Name of the folder that will contain MyST websites
+# this is expected to be under the DATA_ROOT_PATH
+MYST_ROOT_FOLDER: "myst"

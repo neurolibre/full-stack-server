@@ -8,7 +8,7 @@ import logging
 import neurolibre_common_api
 from flask import jsonify, make_response
 from common import *
-from schema import BuildSchema, BuildTestSchema, DownloadSchema
+from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -30,7 +30,10 @@ load_dotenv()
 app = flask.Flask(__name__)
 
 # LOAD CONFIGURATION FILE
-app.config.from_pyfile('preview_config.py')
+preview_config = load_yaml('preview_config.yaml')
+common_config = load_yaml('common_config.yaml')
+app.config.update(preview_config)
+app.config.update(common_config)
 
 app.register_blueprint(neurolibre_common_api.common_api)
 
@@ -266,3 +269,32 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
+
+@app.route('/api/myst/build', methods=['POST'])
+@htpasswd.required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
+@doc(description='Endpoint for building MyST Markdown formatted articles.', tags=['MyST'])
+@use_kwargs(MystBuildSchema())
+def api_myst_build(user, id, repo_url, commit_hash, binder_hash):
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    issue_id = id
+
+    task_title = "MyST Build (Preview)"
+    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+
+    celery_payload = dict(repo_url=repo_url,
+                          commit_hash=commit_hash,
+                          binder_hash = binder_hash,
+                          rate_limit=build_rate_limit,
+                          binder_name=binderName,
+                          domain_name = domainName,
+                          comment_id=comment_id,
+                          issue_id=issue_id,
+                          review_repository=reviewRepository,
+                          task_title=task_title)
+
+    task_result = preview_build_myst_task.apply_async(args=[celery_payload])
+
+docs.register(api_myst_build)

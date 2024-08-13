@@ -38,9 +38,18 @@ class BuildSchema(Schema):
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
 
-class BuildTestSchema(Schema):
+class MystBuildSchema(Schema):
     """
     Defines payload types and requirements for book build request.
+    """
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
+    repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
+    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
+    binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
+
+class BuildTestSchema(Schema):
+    """
+    Defines payload types and requirements for book build request (from robo.neurolibre.org).
     """
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")

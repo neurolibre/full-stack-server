@@ -23,6 +23,20 @@ from markdownify import markdownify as to_md
 
 load_dotenv()
 
+common_config  = load_yaml('common_config.yaml')
+BINDER_REGISTRY = common_config['BINDER_REGISTRY']
+DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
+JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
+ZENODO_RECORDS_FOLDER = common_config['ZENODO_RECORDS_FOLDER']
+ZENODO_ARCHIVES_FOLDER = common_config['ZENODO_ARCHIVES_FOLDER']
+REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
+DOI_PREFIX = common_config['DOI_PREFIX']
+DOI_SUFFIX = common_config['DOI_SUFFIX']
+SERVER_DOMAIN = common_config['SERVER_DOMAIN']
+JOURNAL_NAME = common_config['JOURNAL_NAME']
+preprint_config  = load_yaml('preprint_config.yaml')
+SERVER_SLUG = preprint_config['SERVER_SLUG']
+
 """
 Helper functions for the tasks
 performed by the preprint (production server).
@@ -51,8 +65,8 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     libre_text = f"<a href=\"{fork_url}/commit/{commit_fork}\"> reference repository/commit by roboneuro</a>"
     user_text = f"<a href=\"{repository_url}/commit/{commit_user}\">latest change by the author</a>"
-    review_text = f"<p>For details, please visit the corresponding <a href=\"https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}\">NeuroLibre technical screening.</a></p>"
-    sign_text = "\n<p><strong><a href=\"https://neurolibre.org\" target=\"NeuroLibre\">https://neurolibre.org</a></strong></p>"
+    review_text = f"<p>For details, please visit the corresponding <a href=\"https://github.com/{REVIEW_REPOSITORY}/issues/{issue_id}\">{JOURNAL_NAME} technical screening.</a></p>"
+    sign_text = f"\n<p><strong><a href=\"https://{SERVER_DOMAIN}\" target=\"{JOURNAL_NAME}\">https://{SERVER_DOMAIN}</a></strong></p>"
 
     tmp_type = item_to_record_name(archive_type)
     data = {}
@@ -61,22 +75,22 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     data["metadata"]["creators"] = creators
     data["metadata"]["keywords"] = ["canadian-open-neuroscience-platform","neurolibre"]
     # (A) NeuroLibre artifact is a part of (isPartOf) the NeuroLibre preprint (B 10.55458/NeuroLibre.issue_id)
-    data["metadata"]["related_identifiers"] = [{"relation": "isPartOf","identifier": f"10.55458/neurolibre.{issue_id:05d}","resource_type": "publication-preprint"}]
-    data["metadata"]["contributors"] = [{'name':'NeuroLibre, Admin', 'affiliation': 'NeuroLibre', 'type': 'ContactPerson' }]
+    data["metadata"]["related_identifiers"] = [{"relation": "isPartOf","identifier": f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}","resource_type": "publication-preprint"}]
+    data["metadata"]["contributors"] = [{'name':f'{JOURNAL_NAME}, Admin', 'affiliation': JOURNAL_NAME, 'type': 'ContactPerson' }]
 
     if (archive_type == 'book'):
         data["metadata"]["upload_type"] = "other"
-        data["metadata"]["description"] = f"NeuroLibre JupyterBook built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
+        data["metadata"]["description"] = f"{JOURNAL_NAME} JupyterBook built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = "dataset"
         # TODO: USE OpenAI API here to explain data.
-        data["metadata"]["description"] = f"Dataset provided for NeuroLibre preprint.\n Author repo: {repository_url} \nNeuroLibre fork:{fork_url} {review_text}  {sign_text}"
+        data["metadata"]["description"] = f"Dataset provided for {JOURNAL_NAME} preprint.\n Author repo: {repository_url} \n{JOURNAL_NAME} fork:{fork_url} {review_text}  {sign_text}"
     elif (archive_type == 'repository'):
         data["metadata"]["upload_type"] = "software"
         data["metadata"]["description"] = f"GitHub archive of the {libre_text}, based on the {user_text}. {review_text} {sign_text}"
     elif (archive_type == 'docker'):
         data["metadata"]["upload_type"] = "software"
-        data["metadata"]["description"] = f"Docker image built from the {libre_text}, based on the {user_text}, using repo2docker (through BinderHub). <br> To run locally: <ol> <li><pre><code class=\"language-bash\">docker load < DockerImage_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.tar.gz</code><pre></li><li><pre><code class=\"language-bash\">docker run -it --rm -p 8888:8888 DOCKER_IMAGE_ID jupyter lab --ip 0.0.0.0</code></pre> </li></ol> <p><strong>by replacing <code>DOCKER_IMAGE_ID</code> above with the respective ID of the Docker image loaded from the zip file.</strong></p> {review_text} {sign_text}"
+        data["metadata"]["description"] = f"Docker image built from the {libre_text}, based on the {user_text}, using repo2docker (through BinderHub). <br> To run locally: <ol> <li><pre><code class=\"language-bash\">docker load < DockerImage_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz</code><pre></li><li><pre><code class=\"language-bash\">docker run -it --rm -p 8888:8888 DOCKER_IMAGE_ID jupyter lab --ip 0.0.0.0</code></pre> </li></ol> <p><strong>by replacing <code>DOCKER_IMAGE_ID</code> above with the respective ID of the Docker image loaded from the zip file.</strong></p> {review_text} {sign_text}"
 
     # Make an empty deposit to create the bucket
     r = requests.post("https://zenodo.org/api/deposit/depositions",
@@ -130,7 +144,7 @@ def execute_subprocess(command):
 def docker_login():
     uname = os.getenv('DOCKER_USERNAME')
     pswd = os.getenv('DOCKER_PASSWORD')
-    command = ["docker", "login", DOCKER_REGISTRY, "--username", uname, "--password-stdin"]
+    command = ["docker", "login", BINDER_REGISTRY, "--username", uname, "--password-stdin"]
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output = process.communicate(input=pswd.encode('utf-8'))[0]
@@ -147,7 +161,7 @@ def docker_login():
     return {"status": status, "message": output}
 
 def docker_logout():
-    command = ["docker", "logout", DOCKER_REGISTRY]
+    command = ["docker", "logout", BINDER_REGISTRY]
     result  = execute_subprocess(command)
     return result
 
@@ -158,7 +172,7 @@ def docker_pull(image):
 
 def docker_save(image,issue_id,commit_fork):
     record_name = item_to_record_name("docker")
-    save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
+    save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
     try:
         save_process = subprocess.Popen(['docker', 'save', image], stdout=subprocess.PIPE)
         gzip_process = subprocess.Popen(['gzip', '-c'], stdin=save_process.stdout, stdout=open(save_name, 'wb'))
@@ -177,13 +191,13 @@ def docker_save(image,issue_id,commit_fork):
     return {"status": status, "message": output}, save_name
 
 def get_archive_dir(issue_id):
-    path = f"/DATA/zenodo/{issue_id:05d}"
+    path = f"{DATA_ROOT_PATH}/{ZENODO_ARCHIVES_FOLDER}/{issue_id:05d}"
     if not os.path.exists(path):
         os.makedirs(path)
     return path
 
 def get_deposit_dir(issue_id):
-    path = f"/DATA/zenodo_records/{issue_id:05d}"
+    path = f"{DATA_ROOT_PATH}/{ZENODO_RECORDS_FOLDER}/{issue_id:05d}"
     if not os.path.exists(path):
         os.makedirs(path)
     return path
@@ -191,7 +205,7 @@ def get_deposit_dir(issue_id):
 
 def zenodo_get_status(issue_id):
 
-    zenodo_dir = f"/DATA/zenodo_records/{issue_id:05d}"
+    zenodo_dir = f"{DATA_ROOT_PATH}/{ZENODO_RECORDS_FOLDER}/{issue_id:05d}"
 
     # Create directory if does not exists.
     if not os.path.exists(zenodo_dir):
@@ -282,7 +296,7 @@ def zenodo_upload_item(upload_file,bucket_url,issue_id,commit_fork,item_name):
     if record_name:
         try:
             with open(upload_file, "rb") as fp:
-                r = requests.put(f"{bucket_url}/{record_name}_10.55458_NeuroLibre_{issue_id:05d}_{commit_fork[0:6]}.{extension}",
+                r = requests.put(f"{bucket_url}/{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.{extension}",
                                         params=params,
                                         data=fp)
         except requests.exceptions.RequestException as e:
@@ -353,7 +367,7 @@ def get_resource_lookup(preview_server,verify_ssl,repository_address):
     Ideally, this should be dealt with using a proper database instead of a tsv file.
     """
 
-    url = f"{preview_server}/book-artifacts/lookup_table.tsv"
+    url = f"{preview_server}/{JB_ROOT_FOLDER}/lookup_table.tsv"
     headers = {'Content-Type': 'application/json'}
     API_USER = os.getenv('TEST_API_USER')
     API_PASS = os.getenv('TEST_API_PASS')
@@ -408,7 +422,7 @@ def zenodo_publish(issue_id):
             response = r.json()
             if r.status_code==202:
                 message.append(f"\n :confetti_ball: <a href=\"{response['doi_url']}\"><img src=\"{response['links']['badge']}\"></a>")
-                tmp = f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"
+                tmp = f"zenodo_published_{item}_{JOURNAL_NAME}_{issue_id:05d}.json"
                 log_file = os.path.join(get_deposit_dir(issue_id), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(r.json(), outfile)
@@ -439,10 +453,10 @@ def zenodo_confirm_status(issue_id,status_type):
         for item in zenodo_record.keys():
             if status_type == "published":
                 # Does not append commit hash
-                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}.json"))
+                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_{JOURNAL_NAME}_{issue_id:05d}.json"))
             elif status_type == "uploaded":
                 # Appends commit hash
-                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_NeuroLibre_{issue_id:05d}_*.json"))
+                tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_{status_type}_{item}_{JOURNAL_NAME}_{issue_id:05d}_*.json"))
 
             if tmp:
                 bool_array.append(True)
@@ -460,7 +474,7 @@ def zenodo_confirm_status(issue_id,status_type):
            return [False,"Some"]
 
 def get_zenodo_deposit(issue_id):
-    fname = f"zenodo_deposit_NeuroLibre_{issue_id:05d}.json"
+    fname = f"zenodo_deposit_{JOURNAL_NAME}_{issue_id:05d}.json"
     local_file = os.path.join(get_deposit_dir(issue_id), fname)
     if not os.path.exists(local_file):
         zenodo_record = None
@@ -473,7 +487,7 @@ def zenodo_collect_dois(issue_id):
     zenodo_record = get_zenodo_deposit(issue_id)
     collect = {}
     for item in zenodo_record.keys():
-        tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_NeuroLibre_{issue_id:05d}.json"))
+        tmp = glob.glob(os.path.join(get_deposit_dir(issue_id),f"zenodo_published_{item}_{JOURNAL_NAME}_{issue_id:05d}.json"))
         with open(tmp[0], 'r') as f:
             tmp_record = json.load(f)
         collect[item] = tmp_record['doi']
@@ -629,7 +643,7 @@ def myst_md_to_joss_md(file_name):
 
 def hyperlink_figure_references(match, issue_id):
     label = match.group(0)
-    url = f"https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}"
+    url = f"https://{SERVER_SLUG}.{SERVER_DOMAIN}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
     return f'[{label}]({url})'
 
 def jbook_to_joss_md(input_files,issue_id):
@@ -712,11 +726,11 @@ def create_extended_pdf_sources(target_path, issue_id, repository_url):
             file.write("\n")
             file.write("\n \\awesomebox[red]{2pt}{\\faExclamationCircle}{red}{\\textbf{NOTE}}")
             file.write(f"\n\n > The following section in this document repeats the narrative content exactly as \
-                    found in the [corresponding NeuroLibre Reproducible Preprint (NRP)](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}). The content was \
+                    found in the [corresponding NeuroLibre Reproducible Preprint (NRP)](https://{SERVER_SLUG}.{SERVER_DOMAIN}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}). The content was \
                     automatically incorporated into this PDF using the NeuroLibre publication workflow [@Karakuzu2022-nlwf] to \
                     credit the referenced resources. The submitting author of the preprint has verified and approved the \
                     inclusion of this section through a GitHub pull request made to the [source repository]({repository_url}) from which this document was built. \
-                    Please note that the figures and tables have been excluded from this (static) document. **To interactively explore such outputs and re-generate them, please visit the corresponding [NRP](https://preprint.neurolibre.org/10.55458/neurolibre.{issue_id:05d}).** \
+                    Please note that the figures and tables have been excluded from this (static) document. **To interactively explore such outputs and re-generate them, please visit the corresponding [NRP](https://{SERVER_SLUG}.{SERVER_DOMAIN}/{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}).** \
                     For more information on integrated research objects (e.g., NRPs) that bundle narrative and executable content for reproducible and transparent publications, \
                     please refer to @Dupre2022-iro. NeuroLibre is sponsored by the Canadian Open Neuroscience Platform (CONP) [@Harding2023-conp].\n\n")
             #file.write(markdownify.markdownify(markdown.markdown(markdown_output)))

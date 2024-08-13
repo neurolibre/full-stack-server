@@ -1,5 +1,5 @@
 nginx
 fail2ban
-python3-venv
+python3-virtualenv
 nodjs
 npm

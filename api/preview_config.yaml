@@ -1,0 +1,28 @@
+# BINDER_NAME.BINDER_DOMAIN below defines 
+# the binderhub service to be used by the preview server
+BINDER_NAME: "test"
+BINDER_DOMAIN: "conp.cloud"
+
+# Binderhub build rate limit (mins)
+RATE_LIMIT: 30
+
+# Whether ot not to enable debug mode for the flask app
+DEBUG: False
+
+JSONIFY_PRETTYPRINT_REGULAR: False
+
+# SERVER_SLUG.SERVER_DOMAIN (note that SERVER_DOMAIN is found in the common_config.yaml)
+# determines the web address for this preprint server.
+SERVER_SLUG: 'preview'
+
+# Server description
+SERVER_DESC: 'Preview server'
+
+# Server about 
+SERVER_ABOUT: "<h3>Endpoints to handle preview & screening tasks <u>prior to the submission & screening</u>.</h3>"
+
+# Swagger API documentation source endpoint (json formatted)
+APISPEC_SWAGGER_URL: "/swagger/"
+
+# Swagger API documentation page
+APISPEC_SWAGGER_UI_URL: "/documentation"

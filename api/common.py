@@ -1,6 +1,5 @@
 import os
 import glob
-import json
 import time
 import git
 from flask import abort
@@ -8,8 +7,6 @@ from itertools import chain
 import yaml
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
-import tempfile
-import requests
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -20,10 +17,19 @@ performed by both servers (preview and preprint).
 
 load_dotenv()
 
+def load_yaml(file):
+    with open(file, 'r') as file:
+        data = yaml.safe_load(file)
+    return data 
+
+common_config  = load_yaml('common_config.yaml')
+preview_config  = load_yaml('preview_config.yaml')
+
 # GLOBAL VARIABLES
-BOOK_PATHS = "/DATA/book-artifacts/*/*/*/*.tar.gz"
-BOOK_URL = "https://preview.neurolibre.org/book-artifacts"
-DOCKER_REGISTRY = "https://binder-registry.conp.cloud"
+BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"
+PREVIEW_BOOK_URL = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}"
+
+JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}"
 
 def load_all(globpath=BOOK_PATHS):
     """
@@ -45,18 +51,18 @@ def load_all(globpath=BOOK_PATHS):
         for (dirpath, dirnames, filenames) in chain(os.walk(curr_dir + multi_page_path),os.walk(curr_dir + single_page_path)):
             for input_file in filenames:
                 if input_file.split(".")[-1] == "ipynb":
-                    nb_list += [os.path.join(dirpath, input_file).replace("/DATA/book-artifacts", BOOK_URL)]
+                    nb_list += [os.path.join(dirpath, input_file).replace(JB_ROOT_PATH, PREVIEW_BOOK_URL)]
         nb_list = sorted(nb_list)
         # The directory of html pages depends on whether the book was built as a 
         # single page or multi-page. This is to ensure the right one is 
         # returned.
         if multi_page_path in dirpath:
-            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+            cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
         elif single_page_path in dirpath:
-            cur_url = BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
+            cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
         book_dict = {"book_url": cur_url
-                     , "book_build_logs": BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
-                     , "download_link": BOOK_URL + path.replace("/DATA/book-artifacts", "")
+                     , "book_build_logs": PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
+                     , "download_link": PREVIEW_BOOK_URL + path.replace(JB_ROOT_PATH, "")
                      , "notebook_list": nb_list
                      , "repo_link": f"https://{provider}/{user}/{repo}"
                      , "user_name": user
@@ -208,7 +214,7 @@ def get_reports_dir(root_dir):
         return None
 
 def book_execution_errored(owner,repo,provider,commit_hash):
-    root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
+    root_dir = f"{JB_ROOT_PATH}/{owner}/{provider}/{repo}/{commit_hash}"
     reports_path = get_reports_dir(root_dir)
     if not reports_path:
         return False
@@ -228,7 +234,7 @@ def book_log_collector(owner,repo,provider,commit_hash):
     while executing the respective notebook.
     """
     logs = []
-    root_dir = f"/DATA/book-artifacts/{owner}/{provider}/{repo}/{commit_hash}"
+    root_dir = f"{JB_ROOT_PATH}/{owner}/{provider}/{repo}/{commit_hash}"
     main_log_file = f"{root_dir}/book-build.log"
     if os.path.isfile(main_log_file):
         with open(main_log_file) as f:

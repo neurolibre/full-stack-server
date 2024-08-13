@@ -16,15 +16,30 @@ import requests
 from flask import Response
 import shutil
 import base64
+import tempfile
 from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
+from myst_libre.tools import JupyterHubLocalSpawner, MystMD
+from myst_libre.rees import REES
+from myst_libre.builders import MystBuilder
 
-DOI_PREFIX = "10.55458"
-DOI_SUFFIX = "neurolibre"
-JOURNAL_NAME = "NeuroLibre"
-PAPERS_PATH = "https://neurolibre.org/papers"
-PRODUCTION_BINDERHUB = "https://binder-mcgill.conp.cloud"
-PREVIEW_SERVER = "https://preview.neurolibre.org"
+preview_config = load_yaml('preview_config.yaml')
+preprint_config = load_yaml('preview_config.yaml')
+common_config  = load_yaml('common_config.yaml')
+
+DOI_PREFIX = common_config['DOI_PREFIX']
+DOI_SUFFIX = common_config['DOI_SUFFIX']
+JOURNAL_NAME = common_config['JOURNAL_NAME']
+PAPERS_PATH = common_config['PAPERS_PATH']
+BINDER_REGISTRY  = common_config['BINDER_REGISTRY']
+DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
+JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
+JOURNAL_NAME = common_config['JOURNAL_NAME']
+
+JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
+
+PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
+PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
 
 """
 Configuration START
@@ -84,7 +99,7 @@ def preview_download_data(self, payload):
     try:
         contents = repo.get_contents("binder/data_requirement.json")
         data_manifest = json.loads(contents.decoded_content)
-        json_path = os.path.join("/DATA","tmp_repo2data",owner,repo,"data_requirement.json")
+        json_path = os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo,"data_requirement.json")
         with open(json_path,"w") as f: 
             json.dump(data_manifest,f)
         if not data_manifest:
@@ -93,13 +108,13 @@ def preview_download_data(self, payload):
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
         if payload['email']:
-            send_email(payload['email'], "NeuroLibre: Data download request", message)
+            send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         else:
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
                 f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
             )
 
-    data_path = os.path.join("/DATA", project_name)
+    data_path = os.path.join(DATA_ROOT_PATH, project_name)
     if os.path.exists(data_path) and not payload['overwrite']:
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
             f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
@@ -114,7 +129,7 @@ def preview_download_data(self, payload):
 
     # update status
     if payload['email']:
-        send_email(payload['email'], "NeuroLibre: Data download request", message)
+        send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         self.update_state(state=states.SUCCESS, meta={'message': message})
     else:
         gh_template_respond(github_client,"received",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
@@ -136,7 +151,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     remote_path = os.path.join("neurolibre-preview:", "DATA", project_name)
     try:
         # TODO: improve this, subpar logging.
-        f = open("/DATA/data_synclog.txt", "a")
+        f = open(f"{DATA_ROOT_PATH}/data_synclog.txt", "a")
         f.write(remote_path)
         f.close()
         now = get_time()
@@ -148,12 +163,12 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
         #logging.info(output)
     except subprocess.CalledProcessError as e:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': e.output})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
     # Performing a final check
-    if os.path.exists(os.path.join("/DATA", project_name)):
-        if len(os.listdir(os.path.join("/DATA", project_name))) == 0:
+    if os.path.exists(os.path.join(DATA_ROOT_PATH, project_name)):
+        if len(os.listdir(os.path.join(DATA_ROOT_PATH, project_name))) == 0:
             # Directory exists but empty
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Directory exists but empty {project_name}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Directory exists but empty {project_name}"})
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory exists but empty: {project_name}")
         else:
             # Directory exists and not empty
@@ -161,7 +176,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
             self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
     else:
         # Directory does not exist
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Directory does not exist {project_name}"})
+        self.update_state(state=states.FAILURE, meta={'exc_type': f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Directory does not exist {project_name}"})
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory does not exist: {project_name}")
 
 @celery_app.task(bind=True)
@@ -182,14 +197,14 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
     if owner != "roboneurolibre":
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under roboneurolibre organization!")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no roboneurolibre fork."})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no roboneurolibre fork."})
         return
     commit_hash = format_commit_hash(repo_url,commit_hash)
     logging.info(f"{owner}{provider}{repo}{commit_hash}")
-    remote_path = os.path.join("neurolibre-preview:", "DATA", "book-artifacts", owner, provider, repo, commit_hash + "*")
+    remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], JB_ROOT_FOLDER, owner, provider, repo, commit_hash + "*")
     try:
         # TODO: improve this, subpar logging.
-        f = open("/DATA/synclog.txt", "a")
+        f = open(f"{DATA_ROOT_PATH}/synclog.txt", "a")
         f.write(remote_path)
         f.close()
         now = get_time()
@@ -203,23 +218,23 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     except subprocess.CalledProcessError as e:
         #logging.info("Subprocess exception")
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': e.output})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
     # Check if GET works for the complicated address
     results = book_get_by_params(commit_hash=commit_hash)
     if not results:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retrieve book at {commit_hash}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Cannot retrieve book at {commit_hash}"})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot retrieve book at {commit_hash}"})
     else:
         # Symlink production book to attain a proper URL
         book_target_tail = get_book_target_tail(results[0]['book_url'],commit_hash)
         # After the commit hash, the pattern informs whether it is single or multi page.
         # If multi-page _build/html, if single page, should be _build/_page/index/singlehtml
-        book_path = os.path.join("/DATA", "book-artifacts", owner, provider, repo, commit_hash , book_target_tail)
+        book_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, owner, provider, repo, commit_hash , book_target_tail)
         # Here, make sure that all the binderhub links use the lab interface
         enforce_lab_interface(book_path)
 
         iid = "{:05d}".format(issue_id)
-        doi_path =  os.path.join("/DATA","10.55458",f"neurolibre.{iid}")
+        doi_path =  os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{iid}")
         process_mkd = subprocess.Popen(["mkdir", doi_path], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         output_mkd = process_mkd.communicate()[0]
         ret_mkd = process_mkd.wait()
@@ -233,12 +248,12 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
                 os.symlink(source_path, target_path)
         # Check if symlink successful
         if os.path.exists(os.path.join(doi_path)):
-            message = f"<a href=\"{server}/10.55458/neurolibre.{iid}\">Reproducible Preprint URL (DOI formatted)</a><p><a href=\"{server}/{book_path}\">Reproducible Preprint (bare URL)</a></p>"
+            message = f"<a href=\"{server}/{DOI_PREFIX}/{DOI_SUFFIX}.{iid}\">Reproducible Preprint URL (DOI formatted)</a><p><a href=\"{server}/{book_path}\">Reproducible Preprint (bare URL)</a></p>"
             gh_template_respond(github_client,"success",task_title,reviewRepository,issue_id,task_id,comment_id, message)
             self.update_state(state=states.SUCCESS, meta={'message': message})
         else:
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
 
 @celery_app.task(bind=True)
 def fork_configure_repository_task(self, payload):
@@ -258,7 +273,7 @@ def fork_configure_repository_task(self, payload):
     if not book_tested_check['status']:
         msg = f"\n > [!WARNING] \n > A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
     else:
         # Create a record for this.
@@ -303,7 +318,7 @@ def fork_configure_repository_task(self, payload):
         if not forked_repo and retry_count == max_retries:
             msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under roboneurolibre organization, then try again."
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
     else:
         logging.info(f"Fork already exists {payload['repository_url']}, moving on with configurations.")
@@ -316,7 +331,7 @@ def fork_configure_repository_task(self, payload):
     if not jb_config or not jb_toc:
         msg = f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
 
     if 'launch_buttons' not in jb_config:
@@ -324,7 +339,7 @@ def fork_configure_repository_task(self, payload):
     # Configure the book to use the production BinderHUB
     jb_config['launch_buttons']['binderhub_url'] = PRODUCTION_BINDERHUB
     # Override this choice.
-    jb_config['launch_buttons']['notebook_interface'] = "jupyterlab"
+    jb_config['launch_buttons']['notebook_interface'] = JB_INTERFACE_OVERRIDE
 
     # Update repository address
     if 'repository' not in jb_config:
@@ -338,7 +353,7 @@ def fork_configure_repository_task(self, payload):
     if not response['status']:
         msg = f"Could not update _config.yml for {forked_name}: \n {response['message']}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
 
     jb_toc_new = jb_toc
@@ -371,7 +386,7 @@ def fork_configure_repository_task(self, payload):
     if not response['status']:
         msg = f"Could not update toc.yml for {forked_name}: \n {response['message']}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Could not update _toc.yml for {forked_name}"})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update _toc.yml for {forked_name}"})
         return
 
     msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
@@ -490,13 +505,13 @@ def zenodo_create_buckets_task(self, payload):
 
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
-    fname = f"zenodo_deposit_NeuroLibre_{payload['issue_id']:05d}.json"
+    fname = f"zenodo_deposit_{JOURNAL_NAME}_{payload['issue_id']:05d}.json"
     local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
 
     if os.path.exists(local_file):
-        msg = f"Zenodo records already exist for this submission on NeuroLibre servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
+        msg = f"Zenodo records already exist for this submission on {JOURNAL_NAME} servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
         gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
 
     data = payload['paper_data']
@@ -597,14 +612,14 @@ def zenodo_flush_task(self,payload):
             msg.append(f"\n Deleted {item} deposit successfully.")
             prog[item] = True
             # Flush ALL the upload records (json) associated with the item
-            tmp_record = glob.glob(os.path.join(get_deposit_dir(payload['issue_id']),f"zenodo_uploaded_{item}_NeuroLibre_{payload['issue_id']:05d}_*.json"))
+            tmp_record = glob.glob(os.path.join(get_deposit_dir(payload['issue_id']),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{payload['issue_id']:05d}_*.json"))
             if tmp_record:
                 os.remove(tmp_record)
                 msg.append(f"\n Deleted {tmp_record} record from the server.")
             else:
                 msg.append(f"\n {tmp_record} did not exist.")
             # Flush ALL the uploaded files associated with the item
-            tmp_file = glob.glob(os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_*.zip"))
+            tmp_file = glob.glob(os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_*.zip"))
             if tmp_file:
                 os.remove(tmp_file)
                 msg.append(f"\n Deleted {tmp_file} record from the server.")
@@ -624,7 +639,7 @@ def zenodo_flush_task(self,payload):
 
     check_deposits = prog.values()
     if all(check_deposits):
-        fname = f"zenodo_deposit_NeuroLibre_{payload['issue_id']:05d}.json"
+        fname = f"zenodo_deposit_{JOURNAL_NAME}_{payload['issue_id']:05d}.json"
         local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
         os.remove(local_file)
         msg.append(f"\n Deleted old deposit records from the server: {local_file}")
@@ -651,9 +666,9 @@ def zenodo_upload_book_task(self, payload):
     results = book_get_by_params(commit_hash=commit_fork)
     # Need to manage for single or multipage location.
     book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
-    local_path = os.path.join("/DATA", "book-artifacts", "roboneurolibre", provider, repo, commit_fork, book_target_tail)
+    local_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, "roboneurolibre", provider, repo, commit_fork, book_target_tail)
     # Descriptive file name
-    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}")
+    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
     # Zip it!
     shutil.make_archive(zenodo_file, 'zip', local_path)
     zpath = zenodo_file + ".zip"
@@ -662,9 +677,9 @@ def zenodo_upload_book_task(self, payload):
     if (isinstance(response, requests.Response)):
         if (response.status_code > 300):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
         elif (response.status_code < 300):
-            tmp = f"zenodo_uploaded_book_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+            tmp = f"zenodo_uploaded_book_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
             with open(log_file, 'w') as outfile:
                 json.dump(response.json(), outfile)
@@ -672,10 +687,10 @@ def zenodo_upload_book_task(self, payload):
             self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Book upload for {owner}/{repo} at {commit_fork} has succeeded."})
     elif (isinstance(response, str)):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
     elif response is None:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
 @celery_app.task(bind=True)
 def zenodo_upload_data_task(self,payload):
@@ -691,21 +706,21 @@ def zenodo_upload_data_task(self,payload):
         commit_fork = format_commit_hash(fork_url,"HEAD")
         record_name = item_to_record_name("data")
 
-        expect = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+        expect = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
         check_data = os.path.exists(expect)
 
         # Get repo2data project name...
         project_name = gh_get_project_name(github_client,payload['repository_url'])
 
         if check_data:
-            logging.info(f"Compressed data already exists {record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+            logging.info(f"Compressed data already exists {record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
             tar_file = expect
         else:
             # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the
-            # data is stored at the /DATA/project_name folder)
-            local_path = os.path.join("/DATA", project_name)
+            # data is stored at the DATA_ROOT_PATH/project_name folder)
+            local_path = os.path.join(DATA_ROOT_PATH, project_name)
             # Descriptive file name
-            zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}")
+            zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
             # Zip it!
             shutil.make_archive(zenodo_file, 'zip', local_path)
             tar_file = zenodo_file + ".zip"
@@ -714,9 +729,9 @@ def zenodo_upload_data_task(self,payload):
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_data_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+                tmp = f"zenodo_uploaded_data_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
@@ -724,10 +739,10 @@ def zenodo_upload_data_task(self,payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Data upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
 @celery_app.task(bind=True)
 def zenodo_upload_repository_task(self, payload):
@@ -747,23 +762,23 @@ def zenodo_upload_repository_task(self, payload):
 
     download_url = f"{fork_url}/archive/refs/heads/{default_branch}.zip"
 
-    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"GitHubRepo_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
+    zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"GitHubRepo_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.zip")
 
     # REFACTOR HERE AND MANAGE CONDITIONS CLEANER.
     # Try main first
     resp = os.system(f"wget -O {zenodo_file} {download_url}")
     if resp != 0:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot download: {download_url}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"Cannot download {download_url}"})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot download {download_url}"})
         return
     else:
         response = zenodo_upload_item(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork,"repository")
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_repository_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+                tmp = f"zenodo_uploaded_repository_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
@@ -771,10 +786,10 @@ def zenodo_upload_repository_task(self, payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Repository upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
 @celery_app.task(bind=True)
 def zenodo_upload_docker_task(self, payload):
@@ -792,7 +807,7 @@ def zenodo_upload_docker_task(self, payload):
 
     record_name = item_to_record_name("docker")
 
-    tar_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_10.55458_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.tar.gz")
+    tar_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.tar.gz")
     check_docker = os.path.exists(tar_file)
 
     if check_docker:
@@ -803,9 +818,9 @@ def zenodo_upload_docker_task(self, payload):
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
@@ -813,10 +828,10 @@ def zenodo_upload_docker_task(self, payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
     else:
         # Get the lookup_table.tsv entry (from the preview server) for the fork_url
         lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
@@ -825,7 +840,7 @@ def zenodo_upload_docker_task(self, payload):
             # Terminate ERROR
             msg = f"Looks like there's not a successful book build record for {fork_url}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
 
         msg = f"Found docker image: \n {lut}"
@@ -835,9 +850,9 @@ def zenodo_upload_docker_task(self, payload):
         r = docker_login()
 
         if not r['status']:
-            msg = f"Cannot login to NeuroLibre private docker registry. \n {r['message']}"
+            msg = f"Cannot login to {JOURNAL_NAME} private docker registry. \n {r['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
 
         msg = f"Pulling docker image: \n {lut['docker_image']}"
@@ -848,7 +863,7 @@ def zenodo_upload_docker_task(self, payload):
         if not r['status']:
             msg = f"Cannot pull the docker image \n {r['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
 
         msg = f"Exporting docker image: \n {lut['docker_image']}"
@@ -858,7 +873,7 @@ def zenodo_upload_docker_task(self, payload):
         if not r[0]['status']:
             msg = f"Cannot save the docker image \n {r[0]['message']}"
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
 
         tar_file = r[1]
@@ -870,9 +885,9 @@ def zenodo_upload_docker_task(self, payload):
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_docker_NeuroLibre_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
+                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
@@ -880,10 +895,10 @@ def zenodo_upload_docker_task(self, payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
         r = docker_logout()
         # No need to break the operation this fails, just log.
         if not r['status']:
@@ -920,9 +935,9 @@ def zenodo_publish_task(self, payload):
         response = zenodo_publish(payload['issue_id'])
 
     if response == "no-record-found":
-        msg = "<br> :neutral_face: I could not find any Zenodo-related records on NeuroLibre servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
+        msg = f"<br> :neutral_face: I could not find any Zenodo-related records on {JOURNAL_NAME} servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
     else:
         # Confirm that all items are published.
@@ -942,7 +957,7 @@ def zenodo_publish_task(self, payload):
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
             msg = "\n".join(response)
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': msg})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
 
 ### DUPLICATION FOR NOW, SAVING THE DAY.
 
@@ -1030,10 +1045,10 @@ def preview_build_book_test_task(self, payload):
         msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://test.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
         issue_comment.append(msg)
         issue_comment = "\n".join(issue_comment)
-        tmp_log = write_html_to_temp_directory(payload['commit_hash'], issue_comment)
+        tmp_log = write_html_log(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please download the log file attached and open in your web browser.</p>"
         send_email_with_html_attachment_celery(payload['email'], payload['mail_subject'], body, tmp_log)
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed"})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed"})
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         #issue_comment = []
@@ -1099,18 +1114,15 @@ def send_email_with_html_attachment_celery(to_email, subject, body, attachment_p
     except Exception as e:
         print("Error sending email:", str(e))
 
-def write_html_to_temp_directory(commit_sha, logs):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        file_path = os.path.join("/DATA","api_build_logs", f"logs_{commit_sha[:7]}.html")
-
-        with open(file_path, "w+") as f:
-            f.write("<!DOCTYPE html>\n")
-            f.write("<html lang=\"en\" class=\"no-js\">\n")
-            f.write("<style>body { background-color: #fbdeda; color: black; font-family: monospace; } pre { background-color: #222222; border: none; color: white; padding: 10px; margin: 10px; overflow: auto; } code { font-family: monospace; font-size: 12px; background-color: #222222; color: white; border-radius: 5px; padding: 2px; } </style>\n")
-            f.write("<body>\n")
-            f.write(f"{logs}")
-            f.write("</body></html>\n")
-
+def write_html_log(commit_sha, logs):
+    file_path = os.path.join(DATA_ROOT_PATH,"api_build_logs", f"logs_{commit_sha[:7]}.html")
+    with open(file_path, "w+") as f:
+        f.write("<!DOCTYPE html>\n")
+        f.write("<html lang=\"en\" class=\"no-js\">\n")
+        f.write("<style>body { background-color: #fbdeda; color: black; font-family: monospace; } pre { background-color: #222222; border: none; color: white; padding: 10px; margin: 10px; overflow: auto; } code { font-family: monospace; font-size: 12px; background-color: #222222; color: white; border-radius: 5px; padding: 2px; } </style>\n")
+        f.write("<body>\n")
+        f.write(f"{logs}")
+        f.write("</body></html>\n")
     return file_path
 
 @celery_app.task(bind=True)
@@ -1120,7 +1132,7 @@ def preprint_build_pdf_draft(self, payload):
     github_client = Github(GH_BOT)
     task_id = self.request.id
     gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
-    target_path = os.path.join('/DATA/10.55458/draft',f"{payload['issue_id']:05d}")
+    target_path = os.path.join(f'{DATA_ROOT_PATH}/{DOI_PREFIX}/draft',f"{payload['issue_id']:05d}")
     # Remove the directory if it already exists.
     if os.path.exists(target_path):
         shutil.rmtree(target_path)
@@ -1128,7 +1140,7 @@ def preprint_build_pdf_draft(self, payload):
         gh_clone_repository(payload['repository_url'], target_path, depth=1)
     except Exception as e:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], str(e))
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': str(e)})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': str(e)})
         return
     # Crawl notebooks for the citation text and append it to paper.md, update bib.
     res = create_extended_pdf_sources(target_path, payload['issue_id'],payload['repository_url'])
@@ -1142,9 +1154,9 @@ def preprint_build_pdf_draft(self, payload):
             gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Roboneuro will post a new comment to share the results and provide an explanation of the next steps.")
             comment = f"&#128209; Extended PDF has been compiled! \n \
                     \n ### For the submitting author \n \
-                    \n 1. 👀  Please review the [extended PDF](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.pdf) and verify that all references are accurately included. If everything is correct, please proceed to the next steps. **If not, please make the necessary adjustments in the source documents.** \
-                    \n 2. ⬇️ [Download the updated `paper.md`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.md). \n \
-                    \n 3. ⬇️ [Download the updated `paper.bib`](https://preprint.neurolibre.org/10.55458/draft/{payload['issue_id']:05d}/paper.bib). \n \
+                    \n 1. 👀  Please review the [extended PDF](https://preprint.neurolibre.org/{DOI_PREFIX}/draft/{payload['issue_id']:05d}/paper.pdf) and verify that all references are accurately included. If everything is correct, please proceed to the next steps. **If not, please make the necessary adjustments in the source documents.** \
+                    \n 2. ⬇️ [Download the updated `paper.md`](https://preprint.neurolibre.org/{DOI_PREFIX}/draft/{payload['issue_id']:05d}/paper.md). \n \
+                    \n 3. ⬇️ [Download the updated `paper.bib`](https://preprint.neurolibre.org/{DOI_PREFIX}/draft/{payload['issue_id']:05d}/paper.bib). \n \
                     \n 4. ℹ️ Please read and confirm the following: \n \
                     \n > [!IMPORTANT] \
                     \n > We have added a note in the extended PDF to inform the readers that the narrative content from your notebook content has been automatically added to credit the referenced sources. This note includes citations to the articles \
@@ -1159,8 +1171,35 @@ def preprint_build_pdf_draft(self, payload):
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],comment)
         except subprocess.CalledProcessError as e:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{e.output}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': e.output})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
     else:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':"NeuroLibre celery exception",'exc_message': "Custom",'message': res['message']})
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
+@celery_app.task(bind=True)
+def preview_build_myst_task(self, payload):
+
+    GH_BOT=os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+    gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Started MyST build.")
+    [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
+    if payload['binder_hash']:
+        binder_hash = payload['binder_hash']
+    else:
+        binder_hash = payload['commit_hash']
+    rees_resources = REES(dict(
+                  registry_url= BINDER_REGISTRY,
+                  gh_user_repo_name = f"{owner}/{repo}",
+                  gh_repo_commit_hash = payload['commit_hash'],
+                  binder_image_tag = binder_hash,
+                  dotenv = '../'))
+    hub = JupyterHubLocalSpawner(rees_resources,
+                             host_build_source_parent_dir = f'{DATA_ROOT_PATH}/myst_repos',
+                             container_build_source_mount_dir = '/home/jovyan',
+                             host_data_parent_dir = DATA_ROOT_PATH,
+                             container_data_mount_dir = '/home/jovyan/data')
+    hub.spawn_jupyter_hub()
+    builder = MystBuilder(hub)
+    builder.setenv("BASE_URL",f"/myst/{owner}/{repo}/{payload["commit_hash"]}/_build/html")
+    builder.build()

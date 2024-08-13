@@ -15,6 +15,10 @@ common_api = Blueprint('common_api', __name__,
 # Document registration of the following endpoints must be performed by the app that 
 # imports this blueprint.
 
+common_config  = load_yaml('common_config.yaml')
+DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
+JOURNAL_NAME = common_config['JOURNAL_NAME']
+
 @common_api.before_app_first_request
 def setup_htpasswd_auth():
     # The current_app needs to be called within
@@ -39,9 +43,9 @@ def api_heartbeat(id=None):
     parsed_url = urlparse(url)
     if "id" in request.args:
         id = request.args.get("id")
-        response =  make_response(f'&#128994; NeuroLibre server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}',200)
+        response =  make_response(f'&#128994; {JOURNAL_NAME} server is active (running). <br> &#127808; Ready to accept requests from Issue #{id} <br> &#128279; URL: {parsed_url.scheme}://{parsed_url.netloc}',200)
     else:
-        response =  make_response(f'&#128994; NeuroLibre server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}',200)
+        response =  make_response(f'&#128994; {JOURNAL_NAME} server is active (running) at {parsed_url.scheme}://{parsed_url.netloc}',200)
     return response
 
 @common_api.route('/api/books', methods=['GET'])
@@ -107,10 +111,10 @@ def api_unlock_build(user, repo_url):
     return response
 
 @common_api.route('/public/data', methods=['GET'])
-@doc(description='List the name of folders under /DATA.', tags=['Data'])
+@doc(description='List the name of folders under DATA_ROOT_PATH.', tags=['Data'])
 def api_preview_list():
     """
-    This endpoint is to list the contents of the /DATA folder.
+    This endpoint is to list the contents of the DATA_ROOT_PATH folder.
     """
-    files = os.listdir('/DATA')
+    files = os.listdir(DATA_ROOT_PATH)
     return make_response(jsonify(files),200)
