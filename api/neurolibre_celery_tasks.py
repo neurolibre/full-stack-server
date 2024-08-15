@@ -25,7 +25,7 @@ from repo2data.repo2data import Repo2Data
 # from myst_libre.builders import MystBuilder
 
 preview_config = load_yaml('preview_config.yaml')
-preprint_config = load_yaml('preview_config.yaml')
+preprint_config = load_yaml('preprint_config.yaml')
 common_config  = load_yaml('common_config.yaml')
 
 DOI_PREFIX = common_config['DOI_PREFIX']
