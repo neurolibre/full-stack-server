@@ -7,6 +7,7 @@ from celery import states
 import pytz
 import datetime
 from github_client import *
+from screening_client import ScreeningClient
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException
@@ -19,9 +20,9 @@ import base64
 import tempfile
 from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
-from myst_libre.tools import JupyterHubLocalSpawner, MystMD
-from myst_libre.rees import REES
-from myst_libre.builders import MystBuilder
+# from myst_libre.tools import JupyterHubLocalSpawner, MystMD
+# from myst_libre.rees import REES
+# from myst_libre.builders import MystBuilder
 
 preview_config = load_yaml('preview_config.yaml')
 preprint_config = load_yaml('preview_config.yaml')
@@ -35,7 +36,7 @@ BINDER_REGISTRY  = common_config['BINDER_REGISTRY']
 DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
 JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
 JOURNAL_NAME = common_config['JOURNAL_NAME']
-
+GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
@@ -86,18 +87,18 @@ def preview_download_data(self, payload):
     Downloading data to the preview server.
     """
     task_title = "DATA DOWNLOAD (REPO2DATA)"
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
     task_id = self.request.id
+    screening = ScreeningClient(task_title,task_id,payload['issue_id'],payload['repo_url'],payload['comment_id'])
+    screening.respond().STARTED(f"Started downloading the data.")
 
     [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
     #commit_hash = format_commit_hash(payload['repo_url'],commit_hash)
     logging.info(f"{owner}{provider}{repo}")
 
-    repo = github_client.get_repo(gh_filter(payload['repo_url']))
+    #repo = screener.github_client.get_repo(gh_filter(payload['repo_url']))
     
     try:
-        contents = repo.get_contents("binder/data_requirement.json")
+        contents = screening.repo.get_contents("binder/data_requirement.json")
         data_manifest = json.loads(contents.decoded_content)
         json_path = os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo,"data_requirement.json")
         with open(json_path,"w") as f: 
@@ -110,20 +111,23 @@ def preview_download_data(self, payload):
         if payload['email']:
             send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         else:
-            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-                f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
-            )
+            screening.respond().FAILURE(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
+            # gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+            #     f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
+            # )
 
     data_path = os.path.join(DATA_ROOT_PATH, project_name)
     if os.path.exists(data_path) and not payload['overwrite']:
-        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-            f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
-        )
+        screening.respond().FAILURE(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
+        # gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+        #     f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
+        # )
         self.update_state(state=states.IGNORED, meta={'message': f"Data already downloaded downloaded to {data_path}."})
         return
 
     # download data with repo2data
     repo2data = Repo2Data(json_path, server=True)
+    repo2data.set_server_dst_folder(DATA_ROOT_PATH)
     downloaded_data_path = repo2data.install()[0]
     message = f"Downloaded data in {downloaded_data_path}."
 
@@ -132,9 +136,10 @@ def preview_download_data(self, payload):
         send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         self.update_state(state=states.SUCCESS, meta={'message': message})
     else:
-        gh_template_respond(github_client,"received",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-            message
-        )
+        screening.respond().SUCCESS(message)
+        # gh_template_respond(github_client,"received",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
+        #     message
+        # )
         self.update_state(state=states.SUCCESS, meta={'message': message})
 
 
@@ -184,7 +189,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     """
     Moving the book from the test to the production
     server. This book is expected to be built from
-    a roboneurolibre repository.
+    a GH_ORGANIZATION repository.
 
     Once the book is available on the production server,
     content is symlinked to a DOI formatted directory (Nginx configured)
@@ -195,9 +200,9 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     github_client = Github(GH_BOT)
     task_id = self.request.id
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
-    if owner != "roboneurolibre":
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under roboneurolibre organization!")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no roboneurolibre fork."})
+    if owner != GH_ORGANIZATION:
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under {GH_ORGANIZATION} organization!")
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no {GH_ORGANIZATION} fork."})
         return
     commit_hash = format_commit_hash(repo_url,commit_hash)
     logging.info(f"{owner}{provider}{repo}{commit_hash}")
@@ -292,7 +297,7 @@ def fork_configure_repository_task(self, payload):
         github_client.get_repo(forked_name)
         fork_exists = True
     except UnknownObjectException as e:
-        gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "Started forking into roboneurolibre.")
+        gh_template_respond(github_client,"started",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Started forking into {GH_ORGANIZATION}.")
         logging.info(e.data['message'] + "--> Forking")
 
     if not fork_exists:
@@ -316,7 +321,7 @@ def fork_configure_repository_task(self, payload):
                 pass
 
         if not forked_repo and retry_count == max_retries:
-            msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under roboneurolibre organization, then try again."
+            msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under {GH_ORGANIZATION} organization, then try again."
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
@@ -659,14 +664,14 @@ def zenodo_upload_book_task(self, payload):
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
 
-    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    fork_url = f"https://{provider}/{GH_ORGANIZATION}/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
     record_name = item_to_record_name("book")
 
     results = book_get_by_params(commit_hash=commit_fork)
     # Need to manage for single or multipage location.
     book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
-    local_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, "roboneurolibre", provider, repo, commit_fork, book_target_tail)
+    local_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, f"{GH_ORGANIZATION}", provider, repo, commit_fork, book_target_tail)
     # Descriptive file name
     zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
     # Zip it!
@@ -702,7 +707,7 @@ def zenodo_upload_data_task(self,payload):
         gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
         owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
-        fork_url = f"https://{provider}/roboneurolibre/{repo}"
+        fork_url = f"https://{provider}/{GH_ORGANIZATION}/{repo}"
         commit_fork = format_commit_hash(fork_url,"HEAD")
         record_name = item_to_record_name("data")
 
@@ -755,7 +760,7 @@ def zenodo_upload_repository_task(self, payload):
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
 
-    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    fork_url = f"https://{provider}/{GH_ORGANIZATION}/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
 
     default_branch = get_default_branch(github_client,fork_url)
@@ -802,7 +807,7 @@ def zenodo_upload_docker_task(self, payload):
 
     owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
 
-    fork_url = f"https://{provider}/roboneurolibre/{repo}"
+    fork_url = f"https://{provider}/{GH_ORGANIZATION}/{repo}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
 
     record_name = item_to_record_name("docker")

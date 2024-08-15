@@ -19,7 +19,13 @@ SERVER_CONTACT: dict(name="NeuroLibre",url="https://neurolibre.org",email="info@
 SERVER_LOGO: "<img style=\"width:200px;\" src=\"https://github.com/neurolibre/brand/blob/main/png/logo_preprint.png?raw=true\"></img>"
 
 # github-organization/review-repository
+# where technical screening issues are found.
 REVIEW_REPOSITORY: "neurolibre/neurolibre-reviews"
+
+# github-organization/review-repository
+# where github actions pushes PDF summaries and 
+# librarian artifacts (JATS, XML and all that jazz)
+PAPERS_REPOSITORY: "neurolibre/preprints"
 
 # >>__this__<</neurolibre.#####
 DOI_PREFIX: "10.55458"

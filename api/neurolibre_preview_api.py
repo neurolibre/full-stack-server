@@ -39,27 +39,29 @@ app.register_blueprint(neurolibre_common_api.common_api)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+JOURNAL_NAME = app.config['JOURNAL_NAME']
+
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
 app.logger.setLevel(logging.DEBUG)
-app.logger.debug('NeuroLibre preview API.')
+app.logger.debug(f'{JOURNAL_NAME} preview API.')
 
 AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
-reviewRepository = app.config["REVIEW_REPOSITORY"]
-binderName = app.config["BINDER_NAME"]
-domainName = app.config["BINDER_DOMAIN"]
-build_rate_limit = app.config["RATE_LIMIT"]
+REVIEW_REPOSITORY = app.config["REVIEW_REPOSITORY"]
+BINDER_NAME = app.config["BINDER_NAME"]
+BINDER_DOMAIN = app.config["BINDER_DOMAIN"]
+RATE_LIMIT = app.config["RATE_LIMIT"]
 
-app.logger.info(f"Using {binderName}.{domainName} as BinderHub.")
+app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
 
-serverContact = app.config["SERVER_CONTACT"]
-serverName = app.config["SERVER_SLUG"]
-serverDescription = app.config["SERVER_DESC"]
-serverTOS = app.config["SERVER_TOS"]
-serverAbout = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
+SERVER_CONTACT = app.config["SERVER_CONTACT"]
+SERVER_NAME = app.config["SERVER_SLUG"]
+SERVER_DOMAIN = app.config["SERVER_DOMAIN"]
+SERVER_TOS = app.config["SERVER_TOS"]
+SERVER_ABOUT = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
 # API specifications displayed on the swagger UI
 spec = APISpec(
@@ -67,8 +69,8 @@ spec = APISpec(
         version='v1',
         plugins=[MarshmallowPlugin()],
         openapi_version="3.0.2",
-        info=dict(description=serverAbout,contact=serverContact,termsOfService=serverTOS),
-        servers = [{'url': f'https://{serverName}.neurolibre.org/','description':'Preview server.', 'variables': {'serverName':{'default':serverName}}}]
+        info=dict(description=SERVER_ABOUT,contact=SERVER_CONTACT,termsOfService=SERVER_TOS),
+        servers = [{'url': f'https://{SERVER_NAME}.{SERVER_DOMAIN}/','description':'Preview server.', 'variables': {'SERVER_NAME':{'default':SERVER_NAME}}}]
         )
 
 # SWAGGER UI URLS. Pay attention to /swagger/ vs /swagger.
@@ -115,15 +117,15 @@ def api_download_data(user, id, repo_url, email, is_overwrite):
     issue_id = id
 
     task_title = "Download data for preview."
-    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
     celery_payload = dict(repo_url=repo_url,
-                          rate_limit=build_rate_limit,
-                          binder_name=binderName,
-                          domain_name = domainName,
+                          rate_limit=RATE_LIMIT,
+                          binder_name=BINDER_NAME,
+                          domain_name = BINDER_DOMAIN,
                           comment_id=comment_id,
                           issue_id=issue_id,
-                          review_repository=reviewRepository,
+                          review_repository=REVIEW_REPOSITORY,
                           task_title=task_title,
                           overwrite=is_overwrite,
                           email=email)
@@ -131,11 +133,11 @@ def api_download_data(user, id, repo_url, email, is_overwrite):
     task_result = preview_download_data.apply_async(args=[celery_payload])
 
     if task_result.task_id is not None:
-        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        gh_template_respond(github_client,"received",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, "")
         response = make_response(jsonify("Celery task assigned successfully."),200)
     else:
         # If not successfully assigned, fail the status immediately and return 500
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        gh_template_respond(github_client,"failure",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, f"Internal server error: {JOURNAL_NAME} background task manager could not receive the request.")
         response = make_response(jsonify("Celery could not start the task."),500)
     return response
 
@@ -156,26 +158,26 @@ def api_book_build(user, id, repo_url, commit_hash):
     issue_id = id
 
     task_title = "Book Build (Preview)"
-    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
     celery_payload = dict(repo_url=repo_url,
                           commit_hash=commit_hash,
-                          rate_limit=build_rate_limit,
-                          binder_name=binderName,
-                          domain_name = domainName,
+                          rate_limit=RATE_LIMIT,
+                          binder_name=BINDER_NAME,
+                          domain_name = BINDER_DOMAIN,
                           comment_id=comment_id,
                           issue_id=issue_id,
-                          review_repository=reviewRepository,
+                          review_repository=REVIEW_REPOSITORY,
                           task_title=task_title)
 
     task_result = preview_build_book_task.apply_async(args=[celery_payload])
 
     if task_result.task_id is not None:
-        gh_template_respond(github_client,"received",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "")
+        gh_template_respond(github_client,"received",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, "")
         response = make_response(jsonify("Celery task assigned successfully."),200)
     else:
         # If not successfully assigned, fail the status immediately and return 500
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_result.task_id,comment_id, "Internal server error: NeuroLibre background task manager could not receive the request.")
+        gh_template_respond(github_client,"failure",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, f"Internal server error: {JOURNAL_NAME} background task manager could not receive the request.")
         response = make_response(jsonify("Celery could not start the task."),500)
     return response
 
@@ -195,17 +197,17 @@ def api_book_build_test(user, repo_url, commit_hash, email):
 
     [owner, repo, provider] = get_owner_repo_provider(repo_url)
     mail_subject = f"NRP test build for {owner}/{repo}"
-    mail_body = f"We have received your request to build a NeuroLibre reproducible preprint from {repo_url} at {commit_hash}. \n Your request has been queued, we will inform you when the process starts."
+    mail_body = f"We have received your request to build a {JOURNAL_NAME} reproducible preprint from {repo_url} at {commit_hash}. \n Your request has been queued, we will inform you when the process starts."
 
     send_email(email, mail_subject, mail_body)
 
     celery_payload = dict(repo_url=repo_url,
                           commit_hash=commit_hash,
-                          rate_limit=build_rate_limit,
-                          binder_name=binderName,
-                          domain_name = domainName,
+                          rate_limit=RATE_LIMIT,
+                          binder_name=BINDER_NAME,
+                          domain_name = BINDER_DOMAIN,
                           email = email,
-                          review_repository=reviewRepository,
+                          review_repository=REVIEW_REPOSITORY,
                           mail_subject=mail_subject)
 
     task_result = preview_build_book_test_task.apply_async(args=[celery_payload])
@@ -227,7 +229,7 @@ docs.register(api_book_build_test)
 @htpasswd.required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preview_test(user):
-    response = make_response(jsonify("Preview server login successful. <3 NeuroLibre"),200)
+    response = make_response(jsonify(f"Preview server login successful. <3 {JOURNAL_NAME}"),200)
     response.mimetype = "text/plain"
     return response
 
@@ -270,31 +272,31 @@ def get_task_status_test(user,task_id):
 
 docs.register(get_task_status_test)
 
-@app.route('/api/myst/build', methods=['POST'])
-@htpasswd.required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
-@doc(description='Endpoint for building MyST Markdown formatted articles.', tags=['MyST'])
-@use_kwargs(MystBuildSchema())
-def api_myst_build(user, id, repo_url, commit_hash, binder_hash):
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    issue_id = id
+# @app.route('/api/myst/build', methods=['POST'])
+# @htpasswd.required
+# @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+# @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
+# @doc(description='Endpoint for building MyST Markdown formatted articles.', tags=['MyST'])
+# @use_kwargs(MystBuildSchema())
+# def api_myst_build(user, id, repo_url, commit_hash, binder_hash):
+#     GH_BOT=os.getenv('GH_BOT')
+#     github_client = Github(GH_BOT)
+#     issue_id = id
 
-    task_title = "MyST Build (Preview)"
-    comment_id = gh_template_respond(github_client,"pending",task_title,reviewRepository,issue_id)
+#     task_title = "MyST Build (Preview)"
+#     comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
-    celery_payload = dict(repo_url=repo_url,
-                          commit_hash=commit_hash,
-                          binder_hash = binder_hash,
-                          rate_limit=build_rate_limit,
-                          binder_name=binderName,
-                          domain_name = domainName,
-                          comment_id=comment_id,
-                          issue_id=issue_id,
-                          review_repository=reviewRepository,
-                          task_title=task_title)
+#     celery_payload = dict(repo_url=repo_url,
+#                           commit_hash=commit_hash,
+#                           binder_hash = binder_hash,
+#                           rate_limit=RATE_LIMIT,
+#                           binder_name=BINDER_NAME,
+#                           domain_name = BINDER_DOMAIN,
+#                           comment_id=comment_id,
+#                           issue_id=issue_id,
+#                           review_repository=REVIEW_REPOSITORY,
+#                           task_title=task_title)
 
-    task_result = preview_build_myst_task.apply_async(args=[celery_payload])
+#     task_result = preview_build_myst_task.apply_async(args=[celery_payload])
 
-docs.register(api_myst_build)
+# docs.register(api_myst_build)
