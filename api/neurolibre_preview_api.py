@@ -117,8 +117,6 @@ def api_download_data(user, id, repository_url, email=None, is_overwrite=None):
     issue_id = id
 
     task_title = "Download data for preview."
-    app.logger.debug(f'Here')
-    app.logger.debug(REVIEW_REPOSITORY)
     comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
     celery_payload = dict(repo_url=repository_url,
