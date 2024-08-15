@@ -24,17 +24,19 @@ from markdownify import markdownify as to_md
 load_dotenv()
 
 common_config  = load_yaml('common_config.yaml')
+preprint_config  = load_yaml('preprint_config.yaml')
+
 BINDER_REGISTRY = common_config['BINDER_REGISTRY']
 DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
 JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
-ZENODO_RECORDS_FOLDER = common_config['ZENODO_RECORDS_FOLDER']
-ZENODO_ARCHIVES_FOLDER = common_config['ZENODO_ARCHIVES_FOLDER']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 DOI_PREFIX = common_config['DOI_PREFIX']
 DOI_SUFFIX = common_config['DOI_SUFFIX']
 SERVER_DOMAIN = common_config['SERVER_DOMAIN']
 JOURNAL_NAME = common_config['JOURNAL_NAME']
-preprint_config  = load_yaml('preprint_config.yaml')
+
+ZENODO_RECORDS_FOLDER = preprint_config['ZENODO_RECORDS_FOLDER']
+ZENODO_ARCHIVES_FOLDER = preprint_config['ZENODO_ARCHIVES_FOLDER']
 SERVER_SLUG = preprint_config['SERVER_SLUG']
 
 """
