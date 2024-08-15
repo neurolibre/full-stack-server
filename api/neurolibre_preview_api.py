@@ -108,7 +108,7 @@ API Endpoints START
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(DownloadSchema())
 @doc(description='Endpoint for downloading data through repo2data.', tags=['Data'])
-def api_download_data(user, id, repository_url, email, is_overwrite):
+def api_download_data(user, id, repository_url, email=None, is_overwrite=None):
     """
     This endpoint is to download data from GitHub (technical screening) requests.
     """
