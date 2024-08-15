@@ -103,7 +103,7 @@ def preview_download_data(self, payload):
         logging.info(contents.decoded_content)
         data_manifest = json.loads(contents.decoded_content)
         logging.info(f"Here making dir")
-        os.mkdir(os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo))
+        os.makedirs(os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo),exist_ok=True)
         json_path = os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo,"data_requirement.json")
         with open(json_path,"w") as f: 
             json.dump(data_manifest,f)
