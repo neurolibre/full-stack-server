@@ -1181,30 +1181,30 @@ def preprint_build_pdf_draft(self, payload):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
-@celery_app.task(bind=True)
-def preview_build_myst_task(self, payload):
+# @celery_app.task(bind=True)
+# def preview_build_myst_task(self, payload):
 
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    task_id = self.request.id
-    gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Started MyST build.")
-    [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
-    if payload['binder_hash']:
-        binder_hash = payload['binder_hash']
-    else:
-        binder_hash = payload['commit_hash']
-    rees_resources = REES(dict(
-                  registry_url= BINDER_REGISTRY,
-                  gh_user_repo_name = f"{owner}/{repo}",
-                  gh_repo_commit_hash = payload['commit_hash'],
-                  binder_image_tag = binder_hash,
-                  dotenv = '../'))
-    hub = JupyterHubLocalSpawner(rees_resources,
-                             host_build_source_parent_dir = f'{DATA_ROOT_PATH}/myst_repos',
-                             container_build_source_mount_dir = '/home/jovyan',
-                             host_data_parent_dir = DATA_ROOT_PATH,
-                             container_data_mount_dir = '/home/jovyan/data')
-    hub.spawn_jupyter_hub()
-    builder = MystBuilder(hub)
-    builder.setenv("BASE_URL",f"/myst/{owner}/{repo}/{payload["commit_hash"]}/_build/html")
-    builder.build()
+#     GH_BOT=os.getenv('GH_BOT')
+#     github_client = Github(GH_BOT)
+#     task_id = self.request.id
+#     gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Started MyST build.")
+#     [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
+#     if payload['binder_hash']:
+#         binder_hash = payload['binder_hash']
+#     else:
+#         binder_hash = payload['commit_hash']
+#     rees_resources = REES(dict(
+#                   registry_url= BINDER_REGISTRY,
+#                   gh_user_repo_name = f"{owner}/{repo}",
+#                   gh_repo_commit_hash = payload['commit_hash'],
+#                   binder_image_tag = binder_hash,
+#                   dotenv = '../'))
+#     hub = JupyterHubLocalSpawner(rees_resources,
+#                              host_build_source_parent_dir = f'{DATA_ROOT_PATH}/myst_repos',
+#                              container_build_source_mount_dir = '/home/jovyan',
+#                              host_data_parent_dir = DATA_ROOT_PATH,
+#                              container_data_mount_dir = '/home/jovyan/data')
+#     hub.spawn_jupyter_hub()
+#     builder = MystBuilder(hub)
+#     builder.setenv("BASE_URL",f"/myst/{owner}/{repo}/{payload["commit_hash"]}/_build/html")
+#     builder.build()
