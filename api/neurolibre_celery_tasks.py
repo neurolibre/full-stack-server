@@ -102,6 +102,7 @@ def preview_download_data(self, payload):
         contents = screening.repo.get_contents("binder/data_requirement.json")
         logging.info(contents.decoded_content)
         data_manifest = json.loads(contents.decoded_content)
+        logging.info(f"Here making dir")
         os.mkdir(os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo))
         json_path = os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo,"data_requirement.json")
         with open(json_path,"w") as f: 
