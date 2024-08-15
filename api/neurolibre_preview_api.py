@@ -108,7 +108,7 @@ API Endpoints START
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(DownloadSchema())
 @doc(description='Endpoint for downloading data through repo2data.', tags=['Data'])
-def api_download_data(user, id, repo_url, email, is_overwrite):
+def api_download_data(user, id, repository_url, email, is_overwrite):
     """
     This endpoint is to download data from GitHub (technical screening) requests.
     """
@@ -119,7 +119,7 @@ def api_download_data(user, id, repo_url, email, is_overwrite):
     task_title = "Download data for preview."
     comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
-    celery_payload = dict(repo_url=repo_url,
+    celery_payload = dict(repo_url=repository_url,
                           rate_limit=RATE_LIMIT,
                           binder_name=BINDER_NAME,
                           domain_name = BINDER_DOMAIN,
