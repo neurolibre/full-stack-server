@@ -31,50 +31,51 @@ import yaml
 Configuration START
 """
 
-# THIS IS NEEDED UNLESS FLASK IS CONFIGURED TO AUTO-LOAD!
+# Load environment variables and initialize Flask app
 load_dotenv()
-
 app = flask.Flask(__name__)
 
-# Load configurations
+# Load configurations from YAML files and update Flask app config
 preprint_config = load_yaml('preprint_config.yaml')
 common_config = load_yaml('common_config.yaml')
 app.config.update(preprint_config)
 app.config.update(common_config)
 
+# Register common API blueprint and configure proxy
 app.register_blueprint(neurolibre_common_api.common_api)
-
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# Set up logging
 gunicorn_error_logger = logging.getLogger('gunicorn.error')
 app.logger.handlers.extend(gunicorn_error_logger.handlers)
 app.logger.setLevel(logging.DEBUG)
 app.logger.debug(f'{JOURNAL_NAME} preprint production API.')
 
+# Set up authentication
 AUTH_KEY=os.getenv('AUTH_KEY')
 app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
 htpasswd = HtPasswdAuth(app)
 
+# Extract configuration variables
 REVIEW_REPOSITORY = app.config["REVIEW_REPOSITORY"]
 BINDER_NAME = app.config["BINDER_NAME"]
 BINDER_DOMAIN = app.config["BINDER_DOMAIN"]
 RATE_LIMIT = app.config["RATE_LIMIT"]
-
 DOI_PREFIX = app.config['DOI_PREFIX']
 DOI_SUFFIX = app.config['DOI_SUFFIX']
 JOURNAL_NAME = app.config['JOURNAL_NAME']
 PAPERS_REPOSITORY = app.config['PAPERS_REPOSITORY']
 GH_ORGANIZATION = app.config['GH_ORGANIZATION']
-app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
-
 SERVER_CONTACT = app.config["SERVER_CONTACT"] 
 SERVER_NAME = app.config["SERVER_SLUG"]
 SERVER_DOMAIN = app.config["SERVER_DOMAIN"]
 SERVER_TOS = app.config["SERVER_TOS"]
 SERVER_ABOUT = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
+app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
 app.logger.info(f"Server running https://{SERVER_NAME}.{SERVER_DOMAIN}.")
 
+# Set up API specification for Swagger UI
 spec = APISpec(
         title="Reproducible preprint API",
         version='v1',
@@ -88,6 +89,7 @@ spec = APISpec(
 # required `/swagger/` instead. This one works as is.
 app.config.update({'APISPEC_SPEC': spec})
 
+# Set up security scheme for API
 # Through Python, there's no way to disable within-documentation API calls.
 # Even though "Try it out" is not functional, we cannot get rid of it.
 api_key_scheme = {"type": "http", "scheme": "basic"}
@@ -96,7 +98,7 @@ spec.components.security_scheme("basicAuth", api_key_scheme)
 # Create swagger UI documentation for the endpoints.
 docs = FlaskApiSpec(app=app,document_options=False)
 
-# Register common endpoints to the documentation
+# Register common API endpoints to the documentation
 docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
 docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
 docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
@@ -114,6 +116,7 @@ if not os.path.exists(os.path.join(os.getcwd(),'build_locks')):
 """
 API Endpoints START
 """
+# Sync summary PDF from papers repository to the server
 @app.route('/api/pdf/sync', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -153,8 +156,10 @@ def summary_pdf_sync_post(user,id):
     result.mimetype = "text/plain"
     return result
 
+# Register endpoint to the documentation
 docs.register(summary_pdf_sync_post)
 
+# Upload the repository to the respective zenodo deposit
 @app.route('/api/zenodo/upload/repository', methods=['POST'])
 @htpasswd.required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -165,6 +170,7 @@ def zenodo_upload_repository_post(user,id,repository_url):
     github_client = Github(GH_BOT)
     issue_id = id
 
+    # Fetch zenodo deposit record
     fname = f"zenodo_deposit_{JOURNAL_NAME}_{issue_id:05d}.json"
     local_file = os.path.join(get_deposit_dir(issue_id), fname)
     with open(local_file, 'r') as f:
@@ -172,9 +178,11 @@ def zenodo_upload_repository_post(user,id,repository_url):
     # Fetch bucket url of the requested type of item
     bucket_url = zenodo_record['repository']['links']['bucket']
     
+    # Set task title and comment ID
     task_title = "Reproducibility Assets - Archive GitHub Repository"
     comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
+    # Prepare celery payload
     celery_payload = dict(issue_id = id,
                         bucket_url = bucket_url,
                         comment_id = comment_id,
@@ -182,9 +190,11 @@ def zenodo_upload_repository_post(user,id,repository_url):
                         repository_url = repository_url,
                         task_title=task_title)
 
+    # Apply async task
     task_result = zenodo_upload_repository_task.apply_async(args=[celery_payload])
     
     if task_result.task_id is not None:
+        # Update comment status
         gh_template_respond(github_client,"received",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, "Started uploading the repository.")
         response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
     else:

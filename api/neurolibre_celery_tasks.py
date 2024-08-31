@@ -28,15 +28,12 @@ preview_config = load_yaml('preview_config.yaml')
 preprint_config = load_yaml('preprint_config.yaml')
 common_config  = load_yaml('common_config.yaml')
 
-DOI_PREFIX = common_config['DOI_PREFIX']
-DOI_SUFFIX = common_config['DOI_SUFFIX']
-JOURNAL_NAME = common_config['JOURNAL_NAME']
-PAPERS_PATH = common_config['PAPERS_PATH']
-BINDER_REGISTRY  = common_config['BINDER_REGISTRY']
-DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
-JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
-JOURNAL_NAME = common_config['JOURNAL_NAME']
-GH_ORGANIZATION = common_config['GH_ORGANIZATION']
+config_keys = [
+    'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
+    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION']
+
+globals().update({key: common_config[key] for key in config_keys})
+
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
@@ -71,6 +68,67 @@ def get_time():
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
     return cur_time
 
+"""
+Define a base class for all the tasks.
+"""
+
+class BaseNeuroLibreTask:
+    def __init__(self, celery_task, task_title, payload):
+        self.celery_task = celery_task
+        self.task_title = task_title
+        self.payload = payload
+        self.task_id = celery_task.request.id
+        self.screening = ScreeningClient(
+            self.task_title,
+            self.task_id,
+            payload['issue_id'],
+            payload['repo_url'],
+            payload['comment_id']
+        )
+        self.owner, self.repo, self.provider = get_owner_repo_provider(payload['repo_url'], provider_full_name=True)
+
+    def start(self, message=""):
+        self.screening.respond().STARTED(message)
+        self.update_state(states.STARTED, {'message': message})
+
+    def fail(self, message):
+        self.screening.respond().FAILURE(message)
+        raise self.task_failure(message)
+
+    def succeed(self, message):
+        self.screening.respond().SUCCESS(message)
+
+    def task_failure(self, message):
+        return states.FAILURE, {
+            'exc_type': f"{JOURNAL_NAME} celery exception",
+            'exc_message': "Custom",
+            'message': message
+        }
+
+    def update_state(self, state, meta):
+        self.celery_task.update_state(state=state, meta=meta)
+
+    def get_commit_hash(self):
+        return format_commit_hash(self.payload['repo_url'], self.payload.get('commit_hash', 'HEAD'))
+
+    def path_join(self, *args):
+        return os.path.join(*args)
+
+    def join_data_root_path(self, *args):
+        return self.path_join(DATA_ROOT_PATH, *args)
+
+    def get_deposit_dir(self, *args):
+        return self.path_join(get_deposit_dir(self.payload['issue_id']), *args)
+
+    def get_archive_dir(self, *args):
+        return self.path_join(get_archive_dir(self.payload['issue_id']), *args)
+
+    # Add other common methods as needed
+
+"""
+Celery tasks START
+"""
+
 @celery_app.task(bind=True)
 def sleep_task(self, seconds):
     """
@@ -86,65 +144,47 @@ def preview_download_data(self, payload):
     """
     Downloading data to the preview server.
     """
-    task_title = "DATA DOWNLOAD (REPO2DATA)"
-    task_id = self.request.id
-    screening = ScreeningClient(task_title,task_id,payload['issue_id'],payload['repo_url'],payload['comment_id'])
-    screening.respond().STARTED(f"Started downloading the data.")
+    task = BaseNeuroLibreTask(self, "DATA DOWNLOAD (REPO2DATA)", payload)
+    task.start("Started downloading the data.")
 
-    [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
-    #commit_hash = format_commit_hash(payload['repo_url'],commit_hash)
-    logging.info(f"{owner}{provider}{repo}")
-
-    #repo = screener.github_client.get_repo(gh_filter(payload['repo_url']))
-    
     try:
-        logging.info(f"Here")
-        contents = screening.repo.get_contents("binder/data_requirement.json")
-        logging.info(contents.decoded_content)
+        contents = task.screening.repo.get_contents("binder/data_requirement.json")
+        logging.debug(contents.decoded_content)
         data_manifest = json.loads(contents.decoded_content)
-        logging.info(f"Here making dir")
-        os.makedirs(os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo),exist_ok=True)
-        json_path = os.path.join(DATA_ROOT_PATH,"tmp_repo2data",owner,repo,"data_requirement.json")
+        # Create a temporary directory to store the data manifest
+        os.makedirs(task.join_data_root_path("tmp_repo2data",task.owner,task.repo),exist_ok=True)
+        # Write the data manifest to the temporary directory
+        json_path = task.join_data_root_path("tmp_repo2data",task.owner,task.repo,"data_requirement.json")
         with open(json_path,"w") as f: 
             json.dump(data_manifest,f)
         if not data_manifest:
             raise
-        project_name = data_manifest['projectName'] 
+        project_name = data_manifest['projectName']
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
         if payload['email']:
             send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         else:
-            screening.respond().FAILURE(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
-            # gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-            #     f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
-            # )
+            task.fail(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
 
-    data_path = os.path.join(DATA_ROOT_PATH, project_name)
+    data_path = task.join_data_root_path(project_name)
     if os.path.exists(data_path) and not payload['overwrite']:
-        screening.respond().FAILURE(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
-        # gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-        #     f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True."
-        # )
-        self.update_state(state=states.IGNORED, meta={'message': f"Data already downloaded downloaded to {data_path}."})
+        task.fail(f"Data exists for {project_name} already downloaded to {data_path}; 
+                  not overwriting by default! Please set overwrite=True.")
         return
 
-    # download data with repo2data
+    # Download data with repo2data
     repo2data = Repo2Data(json_path, server=True)
     repo2data.set_server_dst_folder(DATA_ROOT_PATH)
     downloaded_data_path = repo2data.install()[0]
     message = f"Downloaded data in {downloaded_data_path}."
 
-    # update status
+    # Update status
     if payload['email']:
         send_email(payload['email'], f"{JOURNAL_NAME}: Data download request", message)
         self.update_state(state=states.SUCCESS, meta={'message': message})
     else:
-        screening.respond().SUCCESS(message)
-        # gh_template_respond(github_client,"received",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],
-        #     message
-        # )
-        self.update_state(state=states.SUCCESS, meta={'message': message})
+        task.succeed(message)
 
 
 @celery_app.task(bind=True)
@@ -1184,31 +1224,3 @@ def preprint_build_pdf_draft(self, payload):
     else:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
-
-# @celery_app.task(bind=True)
-# def preview_build_myst_task(self, payload):
-
-#     GH_BOT=os.getenv('GH_BOT')
-#     github_client = Github(GH_BOT)
-#     task_id = self.request.id
-#     gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Started MyST build.")
-#     [owner,repo,provider] = get_owner_repo_provider(payload['repo_url'])
-#     if payload['binder_hash']:
-#         binder_hash = payload['binder_hash']
-#     else:
-#         binder_hash = payload['commit_hash']
-#     rees_resources = REES(dict(
-#                   registry_url= BINDER_REGISTRY,
-#                   gh_user_repo_name = f"{owner}/{repo}",
-#                   gh_repo_commit_hash = payload['commit_hash'],
-#                   binder_image_tag = binder_hash,
-#                   dotenv = '../'))
-#     hub = JupyterHubLocalSpawner(rees_resources,
-#                              host_build_source_parent_dir = f'{DATA_ROOT_PATH}/myst_repos',
-#                              container_build_source_mount_dir = '/home/jovyan',
-#                              host_data_parent_dir = DATA_ROOT_PATH,
-#                              container_data_mount_dir = '/home/jovyan/data')
-#     hub.spawn_jupyter_hub()
-#     builder = MystBuilder(hub)
-#     builder.setenv("BASE_URL",f"/myst/{owner}/{repo}/{payload["commit_hash"]}/_build/html")
-#     builder.build()
