@@ -72,20 +72,22 @@ Define a base class for all the tasks.
 """
 
 class BaseNeuroLibreTask:
-    def __init__(self, celery_task, task_title, screening=None, payload=None):
+    def __init__(self, celery_task, screening=None, payload=None):
         self.celery_task = celery_task
-        self.task_title = task_title
         self.payload = payload
         self.task_id = celery_task.request.id
         if screening:
-            if not isinstance(screening, ScreeningClient):
-                raise TypeError("The 'screening' parameter must be an instance of ScreeningClient")
-            self.screening = screening
+            # If passed here, must be JSON serialization of ScreeningClient object.
+            # We need to unpack these to pass to ScreeningClient to initialize it as an object.
+            standard_attrs = ['task_name', 'issue_id', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
+            standard_dict = {key: screening.pop(key) for key in standard_attrs if key in screening}
+            extra_payload = screening
+            self.screening = ScreeningClient(**standard_dict, **extra_payload)
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(screening.target_repo_url, provider_full_name=True)
         elif payload:
-            # This will be probably deprecated soon.
+            # This will be probably deprecated soon. For now, reserve for backward compatibility.
             self.screening = ScreeningClient(
-                self.task_title,
+                payload['task_name'],
                 payload['issue_id'],
                 payload['repo_url'],
                 self.task_id,

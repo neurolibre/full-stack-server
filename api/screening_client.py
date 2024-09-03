@@ -25,6 +25,7 @@ class ScreeningClient:
         self.target_repo_url = target_repo_url
         self.commit_hash = commit_hash
         self.comment_id = comment_id
+        self.__extra_payload = extra_payload
 
         for key, value in extra_payload.items():
             setattr(self, key, value)
@@ -37,12 +38,28 @@ class ScreeningClient:
         else:
             self.repo_object = None
 
+        # If no comment ID is provided, create a new comment with a pending status
         if self.comment_id is None:
             self.comment_id = self.respond().PENDING("Awaiting task assignment...")
 
+    def to_dict(self):
+        # Convert the object to a dictionary to pass to Celery
+        result = {
+            'task_name': self.task_name,
+            'issue_id': self.issue_id,
+            'target_repo_url': self.target_repo_url,
+            'task_id': self.task_id,
+            'comment_id': self.comment_id,
+            'commit_hash': self.commit_hash,
+        }
+        result.update(self.__extra_payload)
+        return result
+
     def start_celery_task(self, celery_task_func):
         
-        task_result = celery_task_func.apply_async(args=[self])
+        # This trick is needed to pass the ScreeningClient object to the Celery task.
+        # This is because the ScreeningClient object cannot be serialized into JSON, which is required by Redis.
+        task_result = celery_task_func.apply_async(args=[self.to_dict()])
         
         if task_result.task_id is not None:
             self.task_id = task_result.task_id
