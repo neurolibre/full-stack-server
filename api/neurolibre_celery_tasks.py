@@ -168,8 +168,8 @@ def preview_download_data(self, screening_dict):
         project_name = data_manifest['projectName']
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
-        if self.screening.email:
-            send_email(self.screening.email, f"{JOURNAL_NAME}: Data download request", message)
+        if task.screening.email:
+            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         else:
             task.fail(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
 
@@ -186,9 +186,9 @@ def preview_download_data(self, screening_dict):
     message = f"Downloaded data in {downloaded_data_path}."
 
     # Update status
-    if self.screening.email:
-        send_email(self.screening.email, f"{JOURNAL_NAME}: Data download request", message)
-        self.update_state(state=states.SUCCESS, meta={'message': message})
+    if task.screening.email:
+        send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
+        task.update_state(state=states.SUCCESS, meta={'message': message})
     else:
         task.succeed(message)
 
