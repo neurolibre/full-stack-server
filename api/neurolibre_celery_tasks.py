@@ -80,6 +80,7 @@ class BaseNeuroLibreTask:
             # If passed here, must be JSON serialization of ScreeningClient object.
             # We need to unpack these to pass to ScreeningClient to initialize it as an object.
             self.screening = ScreeningClient.from_dict(screening)
+            self.screening.task_id = self.task_id
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(self.screening.target_repo_url, provider_full_name=True)
         elif payload:
             # This will be probably deprecated soon. For now, reserve for backward compatibility.
@@ -145,11 +146,11 @@ def sleep_task(self, seconds):
     return 'done sleeping for {} seconds'.format(seconds)
 
 @celery_app.task(bind=True)
-def preview_download_data(self, screening):
+def preview_download_data(self, screening_dict):
     """
     Downloading data to the preview server.
     """
-    task = BaseNeuroLibreTask(self, screening)
+    task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started downloading the data.")
 
     try:
@@ -167,13 +168,13 @@ def preview_download_data(self, screening):
         project_name = data_manifest['projectName']
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
-        if screening.email:
-            send_email(screening.email, f"{JOURNAL_NAME}: Data download request", message)
+        if self.screening.email:
+            send_email(self.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         else:
             task.fail(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
 
     data_path = task.join_data_root_path(project_name)
-    if os.path.exists(data_path) and not screening.is_overwrite:
+    if os.path.exists(data_path) and not self.screening.is_overwrite:
         task.fail(f"Data exists for {project_name} already downloaded to {data_path}; \
                   not overwriting by default! Please set overwrite=True.")
         return
@@ -185,8 +186,8 @@ def preview_download_data(self, screening):
     message = f"Downloaded data in {downloaded_data_path}."
 
     # Update status
-    if screening.email:
-        send_email(screening.email, f"{JOURNAL_NAME}: Data download request", message)
+    if self.screening.email:
+        send_email(self.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         self.update_state(state=states.SUCCESS, meta={'message': message})
     else:
         task.succeed(message)
