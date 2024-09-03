@@ -17,7 +17,7 @@ GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 
 class ScreeningClient:
-    def __init__(self, task_name, issue_id, target_repo_url = None, task_id="0000000000", comment_id="", commit_hash=None, **extra_payload):
+    def __init__(self, task_name, issue_id, target_repo_url = None, task_id="000000000000", comment_id="", commit_hash=None, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
