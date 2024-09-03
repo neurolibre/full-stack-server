@@ -167,7 +167,7 @@ def preview_download_data(self, payload):
 
     data_path = task.join_data_root_path(project_name)
     if os.path.exists(data_path) and not payload['overwrite']:
-        task.fail(f"Data exists for {project_name} already downloaded to {data_path}; 
+        task.fail(f"Data exists for {project_name} already downloaded to {data_path}; \
                   not overwriting by default! Please set overwrite=True.")
         return
 
