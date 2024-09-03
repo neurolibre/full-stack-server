@@ -24,6 +24,7 @@ class ScreeningClient:
         self.review_repository = REVIEW_REPOSITORY
         self.target_repo_url = target_repo_url
         self.commit_hash = commit_hash
+        self.comment_id = comment_id
 
         for key, value in extra_payload.items():
             setattr(self, key, value)
@@ -35,8 +36,8 @@ class ScreeningClient:
             self.repo = self.github_client.get_repo(self.gh_filter(self.target_repo_url))
         else:
             self.repo = None
-        
-        self.comment_id = self.respond().PENDING("Awaiting task assignment...") if comment_id is None else comment_id
+        if self.comment_id is None:
+            self.comment_id = self.respond().PENDING("Awaiting task assignment...")
 
     def start_celery_task(self, celery_task_func):
         
