@@ -57,11 +57,18 @@ class ScreeningClient:
 
     @classmethod
     def from_dict(cls, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON string provided")
+
+        if not isinstance(data, dict):
+            raise TypeError("Input must be a dictionary or a JSON string")
         standard_attrs = ['task_name', 'issue_id', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
-        standard_dict = {key: data.pop(key) for key in standard_attrs if key in data}
-        print(standard_dict)
-        print(data)
-        return cls(**standard_dict, **data)
+        standard_dict = {key: data.get(key) for key in standard_attrs}
+        extra_payload = {key: value for key, value in data.items() if key not in standard_attrs}
+        return cls(**standard_dict, **extra_payload)
 
     def start_celery_task(self, celery_task_func):
         

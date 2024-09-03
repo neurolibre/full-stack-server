@@ -149,7 +149,7 @@ def preview_download_data(self, screening):
     """
     Downloading data to the preview server.
     """
-    task = BaseNeuroLibreTask(self, "DATA DOWNLOAD (REPO2DATA)", screening)
+    task = BaseNeuroLibreTask(self, screening)
     task.start("Started downloading the data.")
 
     try:
