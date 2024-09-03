@@ -81,8 +81,6 @@ class BaseNeuroLibreTask:
             if not isinstance(screening, ScreeningClient):
                 raise TypeError("The 'screening' parameter must be an instance of ScreeningClient")
             self.screening = screening
-            # This is to keep track of the task id in the ScreeningClient object.
-            self.screening.task_id = self.task_id
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(screening.target_repo_url, provider_full_name=True)
         elif payload:
             # This will be probably deprecated soon.
