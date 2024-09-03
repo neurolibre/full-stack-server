@@ -174,7 +174,7 @@ def preview_download_data(self, screening_dict):
             task.fail(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
 
     data_path = task.join_data_root_path(project_name)
-    if os.path.exists(data_path) and not self.screening.is_overwrite:
+    if os.path.exists(data_path) and not task.screening.is_overwrite:
         task.fail(f"Data exists for {project_name} already downloaded to {data_path}; \
                   not overwriting by default! Please set overwrite=True.")
         return
