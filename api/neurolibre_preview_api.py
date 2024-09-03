@@ -19,7 +19,7 @@ from github_client import *
 from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data
 from celery.events.state import State
 from github import Github, UnknownObjectException
-
+from screening_client import ScreeningClient
 """
 Configuration START
 """
@@ -120,33 +120,12 @@ def api_download_data(user, id, repository_url, email=None, is_overwrite=None):
     """
     This endpoint is to download data from GitHub (technical screening) requests.
     """
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    issue_id = id
-
-    task_title = "Download data for preview."
-    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
-
-    celery_payload = dict(repo_url=repository_url,
-                          rate_limit=RATE_LIMIT,
-                          binder_name=BINDER_NAME,
-                          domain_name = BINDER_DOMAIN,
-                          comment_id=comment_id,
-                          issue_id=issue_id,
-                          review_repository=REVIEW_REPOSITORY,
-                          task_title=task_title,
-                          overwrite=is_overwrite,
-                          email=email)
-
-    task_result = preview_download_data.apply_async(args=[celery_payload])
-
-    if task_result.task_id is not None:
-        gh_template_respond(github_client,"received",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, "")
-        response = make_response(jsonify("Celery task assigned successfully."),200)
-    else:
-        # If not successfully assigned, fail the status immediately and return 500
-        gh_template_respond(github_client,"failure",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, f"Internal server error: {JOURNAL_NAME} background task manager could not receive the request.")
-        response = make_response(jsonify("Celery could not start the task."),500)
+    extra_payload = dict(email=email, is_overwrite=is_overwrite)
+    screening = ScreeningClient(task_name="DOWNLOAD DATA", 
+                                issue_id=id, 
+                                target_repo_url=repository_url,
+                                **extra_payload)
+    response = screening.start_celery_task(preview_download_data)
     return response
 
 docs.register(api_download_data)

@@ -8,6 +8,7 @@ import git
 from github import Github
 from common  import load_yaml
 from dotenv import load_dotenv
+from flask import jsonify, make_response
 
 load_dotenv()
 
@@ -16,13 +17,16 @@ GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 
 class ScreeningClient:
-    def __init__(self, task_name, task_id, issue_id, target_repo_url = None, comment_id=None):
+    def __init__(self, task_name, issue_id, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
         self.review_repository = REVIEW_REPOSITORY
-        self.comment_id = comment_id
         self.target_repo_url = target_repo_url
+        self.commit_hash = commit_hash
+
+        for key, value in extra_payload.items():
+            setattr(self, key, value)
 
         # Private GitHub token
         self.__gh_bot_token = os.getenv('GH_BOT')
@@ -31,7 +35,23 @@ class ScreeningClient:
             self.repo = self.github_client.get_repo(self.gh_filter(self.target_repo_url))
         else:
             self.repo = None
+        
+        self.comment_id = self.respond().PENDING("Awaiting task assignment...") if comment_id is None else comment_id
 
+    def start_celery_task(self, celery_task_func):
+        
+        task_result = celery_task_func.apply_async(args=[self])
+        
+        if task_result.task_id is not None:
+            self.task_id = task_result.task_id
+            message = f"Celery task assigned successfully. Task ID: {self.task_id}"
+            self.respond().RECEIVED(message)
+            return make_response(jsonify(message), 200)
+        else:
+            message = f"Celery task assignment failed. Task Name: {self.task_name}"
+            self.respond().FAILURE(message)
+            return make_response(jsonify(message), 500)
+        
     @staticmethod
     def is_not_blank(my_string):
         return bool(my_string and my_string.strip())
@@ -193,15 +213,3 @@ class ScreeningClient:
         if not os.path.exists(target_path):
             os.makedirs(target_path)
         git.Repo.clone_from(repo_url, target_path, depth=depth)
-
-
-# task_name = "Example Task"
-# task_id = "abcdef1234567890"
-# issue_id = 123
-
-# screening = ScreeningClient(task_name, task_id, issue_id)
-
-# screening.respond(
-#     phase="started", 
-#     message=""
-# )

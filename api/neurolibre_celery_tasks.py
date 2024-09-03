@@ -31,7 +31,6 @@ common_config  = load_yaml('common_config.yaml')
 config_keys = [
     'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
     'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION']
-
 globals().update({key: common_config[key] for key in config_keys})
 
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
@@ -73,16 +72,16 @@ Define a base class for all the tasks.
 """
 
 class BaseNeuroLibreTask:
-    def __init__(self, celery_task, task_title, payload):
+    def __init__(self, celery_task, task_title, payload, screening=None):
         self.celery_task = celery_task
         self.task_title = task_title
         self.payload = payload
         self.task_id = celery_task.request.id
-        self.screening = ScreeningClient(
+        self.screening = screening if screening else ScreeningClient(
             self.task_title,
-            self.task_id,
             payload['issue_id'],
             payload['repo_url'],
+            self.task_id,
             payload['comment_id']
         )
         self.owner, self.repo, self.provider = get_owner_repo_provider(payload['repo_url'], provider_full_name=True)
@@ -123,7 +122,6 @@ class BaseNeuroLibreTask:
     def get_archive_dir(self, *args):
         return self.path_join(get_archive_dir(self.payload['issue_id']), *args)
 
-    # Add other common methods as needed
 
 """
 Celery tasks START

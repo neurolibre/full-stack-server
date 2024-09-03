@@ -26,6 +26,7 @@ from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsy
      preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task
 from github import Github
 import yaml
+from screening_client import ScreeningClient
 
 """
 Configuration START
@@ -676,23 +677,9 @@ def api_zenodo_flush_post(user,id,repository_url):
     """
     Delete buckets and uploaded files from zenodo.
     """
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    issue_id = id
-
-    #app.logger.debug(f'{issue_id} {repository_url}')
-    project_name = gh_get_project_name(github_client,repository_url)
-    #app.logger.debug(f'{project_name}')
-    task_title = "ZENODO FLUSH RECORDS AND UPLOADS"
-    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
-
-    celery_payload = dict(issue_id = id,
-                    comment_id = comment_id,
-                    review_repository = REVIEW_REPOSITORY,
-                    repository_url = repository_url,
-                    task_title=task_title)
-
-    task_result = zenodo_flush_task.apply_async(args=[celery_payload])
+    screening = ScreeningClient(task_name="ZENODO FLUSH RECORDS AND UPLOADS", issue_id=id, target_repo_url=repository_url)
+    response = screening.start_celery_task(zenodo_flush_task)
+    return response
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_flush_post)
