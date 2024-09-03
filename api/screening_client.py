@@ -17,7 +17,7 @@ GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 
 class ScreeningClient:
-    def __init__(self, task_name, issue_id, target_repo_url = None, task_id="000000000000", comment_id="", commit_hash=None, **extra_payload):
+    def __init__(self, task_name, issue_id, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
@@ -88,13 +88,24 @@ class ScreeningClient:
         else:
             message = ""
 
+        # If the comment ID is not set, set it to an empty string
+        if self.comment_id is None:
+            this_comment_id = ""
+        else:
+            this_comment_id = self.comment_id
+        
+        if self.task_id is None:
+            this_task_id = "000000000000"
+        else:
+            this_task_id = self.task_id
+
         return {
             "PENDING": f"&#9899; **{self.task_name}**\n----------------------------\n**Status:** Waiting for task assignment\n**Last updated:** {cur_time}\n{message}",
-            "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{self.comment_id})",
-            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{self.comment_id})",
-            "SUCCESS": f"&#128994; **{self.task_name}**\n----------------------------\n**Status:** Success `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
-            "FAILURE": f"&#128308; **{self.task_name}**\n----------------------------\n**Status:** Failed `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
-            "EXISTS": f"&#128995; **{self.task_name}**\n----------------------------\n**Status:** Already exists `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
+            "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id})",
+            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id})",
+            "SUCCESS": f"&#128994; **{self.task_name}**\n----------------------------\n**Status:** Success `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
+            "FAILURE": f"&#128308; **{self.task_name}**\n----------------------------\n**Status:** Failed `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
+            "EXISTS": f"&#128995; **{self.task_name}**\n----------------------------\n**Status:** Already exists `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
         }
 
     @staticmethod
