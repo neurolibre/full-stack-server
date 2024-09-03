@@ -33,9 +33,10 @@ class ScreeningClient:
         self.__gh_bot_token = os.getenv('GH_BOT')
         self.github_client = Github(self.__gh_bot_token)
         if self.target_repo_url:
-            self.repo = self.github_client.get_repo(self.gh_filter(self.target_repo_url))
+            self.repo_object = self.github_client.get_repo(self.gh_filter(self.target_repo_url))
         else:
-            self.repo = None
+            self.repo_object = None
+
         if self.comment_id is None:
             self.comment_id = self.respond().PENDING("Awaiting task assignment...")
 
@@ -71,7 +72,7 @@ class ScreeningClient:
             message = ""
 
         return {
-            "PENDING": f"&#9899; **{self.task_name}**\n----------------------------\n**Status:** Waiting for task assignment\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{self.comment_id})",
+            "PENDING": f"&#9899; **{self.task_name}**\n----------------------------\n**Status:** Waiting for task assignment\n**Last updated:** {cur_time}\n{message}",
             "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{self.comment_id})",
             "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{self.comment_id})",
             "SUCCESS": f"&#128994; **{self.task_name}**\n----------------------------\n**Status:** Success `{self.task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
