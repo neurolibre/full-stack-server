@@ -1,0 +1,31 @@
+endpoints:
+  download_data:
+    route: '/api/data/cache'
+    methods: ['POST']
+    task_name: "DOWNLOAD DATA"
+    celery_task: preview_download_data
+    schema: DownloadSchema
+    description: 'Endpoint for downloading data through repo2data.'
+    tags: ['Data']
+    parameters:
+      - name: user
+      - name: id
+      - name: repository_url
+      - name: email
+        default: None
+      - name: is_overwrite
+        default: None
+
+  build_book:
+    route: '/api/book/build'
+    methods: ['POST']
+    task_name: "BUILD BOOK"
+    celery_task: preview_build_book
+    schema: BuildSchema
+    description: 'Endpoint for building reproducibility assets on the preview BinderHub instance: Repo2Data, (Binder) Repo2Docker, Jupyter Book.'
+    tags: ['Book']
+    parameters:
+      - name: user
+      - name: id
+      - name: repo_url
+      - name: commit_hash
