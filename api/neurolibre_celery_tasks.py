@@ -80,7 +80,7 @@ class BaseNeuroLibreTask:
             # If passed here, must be JSON serialization of ScreeningClient object.
             # We need to unpack these to pass to ScreeningClient to initialize it as an object.
             self.screening = ScreeningClient.from_dict(screening)
-            self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(screening.target_repo_url, provider_full_name=True)
+            self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(self.screening.target_repo_url, provider_full_name=True)
         elif payload:
             # This will be probably deprecated soon. For now, reserve for backward compatibility.
             self.screening = ScreeningClient(
