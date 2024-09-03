@@ -55,6 +55,14 @@ class ScreeningClient:
         result.update(self.__extra_payload)
         return result
 
+    @classmethod
+    def from_dict(cls, data):
+        standard_attrs = ['task_name', 'issue_id', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
+        standard_dict = {key: data.pop(key) for key in standard_attrs if key in data}
+        print(standard_dict)
+        print(data)
+        return cls(**standard_dict, **data)
+
     def start_celery_task(self, celery_task_func):
         
         # This trick is needed to pass the ScreeningClient object to the Celery task.

@@ -79,10 +79,7 @@ class BaseNeuroLibreTask:
         if screening:
             # If passed here, must be JSON serialization of ScreeningClient object.
             # We need to unpack these to pass to ScreeningClient to initialize it as an object.
-            standard_attrs = ['task_name', 'issue_id', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
-            standard_dict = {key: screening.pop(key) for key in standard_attrs if key in screening}
-            extra_payload = screening
-            self.screening = ScreeningClient(**standard_dict, **extra_payload)
+            self.screening = ScreeningClient.from_dict(screening)
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(screening.target_repo_url, provider_full_name=True)
         elif payload:
             # This will be probably deprecated soon. For now, reserve for backward compatibility.
