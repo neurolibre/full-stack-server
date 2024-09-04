@@ -12,7 +12,7 @@ from flask import jsonify, make_response
 
 load_dotenv()
 
-common_config = load_yaml("common_config.yaml")
+common_config = load_yaml("config/common.yaml")
 GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 
