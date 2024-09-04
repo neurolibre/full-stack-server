@@ -100,17 +100,15 @@ class BaseNeuroLibreTask:
 
     def fail(self, message):
         self.screening.respond().FAILURE(message)
-        raise self.task_failure(message)
-
-    def succeed(self, message):
-        self.screening.respond().SUCCESS(message)
-
-    def task_failure(self, message):
-        return states.FAILURE, {
+        self.update_state(state=states.FAILURE, meta={
             'exc_type': f"{JOURNAL_NAME} celery exception",
             'exc_message': "Custom",
             'message': message
-        }
+        })
+        raise Ignore()
+
+    def succeed(self, message):
+        self.screening.respond().SUCCESS(message)
 
     def update_state(self, state, meta):
         self.celery_task.update_state(state=state, meta=meta)
