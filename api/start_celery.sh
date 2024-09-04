@@ -1,3 +1,3 @@
 #!/bin/bash
-source /home/ubuntu/venv/neurolibre38/bin/activate
+source ${VENV_PATH}/bin/activate
 exec "$@"

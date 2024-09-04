@@ -10,6 +10,7 @@ __pycache__/
 *.lock
 build_locks/
 celery_preview/
+neurolibre_celery_session/
 # Distribution / packaging
 .Python
 build/
