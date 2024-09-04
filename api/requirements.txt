@@ -26,3 +26,4 @@ markdown-it-py==2.0.1
 repo2data
 openai
 myst-libre
+humanize==4.9.0

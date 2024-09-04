@@ -182,8 +182,15 @@ def preview_download_data(self, screening_dict):
     # Download data with repo2data
     repo2data = Repo2Data(json_path, server=True)
     repo2data.set_server_dst_folder(DATA_ROOT_PATH)
-    downloaded_data_path = repo2data.install()[0]
-    message = f"Downloaded data in {downloaded_data_path}."
+    try:
+        downloaded_data_path = repo2data.install()[0]
+        content, total_size = get_directory_content_summary(downloaded_data_path)
+        message = f"Downloaded data in {downloaded_data_path} ({total_size})."
+        for file_path, size in content:
+            message += f"\n- {file_path} ({size})"
+    except Exception as e:
+        task.fail(f"Data download has failed: {str(e)}")
+        return
 
     # Update status
     if task.screening.email:

@@ -9,7 +9,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 from dotenv import load_dotenv
 from openai import OpenAI
-
+import humanize
 """
 Helper functions for the tasks 
 performed by both servers (preview and preprint).
@@ -375,3 +375,17 @@ def get_gpt_response(prompt):
         return answer
     else:
         return "GPT is AFK, keep hanging out with roboneuro."
+
+def get_directory_content_summary(path):
+    """
+    Get the summary of the directory content.
+    """
+    content = []
+    total_size = 0
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            file_path = os.path.join(root, name)
+            size = os.path.getsize(file_path)
+            total_size += size
+            content.append((file_path.replace(path, '').lstrip('/'), humanize.naturalsize(size)))
+    return content, humanize.naturalsize(total_size)
