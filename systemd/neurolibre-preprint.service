@@ -9,7 +9,7 @@ WorkingDirectory=/home/ubuntu/full-stack-server/api
 EnvironmentFile=/etc/default/neurolibre-server
 Environment="PATH=$PATH:${VENV_PATH}/bin"
 Environment=GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
-ExecStart=/bin/sh -c '${VENV_PATH}/bin/gunicorn --workers ${WORKERS} --timeout ${TIMEOUT} -k ${CONCURRENCY} --bind unix:${PREVIEW_SOCKET_PATH} -m 007 ${WSGI_PREVIEW_APP}'
+ExecStart=/bin/sh -c '${VENV_PATH}/bin/gunicorn --workers ${WORKERS} --timeout ${TIMEOUT} -k ${CONCURRENCY} --bind unix:${PREPRINT_SOCKET_PATH} -m 007 ${WSGI_PREPRINT_APP}'
 Restart=always
 
 [Install]

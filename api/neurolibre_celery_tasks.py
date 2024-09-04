@@ -169,13 +169,16 @@ def preview_download_data(self, screening_dict):
         if task.screening.email:
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         else:
-            task.fail(f"Data exists for {project_name}; not overwriting by default! Please set overwrite=True.")
+            task.fail(message)
 
     data_path = task.join_data_root_path(project_name)
+    not_again_message = f"I already have data for {project_name} downloaded to {data_path}. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set overwrite=True if you want to download the data again."
     if os.path.exists(data_path) and not task.screening.is_overwrite:
-        task.fail(f"Data exists for {project_name} already downloaded to {data_path}; \
-                  not overwriting by default! Please set overwrite=True.")
-        return
+        if task.screening.email:
+            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
+        else:
+            task.fail(not_again_message)
+            return
 
     # Download data with repo2data
     repo2data = Repo2Data(json_path, server=True)

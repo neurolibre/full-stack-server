@@ -1,0 +1,9 @@
+WORKERS=4
+TIMEOUT=600
+CONCURRENCY="gevent"
+VENV_PATH="/home/ubuntu/venv/neurolibre38"
+WSGI_PREVIEW_APP="wsgi_preview:app"
+WSGI_PREPRINT_APP="wsgi_production:app"
+WORKING_DIRECTORY="/home/ubuntu/full-stack-server/api"
+PREVIEW_SOCKET_PATH="${WORKING_DIRECTORY}/neurolibre_preview_api.sock"
+PREPRINT_SOCKET_PATH="${WORKING_DIRECTORY}/neurolibre_preprint_api.sock"
