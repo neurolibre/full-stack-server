@@ -15,7 +15,7 @@ common_api = Blueprint('common_api', __name__,
 # Document registration of the following endpoints must be performed by the app that 
 # imports this blueprint.
 
-common_config  = load_yaml('common_config.yaml')
+common_config  = load_yaml('config/common.yaml')
 DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
 JOURNAL_NAME = common_config['JOURNAL_NAME']
 

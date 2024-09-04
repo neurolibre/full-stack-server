@@ -37,8 +37,8 @@ load_dotenv()
 app = flask.Flask(__name__)
 
 # Load configurations from YAML files and update Flask app config
-preprint_config = load_yaml('preprint_config.yaml')
-common_config = load_yaml('common_config.yaml')
+preprint_config = load_yaml('config/preprint.yaml')
+common_config = load_yaml('config/common.yaml')
 app.config.update(preprint_config)
 app.config.update(common_config)
 

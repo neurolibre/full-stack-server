@@ -23,8 +23,8 @@ from markdownify import markdownify as to_md
 
 load_dotenv()
 
-common_config  = load_yaml('common_config.yaml')
-preprint_config  = load_yaml('preprint_config.yaml')
+common_config  = load_yaml('config/common.yaml')
+preprint_config  = load_yaml('config/preprint.yaml')
 
 BINDER_REGISTRY = common_config['BINDER_REGISTRY']
 DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']

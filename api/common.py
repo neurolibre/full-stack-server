@@ -22,8 +22,8 @@ def load_yaml(file):
         data = yaml.safe_load(file)
     return data 
 
-common_config  = load_yaml('common_config.yaml')
-preview_config  = load_yaml('preview_config.yaml')
+common_config  = load_yaml('config/common.yaml')
+preview_config  = load_yaml('config/preview.yaml')
 
 # GLOBAL VARIABLES
 BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"

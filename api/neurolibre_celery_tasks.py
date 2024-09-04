@@ -24,9 +24,9 @@ from repo2data.repo2data import Repo2Data
 # from myst_libre.rees import REES
 # from myst_libre.builders import MystBuilder
 
-preview_config = load_yaml('preview_config.yaml')
-preprint_config = load_yaml('preprint_config.yaml')
-common_config  = load_yaml('common_config.yaml')
+preview_config = load_yaml('config/preview.yaml')
+preprint_config = load_yaml('config/preprint.yaml')
+common_config  = load_yaml('config/common.yaml')
 
 config_keys = [
     'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
