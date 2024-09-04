@@ -37,7 +37,7 @@ preview_api = NeuroLibreAPI(__name__,
                             ['config/common.yaml', 'config/preview.yaml'], 
                             common_endpoints)
 app = preview_api.get_app()
-docs = preview_api.get_docs()
+docs = preview_api.docs
 
 # load_dotenv()
 
