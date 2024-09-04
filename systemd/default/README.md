@@ -13,13 +13,15 @@ It should be placed in the /etc/default directory.
 - `CELERYD_LOG_FILE`: The path to the log file.
 - `CELERYD_LOG_LEVEL`: The log level.
 
-### Notes
+### Important
 
 - Make sure to set the correct permissions for the `start_celery.sh` script.
 
   ```bash
   chmod +x /home/ubuntu/full-stack-server/api/start_celery.sh
   ```
+
+Also, make sure to set the correct permissions for the `/etc/default/celery` file.
 
 - sudo chown ubuntu:ubuntu /etc/default/celery
 - sudo chmod 644 /etc/default/celery
@@ -28,6 +30,11 @@ Remember to reload the systemd daemon after making changes to the service files.
 
 ```bash
 sudo systemctl daemon-reload
+```
+then restart systemd service 
+
+```bash
+sudo systemctl restart <service-name>
 ```
 
 If you encounter errors, check the status of the service with:
