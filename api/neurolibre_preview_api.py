@@ -126,7 +126,7 @@ API Endpoints START
 """
 
 @app.route('/api/data/cache', methods=['POST'])
-@htpasswd.required
+@preview_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(DownloadSchema())
 @doc(description='Endpoint for downloading data through repo2data.', tags=['Data'])
@@ -145,7 +145,7 @@ def api_download_data(user, id, repository_url, email=None, is_overwrite=None):
 docs.register(api_download_data)
 
 @app.route('/api/book/build', methods=['POST'])
-@htpasswd.required
+@preview_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
 @doc(description='Endpoint for building reproducibility assets on the preview BinderHub instance: Repo2Data, (Binder) Repo2Docker, Jupyter Book.', tags=['Book'])
@@ -186,7 +186,7 @@ def api_book_build(user, id, repo_url, commit_hash):
 docs.register(api_book_build)
 
 @app.route('/api/book/build/test', methods=['POST'])
-@htpasswd.required
+@preview_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
 @doc(description='Endpoint for building NRP through webpage', tags=['Book'])
@@ -227,7 +227,7 @@ def api_book_build_test(user, repo_url, commit_hash, email):
 docs.register(api_book_build_test)
 
 @app.route('/api/test', methods=['GET'])
-@htpasswd.required
+@preview_api.auth_required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Test'])
 def api_preview_test(user):
     response = make_response(jsonify(f"Preview server login successful. <3 {JOURNAL_NAME}"),200)
@@ -237,7 +237,7 @@ def api_preview_test(user):
 docs.register(api_preview_test)
 
 @app.route('/api/celery/test', methods=['GET'],endpoint='api_celery_test')
-@htpasswd.required
+@preview_api.auth_required
 @doc(description='Starts a background task (sleep 1 min) and returns task ID.', tags=['Tests'])
 def api_celery_test(user):
     seconds = 60
@@ -247,7 +247,7 @@ def api_celery_test(user):
 docs.register(api_celery_test)
 
 @app.route('/api/celery/test/<task_id>',methods=['GET'], endpoint='get_task_status_test')
-@htpasswd.required
+@preview_api.auth_required
 @doc(description='Get the status of the test task.', tags=['Tasks'])
 def get_task_status_test(user,task_id):
     task = celery_app.AsyncResult(task_id)
@@ -274,7 +274,7 @@ def get_task_status_test(user,task_id):
 docs.register(get_task_status_test)
 
 # @app.route('/api/myst/build', methods=['POST'])
-# @htpasswd.required
+# @preview_api.auth_required
 # @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 # @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
 # @doc(description='Endpoint for building MyST Markdown formatted articles.', tags=['MyST'])

@@ -9,6 +9,7 @@ import logging
 import os
 import yaml
 import neurolibre_common_api
+from functools import wraps
 
 class NeuroLibreAPI:
     def __init__(self, name, config_files, common_endpoints=None):
@@ -75,6 +76,12 @@ class NeuroLibreAPI:
     def register_common_endpoints(self, endpoints):
         for endpoint in endpoints:
             self.docs.register(endpoint, blueprint="common_api")
+    
+    def auth_required(self, f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            return self.htpasswd.required(f)(*args, **kwargs)
+        return decorated
 
     def run(self):
         self.app.run()
