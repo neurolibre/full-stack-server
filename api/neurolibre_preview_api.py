@@ -1,11 +1,4 @@
-import flask
 import os
-import json
-import time
-import requests
-import git
-import logging
-import neurolibre_common_api
 from flask import jsonify, make_response
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
@@ -26,42 +19,10 @@ Configuration START
 
 from neurolibre_api import NeuroLibreAPI
 
-common_endpoints = [
-    neurolibre_common_api.api_get_book,
-    neurolibre_common_api.api_get_books,
-    neurolibre_common_api.api_heartbeat,
-    neurolibre_common_api.api_unlock_build,
-    neurolibre_common_api.api_preview_list]
-
-preview_api = NeuroLibreAPI(__name__, 
-                            ['config/common.yaml', 'config/preview.yaml'], 
-                            common_endpoints)
+preview_api = NeuroLibreAPI(__name__,
+                            ['config/common.yaml', 'config/preview.yaml'])
 app = preview_api.get_app()
 docs = preview_api.docs
-
-# load_dotenv()
-
-# # Initialize Flask app
-# app = flask.Flask(__name__)
-
-# # Load and update app configuration from YAML files
-# preview_config = load_yaml('config/preview.yaml')
-# common_config = load_yaml('config/common.yaml')
-# app.config.update(preview_config)
-# app.config.update(common_config)
-
-# # Register common API blueprint
-# app.register_blueprint(neurolibre_common_api.common_api)
-# # Configure app to work behind a proxy
-# app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
-# # Set up logging
-# app.logger.handlers.extend(logging.getLogger('gunicorn.error').handlers)
-# app.logger.setLevel(logging.DEBUG)
-
-# # Set up authentication
-# app.config['FLASK_HTPASSWD_PATH'] = os.getenv('AUTH_KEY')
-# htpasswd = HtPasswdAuth(app)
 
 # Extract configuration variables
 JOURNAL_NAME = app.config['JOURNAL_NAME']
@@ -76,42 +37,9 @@ SERVER_TOS = app.config['SERVER_TOS']
 SERVER_ABOUT = app.config['SERVER_ABOUT']
 SERVER_LOGO = app.config['SERVER_LOGO']
 
-app.logger.debug(f'{JOURNAL_NAME} preview API.')
-app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
-
 # Set server name and about information
 SERVER_NAME  = SERVER_SLUG
 SERVER_ABOUT = SERVER_ABOUT + SERVER_LOGO
-
-# # Set up API specification for Swagger UI
-# spec = APISpec(
-#         title="Neurolibre preview & screening API",
-#         version='v1',
-#         plugins=[MarshmallowPlugin()],
-#         openapi_version="3.0.2",
-#         info=dict(description=SERVER_ABOUT,contact=SERVER_CONTACT,termsOfService=SERVER_TOS),
-#         servers = [{'url': f'https://{SERVER_NAME}.{SERVER_DOMAIN}/','description':'Preview server.', 'variables': {'SERVER_NAME':{'default':SERVER_NAME}}}]
-#         )
-
-# # Update app config with API spec
-# # SWAGGER UI URLS. Pay attention to /swagger/ vs /swagger.
-# app.config.update({'APISPEC_SPEC': spec})
-
-# # Set up security scheme for API
-# # Through Python, there's no way to disable within-documentation API calls.
-# # Even though "Try it out" is not functional, we cannot get rid of it.
-# api_key_scheme = {"type": "http", "scheme": "basic"}
-# spec.components.security_scheme("basicAuth", api_key_scheme)
-
-# # Create swagger UI documentation for the endpoints.
-# docs = FlaskApiSpec(app=app,document_options=False,)
-
-# # Register common API endpoints to the documentation
-# docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_preview_list,blueprint="common_api")
 
 """
 Configuration END

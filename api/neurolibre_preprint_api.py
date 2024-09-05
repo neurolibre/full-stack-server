@@ -1,9 +1,6 @@
 import flask
 import os
 import json
-import glob
-import time
-import subprocess
 import requests
 import shutil
 import git
@@ -27,35 +24,42 @@ from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsy
 from github import Github
 import yaml
 from screening_client import ScreeningClient
+from neurolibre_api import NeuroLibreAPI
 
 """
 Configuration START
 """
 
-# Load environment variables and initialize Flask app
-load_dotenv()
-app = flask.Flask(__name__)
+preprint_api = NeuroLibreAPI(__name__, 
+                             config_files=['config/common.yaml', 'config/preprint.yaml'])
 
-# Load configurations from YAML files and update Flask app config
-preprint_config = load_yaml('config/preprint.yaml')
-common_config = load_yaml('config/common.yaml')
-app.config.update(preprint_config)
-app.config.update(common_config)
+app = preprint_api.get_app()
+docs = preprint_api.docs
 
-# Register common API blueprint and configure proxy
-app.register_blueprint(neurolibre_common_api.common_api)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+# # Load environment variables and initialize Flask app
+# load_dotenv()
+# app = flask.Flask(__name__)
 
-# Set up logging
-gunicorn_error_logger = logging.getLogger('gunicorn.error')
-app.logger.handlers.extend(gunicorn_error_logger.handlers)
-app.logger.setLevel(logging.DEBUG)
-app.logger.debug(f'{JOURNAL_NAME} preprint production API.')
+# # Load configurations from YAML files and update Flask app config
+# preprint_config = load_yaml('config/preprint.yaml')
+# common_config = load_yaml('config/common.yaml')
+# app.config.update(preprint_config)
+# app.config.update(common_config)
 
-# Set up authentication
-AUTH_KEY=os.getenv('AUTH_KEY')
-app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
-htpasswd = HtPasswdAuth(app)
+# # Register common API blueprint and configure proxy
+# app.register_blueprint(neurolibre_common_api.common_api)
+# app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# # Set up logging
+# gunicorn_error_logger = logging.getLogger('gunicorn.error')
+# app.logger.handlers.extend(gunicorn_error_logger.handlers)
+# app.logger.setLevel(logging.DEBUG)
+# app.logger.debug(f'{JOURNAL_NAME} preprint production API.')
+
+# # Set up authentication
+# AUTH_KEY=os.getenv('AUTH_KEY')
+# app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
+# htpasswd = HtPasswdAuth(app)
 
 # Extract configuration variables
 REVIEW_REPOSITORY = app.config["REVIEW_REPOSITORY"]
@@ -73,37 +77,37 @@ SERVER_DOMAIN = app.config["SERVER_DOMAIN"]
 SERVER_TOS = app.config["SERVER_TOS"]
 SERVER_ABOUT = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
-app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
-app.logger.info(f"Server running https://{SERVER_NAME}.{SERVER_DOMAIN}.")
+# app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
+# app.logger.info(f"Server running https://{SERVER_NAME}.{SERVER_DOMAIN}.")
 
-# Set up API specification for Swagger UI
-spec = APISpec(
-        title="Reproducible preprint API",
-        version='v1',
-        plugins=[MarshmallowPlugin()],
-        openapi_version="3.0.2",
-        info=dict(description=SERVER_ABOUT,contact=SERVER_CONTACT,termsOfService=SERVER_TOS),
-        servers = [{'url': f'https://{SERVER_NAME}.{BINDER_DOMAIN}/','description':'Production server.', 'variables': {'SERVER_NAME':{'default':SERVER_NAME},'BINDER_DOMAIN':{'default':BINDER_DOMAIN}}}]
-        )
+# # Set up API specification for Swagger UI
+# spec = APISpec(
+#         title="Reproducible preprint API",
+#         version='v1',
+#         plugins=[MarshmallowPlugin()],
+#         openapi_version="3.0.2",
+#         info=dict(description=SERVER_ABOUT,contact=SERVER_CONTACT,termsOfService=SERVER_TOS),
+#         servers = [{'url': f'https://{SERVER_NAME}.{BINDER_DOMAIN}/','description':'Production server.', 'variables': {'SERVER_NAME':{'default':SERVER_NAME},'BINDER_DOMAIN':{'default':BINDER_DOMAIN}}}]
+#         )
 
-# SWAGGER UI URLS. Interestingly, the preview deployment 
-# required `/swagger/` instead. This one works as is.
-app.config.update({'APISPEC_SPEC': spec})
+# # SWAGGER UI URLS. Interestingly, the preview deployment 
+# # required `/swagger/` instead. This one works as is.
+# app.config.update({'APISPEC_SPEC': spec})
 
-# Set up security scheme for API
-# Through Python, there's no way to disable within-documentation API calls.
-# Even though "Try it out" is not functional, we cannot get rid of it.
-api_key_scheme = {"type": "http", "scheme": "basic"}
-spec.components.security_scheme("basicAuth", api_key_scheme)
+# # Set up security scheme for API
+# # Through Python, there's no way to disable within-documentation API calls.
+# # Even though "Try it out" is not functional, we cannot get rid of it.
+# api_key_scheme = {"type": "http", "scheme": "basic"}
+# spec.components.security_scheme("basicAuth", api_key_scheme)
 
-# Create swagger UI documentation for the endpoints.
-docs = FlaskApiSpec(app=app,document_options=False)
+# # Create swagger UI documentation for the endpoints.
+# docs = FlaskApiSpec(app=app,document_options=False)
 
-# Register common API endpoints to the documentation
-docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
-docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
-docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
-docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
+# # Register common API endpoints to the documentation
+# docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
+# docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
+# docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
+# docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
 """
 Configuration END
@@ -119,7 +123,7 @@ API Endpoints START
 """
 # Sync summary PDF from papers repository to the server
 @app.route('/api/pdf/sync', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description=f'Copy summary PDF from {PAPERS_REPOSITORY} to {JOURNAL_NAME} server.', tags=['Production'])
 @use_kwargs(IDSchema())
@@ -162,7 +166,7 @@ docs.register(summary_pdf_sync_post)
 
 # Upload the repository to the respective zenodo deposit
 @app.route('/api/zenodo/upload/repository', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the repository to the respective zenodo deposit.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -207,7 +211,7 @@ def zenodo_upload_repository_post(user,id,repository_url):
 docs.register(zenodo_upload_repository_post)
 
 @app.route('/api/zenodo/upload/book', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the built book to the respective zenodo deposit.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -247,7 +251,7 @@ def zenodo_upload_book_post(user,id,repository_url):
 docs.register(zenodo_upload_book_post)
 
 @app.route('/api/zenodo/upload/docker', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the docker image to the respective zenodo deposit.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -288,7 +292,7 @@ docs.register(zenodo_upload_docker_post)
 
 
 @app.route('/api/zenodo/upload/data', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the submission data for zenodo deposit.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -330,7 +334,7 @@ docs.register(zenodo_upload_data_post)
 
 
 @app.route('/api/zenodo/status', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Get zenodo status for a submission.', tags=['Zenodo'])
 @use_kwargs(IDSchema())
@@ -346,7 +350,7 @@ def api_zenodo_status(user,id):
     return response
 
 @app.route('/api/zenodo/publish', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -382,7 +386,7 @@ docs.register(api_zenodo_publish)
 docs.register(api_zenodo_status)
 
 @app.route('/api/zenodo/buckets', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
 @use_kwargs(BucketsSchema())
@@ -435,7 +439,7 @@ def api_zenodo_post(user,id,repository_url):
 docs.register(api_zenodo_post)
 
 @app.route('/api/zenodo/upload', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload an item to the respective zenodo bucket (book, repository, data or docker image).', tags=['Zenodo'])
 @use_kwargs(UploadSchema())
@@ -644,7 +648,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
 docs.register(api_upload_post)
 
 @app.route('/api/zenodo/list', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Get the list of Zenodo records that are available for a given submission.', tags=['Zenodo'])
 @use_kwargs(ListSchema())
@@ -669,7 +673,7 @@ def api_zenodo_list_post(user,issue_id):
 docs.register(api_zenodo_list_post)
 
 @app.route('/api/zenodo/flush', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Flush records and remove respective uploads from Zenodo, if available for a submission ID.', tags=['Zenodo'])
 @use_kwargs(DatasyncSchema())
@@ -685,7 +689,7 @@ def api_zenodo_flush_post(user,id,repository_url):
 docs.register(api_zenodo_flush_post)
 
 @app.route('/api/data/sync', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
 @use_kwargs(DatasyncSchema())
 def api_data_sync_post(user,id,repository_url):
@@ -717,7 +721,7 @@ def api_data_sync_post(user,id,repository_url):
 docs.register(api_data_sync_post)
 
 @app.route('/api/book/sync', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description='Transfer a built book from the preview to the production server based on the project name.', tags=['Book'])
 @use_kwargs(BooksyncSchema())
 def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
@@ -755,7 +759,7 @@ def api_books_sync_post(user,id,repository_url,commit_hash="HEAD"):
 docs.register(api_books_sync_post)
 
 @app.route('/api/production/start', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description=f'Fork user repository into {GH_ORGANIZATION} and update _config and _toc.', tags=['Production'])
 @use_kwargs(ProdStartSchema())
 def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
@@ -789,7 +793,7 @@ docs.register(api_production_start_post)
 # This is named as a binder/build instead of /book/build due to its context 
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description=f'Request a binderhub build on the production server for a given repo and hash. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
 def api_binder_build(user,repo_url, commit_hash):
@@ -840,7 +844,7 @@ def api_binder_build(user,repo_url, commit_hash):
     return flask.Response(generate(), mimetype='text/event-stream')
 
 @app.route('/api/pdf/draft', methods=['POST'])
-@htpasswd.required
+@preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Build extended PDF for a submission.', tags=['Extended PDF'])
 @use_kwargs(BucketsSchema())
@@ -872,7 +876,7 @@ def api_pdf_draft(user,id,repository_url):
 docs.register(api_pdf_draft)
 
 @app.route('/api/test', methods=['GET'])
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description='Check if SSL verified authentication is functional.', tags=['Tests'])
 def api_preprint_test(user):
      response = make_response(f"Preprint server login successful. <3 {JOURNAL_NAME}",200)
@@ -882,7 +886,7 @@ def api_preprint_test(user):
 docs.register(api_preprint_test)
 
 @app.route('/api/celery/test', methods=['GET'],endpoint='api_celery_test')
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description='Starts a background task (sleep 1 min) and returns task ID.', tags=['Tests'])
 def api_celery_test(user):
     seconds = 60
@@ -892,7 +896,7 @@ def api_celery_test(user):
 docs.register(api_celery_test)
 
 @app.route('/api/celery/test/<task_id>',methods=['GET'], endpoint='get_task_status_test')
-@htpasswd.required
+@preprint_api.auth_required
 @doc(description='Get the status of the test task.', tags=['Tasks'])
 def get_task_status_test(user,task_id):
     task = celery_app.AsyncResult(task_id)

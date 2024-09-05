@@ -12,7 +12,7 @@ import neurolibre_common_api
 from functools import wraps
 
 class NeuroLibreAPI:
-    def __init__(self, name, config_files, common_endpoints=None):
+    def __init__(self, name, config_files):
         self.app = Flask(name)
         self.load_config(config_files)
         self.setup_logging()
@@ -20,8 +20,14 @@ class NeuroLibreAPI:
         self.setup_proxy()
         self.setup_docs()
         self.register_blueprint(neurolibre_common_api.common_api)
-        if common_endpoints:
-            self.register_common_endpoints(common_endpoints)
+        common_endpoints = [neurolibre_common_api.api_get_book,
+                            neurolibre_common_api.api_get_books,
+                            neurolibre_common_api.api_heartbeat,
+                            neurolibre_common_api.api_unlock_build,
+                            neurolibre_common_api.api_preview_list]
+        self.register_docs_common_endpoints(common_endpoints)
+        self.app.logger.debug(f'{self.app.config['JOURNAL_NAME']} preview API.')
+        self.app.logger.info(f"Using {self.app.config['BINDER_NAME']}.{self.app.config['BINDER_DOMAIN']} as BinderHub.")
 
     def get_app(self):
         return self.app
@@ -73,7 +79,7 @@ class NeuroLibreAPI:
     def register_blueprint(self, blueprint):
         self.app.register_blueprint(blueprint)
 
-    def register_common_endpoints(self, endpoints):
+    def register_docs_common_endpoints(self, endpoints):
         for endpoint in endpoints:
             self.docs.register(endpoint, blueprint="common_api")
     

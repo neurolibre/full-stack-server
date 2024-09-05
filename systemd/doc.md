@@ -23,8 +23,9 @@ The redis server is expected to run on port 6379 (by celery).
 #### Copy over systemd and environment files
 
 ```bash
-sudo cp <full-stack-server>/api/systemd/neurolibre-celery.service /etc/systemd/system/
-sudo cp <full-stack-server>/api/systemd/default/celery /etc/default/
+cd <full-stack-server>
+sudo cp systemd/neurolibre-celery.service /etc/systemd/system/
+sudo cp systemd/default/celery /etc/default/
 ```
 
 Make sure that the `celery` file has correct permissions after copying:
@@ -115,8 +116,9 @@ sudo apt-get install -y $(cat <full-stack-server>/api/apt.txt)
 #### Copy over systemd and environment files
 
 ```bash
-sudo cp <full-stack-server>/api/systemd/neurolibre-<server-type>.service /etc/systemd/system/
-sudo cp <full-stack-server>/api/systemd/default/neurolibre-server /etc/default/
+cd <full-stack-server>
+sudo cp systemd/neurolibre-<server-type>.service /etc/systemd/system/
+sudo cp systemd/default/neurolibre-server /etc/default/
 ```
 
 Make sure that the `neurolibre-server` file has correct permissions after copying:
@@ -165,3 +167,19 @@ sudo systemctl restart neurolibre-<server-type>
 ```
 
 * Make sure that you have a `.env` file.
+
+### How to create htpasswd file
+
+```bash
+sudo apt-get install apache2-utils
+htpasswd -c ~/.htpasswd <username>
+```
+
+### Add to the docs
+
+sudo apt install python3.8-distutils
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
