@@ -26,8 +26,6 @@ class NeuroLibreAPI:
                             neurolibre_common_api.api_unlock_build,
                             neurolibre_common_api.api_preview_list]
         self.register_docs_common_endpoints(common_endpoints)
-        self.app.logger.debug(f'{self.app.config['JOURNAL_NAME']} preview API.')
-        self.app.logger.info(f"Using {self.app.config['BINDER_NAME']}.{self.app.config['BINDER_DOMAIN']} as BinderHub.")
 
     def get_app(self):
         return self.app

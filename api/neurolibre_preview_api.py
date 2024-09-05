@@ -41,6 +41,9 @@ SERVER_LOGO = app.config['SERVER_LOGO']
 SERVER_NAME  = SERVER_SLUG
 SERVER_ABOUT = SERVER_ABOUT + SERVER_LOGO
 
+app.logger.info(f'{JOURNAL_NAME} preview API.')
+app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
+
 """
 Configuration END
 """
