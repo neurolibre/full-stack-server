@@ -20,9 +20,11 @@ import base64
 import tempfile
 from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
-# from myst_libre.tools import JupyterHubLocalSpawner, MystMD
-# from myst_libre.rees import REES
-# from myst_libre.builders import MystBuilder
+from myst_libre.tools import JupyterHubLocalSpawner, MystMD
+from myst_libre.rees import REES
+from myst_libre.builders import MystBuilder
+from celery.schedules import crontab
+
 
 preview_config = load_yaml('config/preview.yaml')
 preprint_config = load_yaml('config/preprint.yaml')
@@ -30,7 +32,8 @@ common_config  = load_yaml('config/common.yaml')
 
 config_keys = [
     'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
-    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION']
+    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION', 'MYST_SOURCE_FOLDER', 'MYST_PUBLISH_FOLDER',
+    'CONTAINER_MYST_SOURCE_PATH', 'CONTAINER_MYST_DATA_PATH']
 globals().update({key: common_config[key] for key in config_keys})
 
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
@@ -115,12 +118,21 @@ class BaseNeuroLibreTask:
 
     def get_commit_hash(self):
         return format_commit_hash(self.payload['repo_url'], self.payload.get('commit_hash', 'HEAD'))
+    
+    def get_dotenv_path(self):
+        return self.path_join(os.environ.get('HOME'),'full-stack-server','api')
 
     def path_join(self, *args):
         return os.path.join(*args)
 
     def join_data_root_path(self, *args):
         return self.path_join(DATA_ROOT_PATH, *args)
+
+    def join_myst_source_path(self, *args):
+        return self.path_join(DATA_ROOT_PATH, MYST_SOURCE_FOLDER, *args)
+
+    def join_myst_publish_path(self, *args):
+        return self.path_join(DATA_ROOT_PATH, MYST_PUBLISH_FOLDER, *args)
 
     def get_deposit_dir(self, *args):
         return self.path_join(get_deposit_dir(self.payload['issue_id']), *args)
@@ -132,6 +144,21 @@ class BaseNeuroLibreTask:
 """
 Celery tasks START
 """
+
+# TODO:
+# @celery_app.on_after_configure.connect
+# def setup_periodic_tasks(sender, **kwargs):
+#     sender.add_periodic_task(
+#         crontab(hour=0, minute=0),  # Daily at midnight
+#         update_github_file.s('your_username/your_repo', 'path/to/file.txt', 'Daily update', 'New content')
+#     )
+
+# @celery_app.task
+# def update_github_file(repo_name, file_path, commit_message, content):
+#     github_client = Github(os.getenv('GH_BOT'))
+#     repo = github_client.get_repo(repo_name)
+#     contents = repo.get_contents(file_path)
+#     repo.update_file(contents.path, commit_message, content, contents.sha)
 
 @celery_app.task(bind=True)
 def sleep_task(self, seconds):
@@ -1238,3 +1265,40 @@ def preprint_build_pdf_draft(self, payload):
     else:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
+
+
+@celery_app.task(bind=True)
+def preview_build_myst_task(self, screening_dict):
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("Started MyST build.")
+    task.screening.commit_hash = task.screening.commit_hash or format_commit_hash(task.screening.repository_url,"HEAD")
+    task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+
+    rees_resources = REES(dict(
+                  registry_url=BINDER_REGISTRY,
+                  gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+                  gh_repo_commit_hash = task.screening.commit_hash,
+                  binder_image_tag = task.screening.binder_hash,
+                  dotenv = task.get_dotenv_path()))
+
+    hub = JupyterHubLocalSpawner(rees_resources,
+                             host_build_source_parent_dir = task.get_myst_source_path(),
+                             container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
+                             host_data_parent_dir = DATA_ROOT_PATH, #optional
+                             container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
+    # Spawn the JupyterHub
+    hub.spawn_jupyter_hub()
+    # hub.rees.
+
+    builder = MystBuilder(hub)
+    expected_publish_path = task.join_myst_publish_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+    builder.setenv('BASE_URL',expected_publish_path)
+    builder.build()
+
+    expected_build_path = task.join_myst_source_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build")
+    if os.path.exists(expected_build_path):
+        # Copy myst artifacts to the expected path.
+        shutil.copytree(expected_build_path,task.get_myst_publish_path())
+        task.succeed(f"MyST build succeeded: https://{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html")
+    else:
+        raise FileNotFoundError(f"Expected build path not found: {expected_build_path}")

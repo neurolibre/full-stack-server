@@ -9,7 +9,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
 from screening_client import ScreeningClient
@@ -204,31 +204,21 @@ def get_task_status_test(user,task_id):
 
 docs.register(get_task_status_test)
 
-# @app.route('/api/myst/build', methods=['POST'])
-# @preview_api.auth_required
-# @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-# @marshal_with(None,code=200,description="Accept text/eventstream for BinderHub build logs. Keepalive 30s.")
-# @doc(description='Endpoint for building MyST Markdown formatted articles.', tags=['MyST'])
-# @use_kwargs(MystBuildSchema())
-# def api_myst_build(user, id, repo_url, commit_hash, binder_hash):
-#     GH_BOT=os.getenv('GH_BOT')
-#     github_client = Github(GH_BOT)
-#     issue_id = id
+@app.route('/api/myst/build', methods=['POST'])
+@preview_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@use_kwargs(MystBuildSchema())
+@doc(description='Endpoint for building myst formatted articles.', tags=['Myst'])
+def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None):
+    """
+    This endpoint is to download data from GitHub (technical screening) requests.
+    """
+    extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash)
+    screening = ScreeningClient(task_name="Build MyST article", 
+                                issue_id=id, 
+                                target_repo_url=repository_url,
+                                **extra_payload)
+    response = screening.start_celery_task(preview_build_myst_task)
+    return response
 
-#     task_title = "MyST Build (Preview)"
-#     comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
-
-#     celery_payload = dict(repo_url=repo_url,
-#                           commit_hash=commit_hash,
-#                           binder_hash = binder_hash,
-#                           rate_limit=RATE_LIMIT,
-#                           binder_name=BINDER_NAME,
-#                           domain_name = BINDER_DOMAIN,
-#                           comment_id=comment_id,
-#                           issue_id=issue_id,
-#                           review_repository=REVIEW_REPOSITORY,
-#                           task_title=task_title)
-
-#     task_result = preview_build_myst_task.apply_async(args=[celery_payload])
-
-# docs.register(api_myst_build)
+docs.register(api_myst_build)

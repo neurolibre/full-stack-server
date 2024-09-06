@@ -175,7 +175,7 @@ sudo apt-get install apache2-utils
 htpasswd -c ~/.htpasswd <username>
 ```
 
-### Add to the docs
+### Important missing from docs
 
 sudo apt install python3.8-distutils
 
@@ -183,3 +183,6 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
+sudo mkdir -p /var/run/neurolibre
+sudo chown ubuntu:www-data /var/run/neurolibre
+sudo chmod 770 /var/run/neurolibre
