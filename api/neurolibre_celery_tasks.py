@@ -1266,8 +1266,7 @@ def preprint_build_pdf_draft(self, payload):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
-
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=300, time_limit=1000)
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started MyST build.")
