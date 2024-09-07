@@ -44,7 +44,7 @@ class MystBuildSchema(Schema):
     """
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
-    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
+    commit_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
     binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
 
 class BuildTestSchema(Schema):
