@@ -1271,7 +1271,7 @@ def preprint_build_pdf_draft(self, payload):
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started MyST build.")
-    task.screening.commit_hash = format_commit_hash(task.screening.repository_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
+    task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
     task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
 
     rees_resources = REES(dict(
@@ -1280,16 +1280,18 @@ def preview_build_myst_task(self, screening_dict):
                   gh_repo_commit_hash = task.screening.commit_hash,
                   binder_image_tag = task.screening.binder_hash,
                   dotenv = task.get_dotenv_path()))
-
+    
     hub = JupyterHubLocalSpawner(rees_resources,
-                             host_build_source_parent_dir = task.get_myst_source_path(),
+                             host_build_source_parent_dir = task.join_myst_source_path(),
                              container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
                              host_data_parent_dir = DATA_ROOT_PATH, #optional
                              container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
     # Spawn the JupyterHub
+    task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
     hub.spawn_jupyter_hub()
     # hub.rees.
 
+    task.start("Warming up the myst builder...")
     builder = MystBuilder(hub)
     expected_publish_path = task.join_myst_publish_path(task.owner_name,task.repo_name,task.screening.commit_hash)
     builder.setenv('BASE_URL',expected_publish_path)
@@ -1298,7 +1300,7 @@ def preview_build_myst_task(self, screening_dict):
     expected_build_path = task.join_myst_source_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build")
     if os.path.exists(expected_build_path):
         # Copy myst artifacts to the expected path.
-        shutil.copytree(expected_build_path,task.get_myst_publish_path())
+        shutil.copytree(expected_build_path,expected_publish_path)
         task.succeed(f"MyST build succeeded: https://{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html")
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_build_path}")
