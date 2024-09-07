@@ -55,13 +55,9 @@ DATA_ROOT_PATH: "/DATA"
 # this is expected to be under the DATA_ROOT_PATH
 JB_ROOT_FOLDER: "book-artifacts"
 
-# Name of the folder that will contain published MyST websites
-# this is expected to be under the DATA_ROOT_PATH
-MYST_PUBLISH_FOLDER: "myst"
-
 # Name of the folder that will contain MyST websites
 # source code. This is expected to be under the DATA_ROOT_PATH
-MYST_SOURCE_FOLDER: "myst_sources"
+MYST_FOLDER: "myst"
 
 # Container path where the MyST sources will be mounted
 CONTAINER_MYST_SOURCE_PATH: "/home/jovyan"

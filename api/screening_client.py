@@ -26,6 +26,7 @@ class ScreeningClient:
         self.commit_hash = commit_hash
         self.comment_id = comment_id
         self.__extra_payload = extra_payload
+        self._init_responder()
 
         for key, value in extra_payload.items():
             setattr(self, key, value)
@@ -40,7 +41,37 @@ class ScreeningClient:
 
         # If no comment ID is provided, create a new comment with a pending status
         if self.comment_id is None:
-            self.comment_id = self.respond().PENDING("Awaiting task assignment...")
+            self.comment_id = self.respond.PENDING("Awaiting task assignment...")
+
+    def _init_responder(self):
+        class PhaseResponder:
+            def __init__(self, phase, client):
+                self.phase = phase
+                self.client = client
+
+            def __call__(self, message="", collapsable=True):
+                template = self.client.gh_response_template(message=message, collapse=collapsable)
+                if self.phase == "PENDING":
+                    return self.client.gh_create_comment(template['PENDING'])
+                else:
+                    return self.client.gh_update_comment(template[self.phase])
+
+        class ResponderContainer:
+            def __init__(self, client):
+                self.client = client
+                self.PENDING = PhaseResponder("PENDING", client)
+                self.RECEIVED = PhaseResponder("RECEIVED", client)
+                self.STARTED = PhaseResponder("STARTED", client)
+                self.SUCCESS = PhaseResponder("SUCCESS", client)
+                self.FAILURE = PhaseResponder("FAILURE", client)
+                self.EXISTS = PhaseResponder("EXISTS", client)
+
+            def __getattr__(self, phase):
+                if phase in self.__dict__:
+                    return lambda message="", collapsable=True: self.__dict__[phase](message, collapsable)
+                raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{phase}'")
+
+        self.respond = ResponderContainer(self)
 
     def to_dict(self):
         # Convert the object to a dictionary to pass to Celery
@@ -79,11 +110,11 @@ class ScreeningClient:
         if task_result.task_id is not None:
             self.task_id = task_result.task_id
             message = f"Celery task assigned successfully. Task ID: {self.task_id}"
-            self.respond().RECEIVED(message)
+            self.respond.RECEIVED(message)
             return make_response(jsonify(message), 200)
         else:
             message = f"Celery task assignment failed. Task Name: {self.task_name}"
-            self.respond().FAILURE(message)
+            self.respond.FAILURE(message, collapsable=False)
             return make_response(jsonify(message), 500)
         
     @staticmethod
@@ -152,30 +183,6 @@ class ScreeningClient:
         issue = repo.get_issue(self.issue_id)
         comment = issue.get_comment(self.comment_id)
         comment.edit(comment_body)
-
-    def respond(self):
-        # Just for the sake of semantics.
-        manager = self
-        class PhaseResponder:
-            def __init__(self, phase):
-                self.phase = phase
-
-            def __call__(self, message="", collapsable=True):
-                template = manager.gh_response_template(message=message, collapse=collapsable)
-                if self.phase == "PENDING":
-                    return manager.gh_create_comment(template['PENDING'])
-                else:
-                    return manager.gh_update_comment(template[self.phase])
-
-        # Returning an object where each phase is a method
-        return type("PhaseResponderContainer", (object,), {
-            "PENDING": PhaseResponder("PENDING"),
-            "RECEIVED": PhaseResponder("RECEIVED"),
-            "STARTED": PhaseResponder("STARTED"),
-            "SUCCESS": PhaseResponder("SUCCESS"),
-            "FAILURE": PhaseResponder("FAILURE"),
-            "EXISTS": PhaseResponder("EXISTS"),
-        })()
 
     def gh_get_project_name(self):
         repo = self.github_client.get_repo(self.gh_filter(self.review_repository))

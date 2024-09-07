@@ -34,7 +34,7 @@ common_config  = load_yaml('config/common.yaml')
 
 config_keys = [
     'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
-    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION', 'MYST_SOURCE_FOLDER', 'MYST_PUBLISH_FOLDER',
+    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION', 'MYST_FOLDER',
     'CONTAINER_MYST_SOURCE_PATH', 'CONTAINER_MYST_DATA_PATH']
 globals().update({key: common_config[key] for key in config_keys})
 
@@ -42,6 +42,7 @@ JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
 PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
+PREVIEW2_SERVER = f"https://{preview_config['SERVER_SLUG']}2.{common_config['SERVER_DOMAIN']}"
 
 """
 Configuration START
@@ -125,11 +126,11 @@ class BaseNeuroLibreTask:
             raise ValueError("Either screening or payload must be provided.")
 
     def start(self, message=""):
-        self.screening.respond().STARTED(message)
+        self.screening.respond.STARTED(message)
         self.update_state(states.STARTED, {'message': message})
 
     def fail(self, message):
-        self.screening.respond().FAILURE(message)
+        self.screening.respond.FAILURE(message,collapsable=False)
         self.update_state(state=states.FAILURE, meta={
             'exc_type': f"{JOURNAL_NAME} celery exception",
             'exc_message': "Custom",
@@ -137,8 +138,8 @@ class BaseNeuroLibreTask:
         })
         raise Ignore()
 
-    def succeed(self, message):
-        self.screening.respond().SUCCESS(message)
+    def succeed(self, message, collapsable=True):
+        self.screening.respond.SUCCESS(message, collapsable=collapsable)
 
     def update_state(self, state, meta):
         self.celery_task.update_state(state=state, meta=meta)
@@ -155,11 +156,8 @@ class BaseNeuroLibreTask:
     def join_data_root_path(self, *args):
         return self.path_join(DATA_ROOT_PATH, *args)
 
-    def join_myst_source_path(self, *args):
-        return self.path_join(DATA_ROOT_PATH, MYST_SOURCE_FOLDER, *args)
-
-    def join_myst_publish_path(self, *args):
-        return self.path_join(DATA_ROOT_PATH, MYST_PUBLISH_FOLDER, *args)
+    def join_myst_path(self, *args):
+        return self.path_join(DATA_ROOT_PATH, MYST_FOLDER, *args)
 
     def get_deposit_dir(self, *args):
         return self.path_join(get_deposit_dir(self.payload['issue_id']), *args)
@@ -1308,7 +1306,7 @@ def preview_build_myst_task(self, screening_dict):
                   dotenv = task.get_dotenv_path()))
     
     hub = JupyterHubLocalSpawner(rees_resources,
-                             host_build_source_parent_dir = task.join_myst_source_path(),
+                             host_build_source_parent_dir = task.join_myst_path(),
                              container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
                              host_data_parent_dir = DATA_ROOT_PATH, #optional
                              container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
@@ -1316,19 +1314,24 @@ def preview_build_myst_task(self, screening_dict):
     task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
     hub.spawn_jupyter_hub()
     # hub.rees.
-
+    
+    expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+    if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
+        task.start("Successfully cloned the repository.")
+    else:
+        task.fail(f"Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
+    
+    # Initialize the builder
     task.start("Warming up the myst builder...")
+    expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     builder = MystBuilder(hub)
-    expected_publish_path = task.join_myst_publish_path(task.owner_name,task.repo_name,task.screening.commit_hash)
-    builder.setenv('BASE_URL',expected_publish_path)
+    # Set the base url
+    builder.setenv('BASE_URL',expected_webpage_path.split("/DATA")[-1])
+    # Start the build
     task.start("Started MyST build...")
     builder.build()
 
-    expected_build_path = task.join_myst_source_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build")
-    if os.path.exists(expected_build_path):
-        # Copy myst artifacts to the expected path.
-        task.start("MyST build completed, copying artifacts...")
-        fast_copytree(expected_build_path, expected_publish_path)
-        task.succeed(f"MyST build succeeded: https://{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html")
+    if os.path.exists(expected_webpage_path) and os.listdir(expected_webpage_path):
+        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW2_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
     else:
-        raise FileNotFoundError(f"Expected build path not found: {expected_build_path}")
+        raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
