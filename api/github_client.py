@@ -30,11 +30,11 @@ def gh_response_template(task_name,task_id,issue_id,comment_id,message="",collap
             message = f"\n {message}"
     else: 
         message = str()
-
+    issue_comment_url = f"https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id}"
     response_template = dict(
-                pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
-                received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
-                started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{issue_id}#issuecomment-{comment_id})",
+                pending = f"&#9899;  **{task_name}** \n ---------------------------- \n  **Status:** Waiting for task assignment \n **Last updated:** {cur_time} \n {message} \n :recycle: <a href=\"{issue_comment_url}\">Refresh</a>)",
+                received = f"&#9898;  **{task_name}** \n ---------------------------- \n  **Status:** Assigned to task `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: :recycle: <a href=\"{issue_comment_url}\">Refresh</a>)",
+                started = f"&#128992;  **{task_name}** \n ---------------------------- \n  **Status:** In progress `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message} \n :recycle: :recycle: <a href=\"{issue_comment_url}\">Refresh</a>",
                 success = f"&#128994;  **{task_name}** \n ---------------------------- \n  **Status:** Success `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
                 failure = f"&#128308;  **{task_name}** \n ---------------------------- \n  **Status:** Failed `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}",
                 exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}")
