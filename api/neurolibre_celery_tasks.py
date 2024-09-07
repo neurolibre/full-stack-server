@@ -24,6 +24,8 @@ from myst_libre.tools import JupyterHubLocalSpawner, MystMD
 from myst_libre.rees import REES
 from myst_libre.builders import MystBuilder
 from celery.schedules import crontab
+import zipfile
+import tempfile
 
 
 preview_config = load_yaml('config/preview.yaml')
@@ -69,6 +71,31 @@ def get_time():
     now = datetime.datetime.now(tz)
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
     return cur_time
+
+def fast_copytree(src, dst):
+    # Create a temporary directory for the zip file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, 'archive.zip')
+        
+        # Zip the source directory
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(src, os.path.basename(src))
+            for root, _, files in os.walk(src):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, src)
+                    zipf.write(file_path, arcname)
+        
+        # Copy the zip file to the destination
+        dst_zip = os.path.join(dst, 'archive.zip')
+        shutil.copy2(zip_path, dst_zip)
+        
+        # Extract the zip file at the destination
+        with zipfile.ZipFile(dst_zip, 'r') as zipf:
+            zipf.extractall(dst)
+        
+        # Remove the zip file from the destination
+        os.remove(dst_zip)
 
 """
 Define a base class for all the tasks.
@@ -1294,12 +1321,14 @@ def preview_build_myst_task(self, screening_dict):
     builder = MystBuilder(hub)
     expected_publish_path = task.join_myst_publish_path(task.owner_name,task.repo_name,task.screening.commit_hash)
     builder.setenv('BASE_URL',expected_publish_path)
+    task.start("Started MyST build...")
     builder.build()
 
     expected_build_path = task.join_myst_source_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build")
     if os.path.exists(expected_build_path):
         # Copy myst artifacts to the expected path.
-        shutil.copytree(expected_build_path,expected_publish_path)
+        task.start("MyST build completed, copying artifacts...")
+        fast_copytree(expected_build_path, expected_publish_path)
         task.succeed(f"MyST build succeeded: https://{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html")
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_build_path}")
