@@ -8,7 +8,7 @@ User=ubuntu
 Group=www-data
 EnvironmentFile=/etc/default/celery
 WorkingDirectory=/home/ubuntu/full-stack-server/api
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${VENV_PATH}/bin"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${VENV_PATH}/bin:${NODE_PATH}"
 Environment=GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
 Environment=CELERY_CREATE_DIRS=1
 ExecStart=/bin/sh -c '${CUSTOM_START} ${CELERY_BIN} -A ${CELERY_APP} multi start ${CELERYD_NODES} \

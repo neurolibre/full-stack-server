@@ -114,10 +114,11 @@ class ScreeningClient:
         else:
             this_task_id = self.task_id
 
+        issue_comment_url = f"https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id}"
         return {
             "PENDING": f"&#9899; **{self.task_name}**\n----------------------------\n**Status:** Waiting for task assignment\n**Last updated:** {cur_time}\n{message}",
-            "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id})",
-            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: [Refresh](https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id})",
+            "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: <a href=\"{issue_comment_url}\">Refresh</a>)",
+            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: <a href=\"{issue_comment_url}\">Refresh</a>",
             "SUCCESS": f"&#128994; **{self.task_name}**\n----------------------------\n**Status:** Success `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
             "FAILURE": f"&#128308; **{self.task_name}**\n----------------------------\n**Status:** Failed `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
             "EXISTS": f"&#128995; **{self.task_name}**\n----------------------------\n**Status:** Already exists `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
