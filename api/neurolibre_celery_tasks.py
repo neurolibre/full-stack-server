@@ -1271,7 +1271,7 @@ def preprint_build_pdf_draft(self, payload):
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started MyST build.")
-    task.screening.commit_hash = task.screening.commit_hash or format_commit_hash(task.screening.repository_url,"HEAD")
+    task.screening.commit_hash = format_commit_hash(task.screening.repository_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
     task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
 
     rees_resources = REES(dict(
