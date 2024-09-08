@@ -1326,7 +1326,7 @@ def preview_build_myst_task(self, screening_dict):
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     builder = MystBuilder(hub)
     # Set the base url
-    builder.setenv('BASE_URL',expected_webpage_path.split("/DATA")[-1])
+    #builder.setenv('BASE_URL',expected_webpage_path.split("/DATA")[-1])
     # Start the build
     task.start("Started MyST build...")
     builder.build()
