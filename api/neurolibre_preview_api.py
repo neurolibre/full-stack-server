@@ -206,7 +206,7 @@ def get_task_status_test(user,task_id):
 
 docs.register(get_task_status_test)
 
-@app.route('/api/myst/build', methods=['POST'])
+@app.route('/api/myst/build', methods=['POST'],endpoint='api_myst_build')
 @preview_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(MystBuildSchema())
@@ -226,12 +226,12 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
 
 docs.register(api_myst_build)
 
-# myst_schema = load_myst_schema()
-def get_user_build_dir(username,repo,commit):
-    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','html')
+# # myst_schema = load_myst_schema()
+# def get_user_build_dir(username,repo,commit):
+#     return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','html')
 
-def get_theme_dir(username,repo,commit,type):
-    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','templates','site','myst',type)
+# def get_theme_dir(username,repo,commit,type):
+#     return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','templates','site','myst',type)
 
 # @app.route('/myst/<username>/<repo>/<commit>/')
 # @app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
