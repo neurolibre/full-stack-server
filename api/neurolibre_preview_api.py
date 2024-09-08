@@ -1,5 +1,5 @@
 import os
-from flask import jsonify, make_response, render_template, abort, send_from_directory
+from flask import jsonify, make_response, render_template, abort, send_from_directory, send_file
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
@@ -232,64 +232,82 @@ def get_user_build_dir(username,repo,commit):
 def get_theme_dir(username,repo,commit,type):
     return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','templates','site','myst',type)
 
+# @app.route('/myst/<username>/<repo>/<commit>/')
+# @app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
+# def render_page(username, repo, commit, page_path=''):
+#     app.logger.debug(f"Accessing: username={username}, repo={repo}, commit={commit}, page_path={page_path}")
+#     user_build_dir = get_user_build_dir(username, repo, commit)
+#     config_path = os.path.join(user_build_dir, 'config.json')
+#     app.logger.debug(f"Config path: {config_path}")
+
+#     if not os.path.exists(config_path):
+#         app.logger.error(f"Config file not found: {config_path}")
+#         return jsonify({"error": "Config file not found"}), 404
+
+#     try:
+#         config = load_json(config_path)
+#     except json.JSONDecodeError:
+#         app.logger.error(f"Invalid JSON in config file: {config_path}")
+#         return jsonify({"error": "Invalid config file"}), 500
+    
+#     if not page_path or page_path == 'index.html':
+#         page_path = config.get('projects', [{}])[0].get('index', 'intro')
+
+#     # if not page_path:
+#     #     if 'nav' not in config or not config['nav']:
+#     #         app.logger.error("Nav not found in config or is empty")
+#     #         return jsonify({"error": "Navigation not found"}), 500
+#     #     try:
+#     #         page_path = config['nav'][0]['url']
+#     #     except (KeyError, IndexError):
+#     #         app.logger.error("Unable to find first nav item URL")
+#     #         return jsonify({"error": "Navigation structure invalid"}), 500
+    
+#     json_path = os.path.join(user_build_dir, 'content', f"{page_path}.json")
+#     app.logger.debug(f"Content JSON path: {json_path}")
+
+#     if not os.path.exists(json_path):
+#         app.logger.error(f"Content file not found: {json_path}")
+#         return jsonify({"error": "Content file not found"}), 404
+
+#     try:
+#         with open(json_path, 'r') as f:
+#             page_data = load_json(json_path)
+#     except json.JSONDecodeError:
+#         app.logger.error(f"Invalid JSON in content file: {json_path}")
+#         return jsonify({"error": "Invalid content file"}), 500
+
+#     # Prepare data for the frontend
+#     frontend_data = {
+#         'config': config,
+#         'content': page_data,
+#         'base_url': f'/myst/{username}/{repo}/{commit}',
+#         'static_url': '/theme'
+#     }
+    
+#     return render_template('myst_page.html', 
+#                            username=username, 
+#                            repo=repo, 
+#                            commit=commit, 
+#                            frontend_data=frontend_data)
+
 @app.route('/myst/<username>/<repo>/<commit>/')
 @app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
 def render_page(username, repo, commit, page_path=''):
-    app.logger.debug(f"Accessing: username={username}, repo={repo}, commit={commit}, page_path={page_path}")
     user_build_dir = get_user_build_dir(username, repo, commit)
-    config_path = os.path.join(user_build_dir, 'config.json')
-    app.logger.debug(f"Config path: {config_path}")
+    if not page_path:
+        # If no specific page is requested, serve index.html
+        index_path = os.path.join(user_build_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_file(index_path)
+    else:
+        return abort(404, description="Index file not found")
 
-    if not os.path.exists(config_path):
-        app.logger.error(f"Config file not found: {config_path}")
-        return jsonify({"error": "Config file not found"}), 404
-
-    try:
-        config = load_json(config_path)
-    except json.JSONDecodeError:
-        app.logger.error(f"Invalid JSON in config file: {config_path}")
-        return jsonify({"error": "Invalid config file"}), 500
-    
-    if not page_path or page_path == 'index.html':
-        page_path = config.get('projects', [{}])[0].get('index', 'intro')
-
-    # if not page_path:
-    #     if 'nav' not in config or not config['nav']:
-    #         app.logger.error("Nav not found in config or is empty")
-    #         return jsonify({"error": "Navigation not found"}), 500
-    #     try:
-    #         page_path = config['nav'][0]['url']
-    #     except (KeyError, IndexError):
-    #         app.logger.error("Unable to find first nav item URL")
-    #         return jsonify({"error": "Navigation structure invalid"}), 500
-    
-    json_path = os.path.join(user_build_dir, 'content', f"{page_path}.json")
-    app.logger.debug(f"Content JSON path: {json_path}")
-
-    if not os.path.exists(json_path):
-        app.logger.error(f"Content file not found: {json_path}")
-        return jsonify({"error": "Content file not found"}), 404
-
-    try:
-        with open(json_path, 'r') as f:
-            page_data = load_json(json_path)
-    except json.JSONDecodeError:
-        app.logger.error(f"Invalid JSON in content file: {json_path}")
-        return jsonify({"error": "Invalid content file"}), 500
-
-    # Prepare data for the frontend
-    frontend_data = {
-        'config': config,
-        'content': page_data,
-        'base_url': f'/myst/{username}/{repo}/{commit}',
-        'static_url': '/theme'
-    }
-    
-    return render_template('myst_page.html', 
-                           username=username, 
-                           repo=repo, 
-                           commit=commit, 
-                           frontend_data=frontend_data)
+    page_path = os.path.join(user_build_dir, page_path)
+    if os.path.exists(page_path):
+        return send_file(page_path)
+    else:
+        return abort(404, description="Page not found")
 
 @app.route('/myst/<username>/<repo>/<commit>/public/<path:filename>')
 def serve_public(username, repo, commit, filename):
