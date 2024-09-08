@@ -291,29 +291,29 @@ def get_theme_dir(username,repo,commit,type):
 #                            commit=commit, 
 #                            frontend_data=frontend_data)
 
-@app.route('/myst/<username>/<repo>/<commit>/')
-@app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
-def render_page(username, repo, commit, page_path=''):
-    user_build_dir = get_user_build_dir(username, repo, commit)
-    if not page_path:
-        # If no specific page is requested, serve index.html
-        index_path = os.path.join(user_build_dir, 'index.html')
-        if os.path.exists(index_path):
-            return send_file(index_path)
-    else:
-        return abort(404, description="Index file not found")
+# @app.route('/myst/<username>/<repo>/<commit>/')
+# @app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
+# def render_page(username, repo, commit, page_path=''):
+#     user_build_dir = get_user_build_dir(username, repo, commit)
+#     if not page_path:
+#         # If no specific page is requested, serve index.html
+#         index_path = os.path.join(user_build_dir, 'index.html')
+#         if os.path.exists(index_path):
+#             return send_file(index_path)
+#     else:
+#         return abort(404, description="Index file not found")
 
-    page_path = os.path.join(user_build_dir, page_path)
-    if os.path.exists(page_path):
-        return send_file(page_path)
-    else:
-        return abort(404, description="Page not found")
+#     page_path = os.path.join(user_build_dir, page_path)
+#     if os.path.exists(page_path):
+#         return send_file(page_path)
+#     else:
+#         return abort(404, description="Page not found")
 
-@app.route('/myst/<username>/<repo>/<commit>/public/<path:filename>')
-def serve_public(username, repo, commit, filename):
-    user_build_dir = get_user_build_dir(username, repo, commit)
-    return send_from_directory(os.path.join(user_build_dir, 'public'), filename)
+# @app.route('/myst/<username>/<repo>/<commit>/public/<path:filename>')
+# def serve_public(username, repo, commit, filename):
+#     user_build_dir = get_user_build_dir(username, repo, commit)
+#     return send_from_directory(os.path.join(user_build_dir, 'public'), filename)
 
-@app.route('/theme/<path:filename>')
-def serve_theme(filename,username,repo,commit):
-    return send_from_directory(os.path.join(get_theme_dir(username,repo,commit,'article-theme'), 'build'), filename)
+# @app.route('/theme/<path:filename>')
+# def serve_theme(filename,username,repo,commit):
+#     return send_from_directory(os.path.join(get_theme_dir(username,repo,commit,'article-theme'), 'build'), filename)
