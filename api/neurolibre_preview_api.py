@@ -250,8 +250,18 @@ def render_page(username, repo, commit, page_path=''):
         app.logger.error(f"Invalid JSON in config file: {config_path}")
         return jsonify({"error": "Invalid config file"}), 500
     
-    if not page_path:
-        page_path = config['nav'][0]['url']
+    if not page_path or page_path == 'index.html':
+        page_path = config['index']
+
+    # if not page_path:
+    #     if 'nav' not in config or not config['nav']:
+    #         app.logger.error("Nav not found in config or is empty")
+    #         return jsonify({"error": "Navigation not found"}), 500
+    #     try:
+    #         page_path = config['nav'][0]['url']
+    #     except (KeyError, IndexError):
+    #         app.logger.error("Unable to find first nav item URL")
+    #         return jsonify({"error": "Navigation structure invalid"}), 500
     
     json_path = os.path.join(user_build_dir, 'content', f"{page_path}.json")
     app.logger.debug(f"Content JSON path: {json_path}")
@@ -279,7 +289,7 @@ def render_page(username, repo, commit, page_path=''):
                            username=username, 
                            repo=repo, 
                            commit=commit, 
-                           frontend_data=json.dumps(frontend_data))
+                           frontend_data=frontend_data)
 
 @app.route('/myst/<username>/<repo>/<commit>/public/<path:filename>')
 def serve_public(username, repo, commit, filename):
