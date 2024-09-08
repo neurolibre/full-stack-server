@@ -227,7 +227,7 @@ docs.register(api_myst_build)
 
 # myst_schema = load_myst_schema()
 def get_user_build_dir(username,repo,commit):
-    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','site')
+    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','html')
 
 def get_theme_dir(username,repo,commit,type):
     return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','templates','site','myst',type)
