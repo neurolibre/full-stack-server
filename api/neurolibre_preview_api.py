@@ -251,7 +251,7 @@ def render_page(username, repo, commit, page_path=''):
         return jsonify({"error": "Invalid config file"}), 500
     
     if not page_path or page_path == 'index.html':
-        page_path = config['index']
+        page_path = config.get('projects', [{}])[0].get('index', 'intro')
 
     # if not page_path:
     #     if 'nav' not in config or not config['nav']:
