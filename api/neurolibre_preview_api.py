@@ -1,5 +1,5 @@
 import os
-from flask import jsonify, make_response
+from flask import jsonify, make_response, render_template, abort, send_from_directory
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
@@ -222,3 +222,53 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     return response
 
 docs.register(api_myst_build)
+
+# myst_schema = load_myst_schema()
+def get_user_build_dir(username,repo,commit):
+    return os.path.join(username,repo,commit,'_build','site')
+
+def get_theme_dir(username,repo,commit,type):
+    return os.path.join(username,repo,commit,'_build','templates','site','myst',type)
+
+@app.route('/myst/<username>/<repo>/<commit>/')
+@app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
+def render_page(username, repo, commit, page_path=''):
+    user_build_dir = get_user_build_dir(username, repo, commit)
+    config_path = os.path.join(user_build_dir, 'config.json')
+    
+    if not os.path.exists(config_path):
+        abort(404)
+    
+    config = load_json(config_path)
+    
+    if not page_path:
+        page_path = config['nav'][0]['url']
+    
+    json_path = os.path.join(user_build_dir, 'content', f"{page_path}.json")
+    if not os.path.exists(json_path):
+        abort(404)
+    
+    page_data = load_json(json_path)
+    
+    # Prepare data for the frontend
+    frontend_data = {
+        'config': config,
+        'content': page_data,
+        'base_url': f'/myst/{username}/{repo}/{commit}',
+        'static_url': '/theme'
+    }
+    
+    return render_template('myst_page.html', 
+                           username=username, 
+                           repo=repo, 
+                           commit=commit, 
+                           frontend_data=json.dumps(frontend_data))
+
+@app.route('/myst/<username>/<repo>/<commit>/public/<path:filename>')
+def serve_public(username, repo, commit, filename):
+    user_build_dir = get_user_build_dir(username, repo, commit)
+    return send_from_directory(os.path.join(user_build_dir, 'public'), filename)
+
+@app.route('/theme/<path:filename>')
+def serve_theme(filename,username,repo,commit):
+    return send_from_directory(os.path.join(get_theme_dir(username,repo,commit), 'build'), filename)

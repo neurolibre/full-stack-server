@@ -2,6 +2,8 @@ import os
 import glob
 import time
 import git
+import requests
+import json
 from flask import abort
 from itertools import chain
 import yaml
@@ -389,3 +391,7 @@ def get_directory_content_summary(path):
             total_size += size
             content.append((file_path.replace(path, '').lstrip('/'), humanize.naturalsize(size)))
     return content, humanize.naturalsize(total_size)
+
+def load_json(file_path):
+    with open(file_path, 'r') as f:
+        return json.load(f)

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ frontend_data.content.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('serve_theme', filename='styles.css') }}">
+    <script src="{{ url_for('serve_theme', filename='index.js') }}"></script>
+</head>
+<body>
+    <div id="myst-article-root"></div>
+    <script>
+        const frontendData = {{ frontend_data | safe }};
+        window.addEventListener('DOMContentLoaded', (event) => {
+            if (window.renderMystContent) {
+                window.renderMystContent(document.getElementById('myst-article-root'), frontendData);
+            } else {
+                console.error('renderMystContent function not found. Make sure the theme JS is loaded correctly.');
+            }
+        });
+    </script>
+</body>
+</html>
