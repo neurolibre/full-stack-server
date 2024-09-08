@@ -225,7 +225,10 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     return response
 
 docs.register(api_myst_build)
-app.logger.info(f"Registered routes: {app.url_map}")
+                
+for rule in app.url_map.iter_rules():
+    if "POST" in rule.methods:
+        app.logger.info(f"{rule.rule} - {rule.endpoint}")
 
 # # myst_schema = load_myst_schema()
 # def get_user_build_dir(username,repo,commit):
