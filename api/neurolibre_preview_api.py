@@ -36,6 +36,8 @@ SERVER_DOMAIN = app.config['SERVER_DOMAIN']
 SERVER_TOS = app.config['SERVER_TOS']
 SERVER_ABOUT = app.config['SERVER_ABOUT']
 SERVER_LOGO = app.config['SERVER_LOGO']
+DATA_ROOT_PATH = app.config['DATA_ROOT_PATH']
+MYST_FOLDER = app.config['MYST_FOLDER']
 
 # Set server name and about information
 SERVER_NAME  = SERVER_SLUG
@@ -225,31 +227,46 @@ docs.register(api_myst_build)
 
 # myst_schema = load_myst_schema()
 def get_user_build_dir(username,repo,commit):
-    return os.path.join(username,repo,commit,'_build','site')
+    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','site')
 
 def get_theme_dir(username,repo,commit,type):
-    return os.path.join(username,repo,commit,'_build','templates','site','myst',type)
+    return os.path.join(DATA_ROOT_PATH, MYST_FOLDER,username,repo,commit,'_build','templates','site','myst',type)
 
 @app.route('/myst/<username>/<repo>/<commit>/')
 @app.route('/myst/<username>/<repo>/<commit>/<path:page_path>')
 def render_page(username, repo, commit, page_path=''):
+    app.logger.debug(f"Accessing: username={username}, repo={repo}, commit={commit}, page_path={page_path}")
     user_build_dir = get_user_build_dir(username, repo, commit)
     config_path = os.path.join(user_build_dir, 'config.json')
-    
+    app.logger.debug(f"Config path: {config_path}")
+
     if not os.path.exists(config_path):
-        abort(404)
-    
-    config = load_json(config_path)
+        app.logger.error(f"Config file not found: {config_path}")
+        return jsonify({"error": "Config file not found"}), 404
+
+    try:
+        config = load_json(config_path)
+    except json.JSONDecodeError:
+        app.logger.error(f"Invalid JSON in config file: {config_path}")
+        return jsonify({"error": "Invalid config file"}), 500
     
     if not page_path:
         page_path = config['nav'][0]['url']
     
     json_path = os.path.join(user_build_dir, 'content', f"{page_path}.json")
+    app.logger.debug(f"Content JSON path: {json_path}")
+
     if not os.path.exists(json_path):
-        abort(404)
-    
-    page_data = load_json(json_path)
-    
+        app.logger.error(f"Content file not found: {json_path}")
+        return jsonify({"error": "Content file not found"}), 404
+
+    try:
+        with open(json_path, 'r') as f:
+            page_data = load_json(json_path)
+    except json.JSONDecodeError:
+        app.logger.error(f"Invalid JSON in content file: {json_path}")
+        return jsonify({"error": "Invalid content file"}), 500
+
     # Prepare data for the frontend
     frontend_data = {
         'config': config,
@@ -271,4 +288,4 @@ def serve_public(username, repo, commit, filename):
 
 @app.route('/theme/<path:filename>')
 def serve_theme(filename,username,repo,commit):
-    return send_from_directory(os.path.join(get_theme_dir(username,repo,commit), 'build'), filename)
+    return send_from_directory(os.path.join(get_theme_dir(username,repo,commit,'article-theme'), 'build'), filename)
