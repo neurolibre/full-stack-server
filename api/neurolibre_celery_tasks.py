@@ -1291,7 +1291,7 @@ def preprint_build_pdf_draft(self, payload):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
-@celery_app.task(bind=True, soft_time_limit=300, time_limit=1000)
+@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started MyST build.")
@@ -1323,15 +1323,17 @@ def preview_build_myst_task(self, screening_dict):
     
     # Initialize the builder
     task.start("Warming up the myst builder...")
-    expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+    
     builder = MystBuilder(hub)
     # Set the base url
-    builder.setenv('BASE_URL',expected_webpage_path.split("/DATA")[-1])
+    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+    builder.setenv('BASE_URL',base_url)
     # Start the build
     task.start("Started MyST build...")
     builder.build()
 
-    if os.path.exists(expected_webpage_path) and os.listdir(expected_webpage_path):
+    expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
+    if os.path.exists(expected_webpage_path):
         task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW2_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
