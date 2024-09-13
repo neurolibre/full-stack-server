@@ -42,7 +42,6 @@ JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
 PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
-PREVIEW2_SERVER = f"https://{preview_config['SERVER_SLUG']}2.{common_config['SERVER_DOMAIN']}"
 
 """
 Configuration START
@@ -1334,6 +1333,6 @@ def preview_build_myst_task(self, screening_dict):
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
     if os.path.exists(expected_webpage_path):
-        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW2_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
+        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
