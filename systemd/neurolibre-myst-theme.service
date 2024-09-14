@@ -9,7 +9,7 @@ WorkingDirectory=/home/ubuntu/article-theme
 EnvironmentFile=/etc/default/celery
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${VENV_PATH}/bin:${NODE_PATH}"
 Environment=GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
-ExecStart=/bin/sh -c 'npm install; CONTENT_CDN=https://cdn.neurolibre.org npm start server.js'
+ExecStart=/bin/sh -c '${CUSTOM_START} npm start server.js'
 Restart=always
 
 [Install]
