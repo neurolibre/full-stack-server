@@ -223,8 +223,8 @@ def preview_download_data(self, screening_dict):
         if 'doi' in data_manifest and data_manifest['doi']:
             task.screening.book_archive = data_manifest['doi']
             message = (f"A DOI has been provided for this dataset. The data will be downloaded, cached, but will NOT be archived on Zenodo."
-                       "The following command should be called (by screener/editor only) to set data DOI for this preprint:"
-                       f"@roboneuro set {data_manifest['doi']} as data archive")
+                       "The following command should be called (by screener/editor only) to set data DOI for this preprint:\n"
+                       f"`@roboneuro set {data_manifest['doi']} as data archive`")
             task.screening.gh_create_comment(github_alert(message, alert_type='warning'),override_assign=True)
         valid_pattern = re.compile(r'^[a-z0-9_-]+$')
         project_name = data_manifest['projectName']
@@ -239,12 +239,12 @@ def preview_download_data(self, screening_dict):
             task.fail(message)
 
     data_path = task.join_data_root_path(project_name)
-    not_again_message = f"I already have data for {project_name} downloaded to {data_path}. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set overwrite=True if you want to download the data again."
+    not_again_message = f"😩 I already have data for {project_name} downloaded to {data_path}. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set overwrite=True if you really know what you are doing."
     if os.path.exists(data_path) and not task.screening.is_overwrite:
         if task.screening.email:
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
         else:
-            task.fail(not_again_message)
+            task.fail(github_alert(not_again_message,"caution"))
             return
 
     # Download data with repo2data
@@ -253,16 +253,16 @@ def preview_download_data(self, screening_dict):
     try:
         downloaded_data_path = repo2data.install()[0]
         content, total_size = get_directory_content_summary(downloaded_data_path)
-        message = f"Downloaded data in {downloaded_data_path} ({total_size})."
+        message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
         for file_path, size in content:
             message += f"\n- {file_path} ({size})"
         # Sync data between the preview server and binderhub cluster.
-        task.start(f"Sharing data with the BinderHub cluster.")
+        task.start(f"🍰 Sharing data with the BinderHub cluster.")
         return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, DATA_NFS_PATH])
         if return_code != 0:
-            task.fail(github_alert(f"Could not share the data with the BinderHub cluster: \n {output}.","caution"))
+            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {output}.","caution"))
         else:
-            task.screening.gh_create_comment(github_alert(f"Data is shared with {PREVIEW_BINDERHUB} BinderHub cluster.","tip"),override_assign=True)
+            task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
     except Exception as e:
         task.fail(f"Data download has failed: {str(e)}")
         return
