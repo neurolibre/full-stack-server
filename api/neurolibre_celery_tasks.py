@@ -20,7 +20,7 @@ import base64
 import tempfile
 from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
-from myst_libre.tools import JupyterHubLocalSpawner, MystMD
+from myst_libre.tools import JupyterHubLocalSpawner
 from myst_libre.rees import REES
 from myst_libre.builders import MystBuilder
 from celery.schedules import crontab
@@ -220,16 +220,12 @@ def preview_download_data(self, screening_dict):
         if not data_manifest:
             task.fail("binder/data_requirement.json not found.")
             raise
-        if 'doi' in data_manifest and data_manifest['doi']:
-            task.screening.book_archive = data_manifest['doi']
-            message = (f"A DOI has been provided for this dataset. The data will be downloaded, cached, but will NOT be archived on Zenodo."
-                       "The following command should be called (by screener/editor only) to set data DOI for this preprint:\n"
-                       f"`@roboneuro set {data_manifest['doi']} as data archive`")
-            task.screening.gh_create_comment(github_alert(message, alert_type='warning'),override_assign=True)
         valid_pattern = re.compile(r'^[a-z0-9_-]+$')
         project_name = data_manifest['projectName']
         if not valid_pattern.match(project_name):
-            task.fail(github_alert(f"Project name {project_name} is not valid. Please use a valid project name.", alert_type='caution'))
+            task.fail(github_alert(f"👀 Project name {project_name} is not valid,  only `alphanumerical lowercase characters`, `-`, and`_`) are allowed \
+                                    (e.g., `havuc-dilim-baklava`, `iskender_kebap`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url,"/blob/main/binder/data_requirement.json")}) \
+                                    with a valid `project_name`.", alert_type='caution'))
             raise
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
@@ -239,7 +235,7 @@ def preview_download_data(self, screening_dict):
             task.fail(message)
 
     data_path = task.join_data_root_path(project_name)
-    not_again_message = f"😩 I already have data for {project_name} downloaded to {data_path}. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set overwrite=True if you really know what you are doing."
+    not_again_message = f"😩 I already have data for `{project_name}` downloaded to `{data_path}`. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set `overwrite=True` if you really know what you are doing."
     if os.path.exists(data_path) and not task.screening.is_overwrite:
         if task.screening.email:
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
@@ -272,8 +268,13 @@ def preview_download_data(self, screening_dict):
         send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         task.update_state(state=states.SUCCESS, meta={'message': message})
     else:
+        if 'doi' in data_manifest and data_manifest['doi']:
+            task.screening.book_archive = data_manifest['doi']
+            doi_message = (f"A DOI has been provided for this dataset; therefore, it will NOT be archived on Zenodo."
+                       "**Before proceeding with the remaining steps**, please run the following command (by screener/editor only) to set the data DOI for this preprint:\n"
+                       f"`@roboneuro set {data_manifest['doi']} as data archive`")
+            task.screening.gh_create_comment(github_alert(doi_message, alert_type='warning'),override_assign=True)
         task.succeed(message)
-
 
 @celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
@@ -1319,7 +1320,24 @@ def preprint_build_pdf_draft(self, payload):
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
-    task.start("Started MyST build.")
+
+    try:
+        myst_content = task.screening.repo_object.get_contents("myst.yml")
+        logging.info("myst.yml")
+        logging.info(myst_content)
+        # myst_config = json.loads(content.decoded_content)
+    except:
+        task.fail("Problem reading myst.yml")
+
+    try:
+        jb_content = task.screening.repo_object.get_contents("content/_config.yml")
+        logging.info("content/_config.yml")
+        logging.info(jb_content)
+        # myst_config = json.loads(content.decoded_content)
+    except:
+        task.fail("Problem reading myst.yml")
+
+    task.start("Started ✨MyST✨ build...")
     task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
     task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
 
@@ -1360,5 +1378,10 @@ def preview_build_myst_task(self, screening_dict):
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
     if os.path.exists(expected_webpage_path):
         task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
+        logging.info(f"Stopping container {hub.container.short_id}")
+        hub.stop_container()
+        logging.info(f"Removing stopped containers.")
+        hub.delete_stopped_containers()
+        logging.info(f"Cleanup successful...")
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
