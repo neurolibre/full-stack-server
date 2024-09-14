@@ -183,6 +183,25 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
+IMPORTANT:
+! Celery task service will not start unless the above is run. 
+
 sudo mkdir -p /var/run/neurolibre
 sudo chown ubuntu:www-data /var/run/neurolibre
 sudo chmod 770 /var/run/neurolibre
+
+
+# Documentation assets
+
+```bash
+cp -r ~/venv/neurolibre38/lib/python3.8/site-packages/flask_apispec/static/ /var/run/neurolibre/doc_assets/flask-apispec
+```
+
+```nginx
+location /flask-apispec/ {
+        root /var/run/neurolibre/doc_assets/;
+        autoindex on;
+        tcp_nopush on;
+        auth_basic off;
+}
+```

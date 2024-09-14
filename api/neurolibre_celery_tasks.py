@@ -27,6 +27,11 @@ from celery.schedules import crontab
 import zipfile
 import tempfile
 
+'''
+TODO: IMPORTANT REFACTORING
+Currently the code has a lot of unnecesary repetition.
+All the endpoints will be refactored to use BaseNeuroLibreTask class.
+'''
 
 preview_config = load_yaml('config/preview.yaml')
 preprint_config = load_yaml('config/preprint.yaml')
@@ -35,7 +40,7 @@ common_config  = load_yaml('config/common.yaml')
 config_keys = [
     'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
     'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION', 'MYST_FOLDER',
-    'CONTAINER_MYST_SOURCE_PATH', 'CONTAINER_MYST_DATA_PATH']
+    'CONTAINER_MYST_SOURCE_PATH', 'CONTAINER_MYST_DATA_PATH','DATA_NFS_PATH']
 globals().update({key: common_config[key] for key in config_keys})
 
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
@@ -201,10 +206,9 @@ def preview_download_data(self, screening_dict):
     """
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("Started downloading the data.")
-
     try:
         contents = task.screening.repo_object.get_contents("binder/data_requirement.json")
-        logging.debug(contents.decoded_content)
+        # logging.debug(contents.decoded_content)
         data_manifest = json.loads(contents.decoded_content)
         # Create a temporary directory to store the data manifest
         os.makedirs(task.join_data_root_path("tmp_repo2data",task.owner_name,task.repo_name),exist_ok=True)
@@ -213,8 +217,19 @@ def preview_download_data(self, screening_dict):
         with open(json_path,"w") as f: 
             json.dump(data_manifest,f)
         if not data_manifest:
+            task.fail("binder/data_requirement.json not found.")
             raise
+        if 'doi' in data_manifest and data_manifest['doi']:
+            task.screening.book_archive = data_manifest['doi']
+            message = (f"A DOI has been provided for this dataset. The data will be downloaded, cached, but will NOT be archived on Zenodo."
+                       "The following command should be called (by screener/editor only) to set data DOI for this preprint:"
+                       f"@roboneuro set {data_manifest['doi']} as data archive")
+            task.screening.gh_create_comment(github_alert(message, alert_type='warning'))
+        valid_pattern = re.compile(r'^[a-z0-9_-]+$')
         project_name = data_manifest['projectName']
+        if not valid_pattern.match(project_name):
+            task.fail(github_alert(f"Project name {project_name} is not valid. Please use a valid project name.", alert_type='caution'))
+            raise
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
         if task.screening.email:
@@ -240,9 +255,17 @@ def preview_download_data(self, screening_dict):
         message = f"Downloaded data in {downloaded_data_path} ({total_size})."
         for file_path, size in content:
             message += f"\n- {file_path} ({size})"
+        nfs_data_path = os.path.join(DATA_NFS_PATH,project_name)
+        task.start(f"")
+        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, nfs_data_path])
+        if return_code != 0:
+            task.fail(github_alert(f"Could not share the data with the BinderHub cluster.","caution"))
+        else:
+            task.start("Successfully shared the data with the BinderHub cluster.")
     except Exception as e:
         task.fail(f"Data download has failed: {str(e)}")
         return
+    # 
 
     # Update status
     if task.screening.email:
@@ -263,21 +286,24 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     github_client = Github(GH_BOT)
     task_id = self.request.id
     remote_path = os.path.join("neurolibre-preview:", "DATA", project_name)
-    try:
-        # TODO: improve this, subpar logging.
-        f = open(f"{DATA_ROOT_PATH}/data_synclog.txt", "a")
-        f.write(remote_path)
-        f.close()
-        now = get_time()
-        self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
-        gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
-        process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-        output = process.communicate()[0]
-        ret = process.wait()
-        #logging.info(output)
-    except subprocess.CalledProcessError as e:
-        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
+    # TODO: improve this, subpar logging.
+    f = open(f"{DATA_ROOT_PATH}/data_synclog.txt", "a")
+    f.write(remote_path)
+    f.close()
+    now = get_time()
+    self.update_state(state=states.STARTED, meta={'message': f"Transfer started {now}"})
+    gh_template_respond(github_client,"started",task_title,reviewRepository,issue_id,task_id,comment_id, "")
+    return_code, output = run_celery_subprocess(["/usr/bin/rsync", "-avR", remote_path, "/"])
+    if return_code != 0:
+        gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{output}")
+        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': output})
+    # process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    # output = process.communicate()[0]
+    # ret = process.wait()
+    #logging.info(output)
+    # except subprocess.CalledProcessError as e:
+    # gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
+    # self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
     # Performing a final check
     if os.path.exists(os.path.join(DATA_ROOT_PATH, project_name)):
         if len(os.listdir(os.path.join(DATA_ROOT_PATH, project_name))) == 0:

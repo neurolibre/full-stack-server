@@ -51,6 +51,10 @@ BINDER_REGISTRY: "https://binder-registry.conp.cloud"
 # a folder named DATA at the root level (/DATA).
 DATA_ROOT_PATH: "/DATA"
 
+# The directory shared with the 
+# BinderHub cluster.
+DATA_NFS_PATH: "/DATA_NFS"
+
 # Name of the folder that will contain JupyterBooks 
 # this is expected to be under the DATA_ROOT_PATH
 JB_ROOT_FOLDER: "book-artifacts"

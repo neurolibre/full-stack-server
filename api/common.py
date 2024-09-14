@@ -12,6 +12,9 @@ from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileT
 from dotenv import load_dotenv
 from openai import OpenAI
 import humanize
+import subprocess
+import logging
+
 """
 Helper functions for the tasks 
 performed by both servers (preview and preprint).
@@ -395,3 +398,53 @@ def get_directory_content_summary(path):
 def load_json(file_path):
     with open(file_path, 'r') as f:
         return json.load(f)
+
+def github_alert(message, alert_type='note'):
+    """
+    Generate a GitHub-compatible markdown alert.
+
+    :param message: The message to be displayed in the alert. Can be multi-line.
+    :param alert_type: The type of alert. Can be 'note', 'tip', 'important', 'warning', or 'caution'.
+    :return: A string containing the formatted GitHub alert.
+    """
+    valid_types = ['note', 'tip', 'important', 'warning', 'caution']
+    alert_type = alert_type.lower()
+
+    if alert_type not in valid_types:
+        raise ValueError(f"Invalid alert type. Must be one of {', '.join(valid_types)}.")
+
+    # Split the message into lines and add '> ' to each line
+    formatted_message = '\n> '.join(message.split('\n'))
+
+    return f"> [!{alert_type.upper()}]\n> {formatted_message}"
+
+def run_celery_subprocess(command, log_output=True):
+    """
+    Run a subprocess command, capture its output, and handle potential errors.
+
+    :param command: List containing the command and its arguments
+    :param log_output: Boolean to determine if the output should be logged (default: True)
+    :return: A tuple containing (return_code, output)
+    """
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        output, _ = process.communicate()
+        return_code = process.wait()
+
+        if log_output:
+            logging.info(f"Command: {' '.join(command)}")
+            logging.info(f"Output: {output}")
+            logging.info(f"Return code: {return_code}")
+
+        return return_code, output
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Subprocess error: {e}")
+        logging.error(f"Command: {' '.join(command)}")
+        logging.error(f"Output: {e.output}")
+        return e.returncode, e.output
+
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        logging.error(f"Command: {' '.join(command)}")
+        return -1, str(e)
