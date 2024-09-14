@@ -46,6 +46,7 @@ globals().update({key: common_config[key] for key in config_keys})
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
+PREVIEW_BINDERHUB = f"https://{preview_config['BINDER_NAME']}.{preview_config['BINDER_DOMAIN']}"
 PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
 
 """
@@ -224,7 +225,7 @@ def preview_download_data(self, screening_dict):
             message = (f"A DOI has been provided for this dataset. The data will be downloaded, cached, but will NOT be archived on Zenodo."
                        "The following command should be called (by screener/editor only) to set data DOI for this preprint:"
                        f"@roboneuro set {data_manifest['doi']} as data archive")
-            task.screening.gh_create_comment(github_alert(message, alert_type='warning'))
+            task.screening.gh_create_comment(github_alert(message, alert_type='warning'),override_assign=True)
         valid_pattern = re.compile(r'^[a-z0-9_-]+$')
         project_name = data_manifest['projectName']
         if not valid_pattern.match(project_name):
@@ -255,17 +256,16 @@ def preview_download_data(self, screening_dict):
         message = f"Downloaded data in {downloaded_data_path} ({total_size})."
         for file_path, size in content:
             message += f"\n- {file_path} ({size})"
-        nfs_data_path = os.path.join(DATA_NFS_PATH,project_name)
-        task.start(f"")
-        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, nfs_data_path])
+        # Sync data between the preview server and binderhub cluster.
+        task.start(f"Sharing data with the BinderHub cluster.")
+        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, DATA_NFS_PATH])
         if return_code != 0:
-            task.fail(github_alert(f"Could not share the data with the BinderHub cluster.","caution"))
+            task.fail(github_alert(f"Could not share the data with the BinderHub cluster: \n {output}.","caution"))
         else:
-            task.start("Successfully shared the data with the BinderHub cluster.")
+            task.screening.gh_create_comment(github_alert(f"Data is shared with {PREVIEW_BINDERHUB} BinderHub cluster.","tip"),override_assign=True)
     except Exception as e:
         task.fail(f"Data download has failed: {str(e)}")
         return
-    # 
 
     # Update status
     if task.screening.email:

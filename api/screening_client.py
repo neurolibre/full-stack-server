@@ -171,11 +171,12 @@ class ScreeningClient:
         fork_name = f"{self.GH_ORGANIZATION}/{parts[1]}"
         return fork_name
 
-    def gh_create_comment(self, comment_body):
+    def gh_create_comment(self, comment_body, override_assign=False):
         repo = self.github_client.get_repo(self.gh_filter(self.review_repository))
         issue = repo.get_issue(number=self.issue_id)
         commit_comment = issue.create_comment(comment_body)
-        self.comment_id = commit_comment.id  # Update comment_id after creation
+        if not override_assign:
+            self.comment_id = commit_comment.id  # Update comment_id after creation
         return commit_comment.id
 
     def gh_update_comment(self, comment_body):
