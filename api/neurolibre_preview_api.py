@@ -233,7 +233,6 @@ def validate():
     return response
 
 @app.route('/api/process',methods=['GET'],endpoint='process')
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Something', tags=['Book'])
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
@@ -242,9 +241,10 @@ def process():
     app.logger.info(f'Returning')
     return jsonify({"message": "Process completed successfully!"})
 
-docs.register(process)
 docs.register(api_myst_build)
-                
+
 for rule in app.url_map.iter_rules():
     if "POST" in rule.methods:
+        app.logger.info(f"{rule.rule} - {rule.endpoint}")
+    if "GET" in rule.methods:
         app.logger.info(f"{rule.rule} - {rule.endpoint}")
