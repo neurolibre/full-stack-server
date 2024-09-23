@@ -326,8 +326,8 @@ def process():
 
             # Perform validation checks
             if not has_binder_folder:
-                yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'error'})}\n\n"
-                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'complete'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'info'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'error'})}\n\n"
                 return
 
             if not has_data_requirement:
@@ -335,10 +335,10 @@ def process():
 
             if has_myst_yml:
                 yield f"data: {json.dumps({'message': 'Repository follows MyST format.', 'status': 'info'})}\n\n"
-                yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'complete'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'success'})}\n\n"
             elif has_content_folder and has_toc_yml and has_config_yml:
-                yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'status': 'info'})}\n\n"
-                yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'complete'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'info': 'info'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'success'})}\n\n"
             else:
                 missing_items = []
                 if not has_content_folder:
@@ -350,17 +350,17 @@ def process():
                 
                 error_message = f"Error: Repository does not meet Jupyter Book or MyST format requirements. Missing: {', '.join(missing_items)}."
                 yield f"data: {json.dumps({'message': error_message, 'status': 'error'})}\n\n"
-                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'complete'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'failure'})}\n\n"
 
         except requests.RequestException as e:
             yield f"data: {json.dumps({'message': f'Error fetching repository contents: {str(e)}', 'status': 'error'})}\n\n"
-            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
+            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'failure'})}\n\n"
         except ValueError as e:
             yield f"data: {json.dumps({'message': f'Error: {str(e)}', 'status': 'error'})}\n\n"
-            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
+            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'failure'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'message': f'Unexpected error: {str(e)}', 'status': 'error'})}\n\n"
-            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
+            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'failure'})}\n\n"
 
     return Response(stream_with_context(generate()), content_type='text/event-stream')
 
