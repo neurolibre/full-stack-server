@@ -98,18 +98,19 @@
         const logOutput = document.getElementById("log-output");
         const loading = document.getElementById("loading");
         const loadingText = document.getElementById("loading-text");
+        const startButton = document.getElementById("start-process");
 
         function appendLog(message) {
             logOutput.innerHTML += message + "\n";
             logOutput.scrollTop = logOutput.scrollHeight;
         }
 
-        document.getElementById("start-process").addEventListener("click", function() {
+        function startValidation(repoUrl) {
             loading.style.display = "block";
             loadingText.style.display = "block";
             logOutput.innerHTML = "";
 
-            const eventSource = new EventSource("/api/process");
+            const eventSource = new EventSource(`/api/process?repo_url=${encodeURIComponent(repoUrl)}`);
 
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -129,7 +130,22 @@
                 loading.style.display = "none";
                 loadingText.style.display = "none";
             };
-        });
+        }
+
+        // Check for repo_url in query parameters and start validation if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const repoUrl = urlParams.get('repo_url');
+        if (repoUrl) {
+            startButton.style.display = "none";  // Hide the start button
+            startValidation(repoUrl);
+        } else {
+            startButton.addEventListener("click", function() {
+                const manualRepoUrl = prompt("Enter the GitHub repository URL:");
+                if (manualRepoUrl) {
+                    startValidation(manualRepoUrl);
+                }
+            });
+        }
     </script>
 </body>
 </html>
