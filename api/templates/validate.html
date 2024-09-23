@@ -132,10 +132,10 @@
 
         <!-- Log output window -->
         <div id="log-output"></div>
+    </div>
 
-        <div id="image-container">
-            <img id="dynamic-image" src="" alt="Dynamic content">
-        </div>
+    <div id="image-container">
+        <img id="dynamic-image" src="" alt="">
     </div>
 
     <script>
@@ -173,6 +173,13 @@
                 const data = JSON.parse(event.data);
                 appendLog(data.message, data.status);
 
+                if (data.message === "Repository follows MyST format.") {
+                            updateImage("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_hKIzsUs88Zi_J_lXsMhdY8KLMBKlX1PthuCB6qp668auv-iuNQmWPz0j7D4WLOEnIIY&usqp=CAU");
+                        }
+                if (data.message === "Repository follows Jupyter Book format.") {
+                    updateImage("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSaCspaMS2D3voeYaDcU6NjXHo01ZmO2tTRyw&s");
+                }
+
                 if (data.status === "success" || data.status === "failure") {
                     eventSource.close();
                     loading.style.display = "none";
@@ -189,12 +196,6 @@
                         resultIcon.innerHTML = '✅';
                         resultIcon.className = 'result-icon valid';
                         validationContainer.style.backgroundColor = 'green';
-                        if (data.message === "Repository follows MyST format.") {
-                            updateImage("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_hKIzsUs88Zi_J_lXsMhdY8KLMBKlX1PthuCB6qp668auv-iuNQmWPz0j7D4WLOEnIIY&usqp=CAU");
-                        }
-                        if (data.message === "Repository follows Jupyter Book format.") {
-                            updateImage("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSaCspaMS2D3voeYaDcU6NjXHo01ZmO2tTRyw&s");
-                        }
                     }
                 }
             };
