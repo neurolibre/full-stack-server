@@ -271,7 +271,7 @@ def process():
 
                 yield f"data: {json.dumps({'message': 'Listing repository contents:', 'status': 'info'})}\n\n"
                 for item in contents:
-                    yield f"data: {json.dumps({'message': f"- {item['name']}", 'status': 'info'})}\n\n"
+                    yield f"data: {json.dumps({'message': f'- {item['name']}', 'status': 'info'})}\n\n"
                     if item['type'] == 'dir' and item['name'] == 'binder':
                         has_binder_folder = True
                         binder_contents = fetch_contents('binder')
