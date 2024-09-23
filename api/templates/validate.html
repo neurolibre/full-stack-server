@@ -88,7 +88,7 @@
         .message.info { color: #0c5460; }
         .message.warning { background-color: #fff3cd; color: #856404; }
         .message.error { background-color: #f8d7da; color: #721c24; }
-        .message.complete { background-color: #d4edda; color: #155724; }
+        .message.positive { background-color: #d4edda; color: #155724; }
         .result-icon {
             font-size: 48px;
             margin-top: 20px;
@@ -170,7 +170,7 @@
 
             eventSource.onerror = function(error) {
                 console.error('EventSource failed:', error);
-                appendLog("An error occurred during the validation process.", "error");
+                appendLog(`An error occurred during the validation process: ${error.message || 'Unknown error'}`, "error");
                 eventSource.close();
                 loading.style.display = "none";
                 loadingText.style.display = "none";

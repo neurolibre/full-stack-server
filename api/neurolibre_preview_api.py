@@ -300,44 +300,49 @@ def process():
             has_config_yml = False
             has_myst_yml = False
 
-            yield f"data: {json.dumps({'message': 'Listing repository contents:', 'status': 'info'})}\n\n"
+            yield f"data: {json.dumps({'message': '🗂️ Listing repository contents:', 'status': 'info'})}\n\n"
             for item in contents:
-                yield f"data: {json.dumps({'message': '- ' + item['name'], 'status': 'info'})}\n\n"
                 if item['type'] == 'dir' and item['name'] == 'binder':
                     has_binder_folder = True
                     binder_contents = fetch_contents('binder')
-                    yield f"data: {json.dumps({'message': 'Listing binder folder contents:', 'status': 'info'})}\n\n"
+                    yield f"data: {json.dumps({'message': '📁 Listing binder folder contents:', 'status': 'info'})}\n\n"
                     for binder_item in binder_contents:
-                        yield f"data: {json.dumps({'message': '- ' + binder_item['name'], 'status': 'info'})}\n\n"
+                        yield f"data: {json.dumps({'message': '- 📄 ' + binder_item['name'], 'status': 'info'})}\n\n"
                         if binder_item['name'] == 'data_requirement.json':
                             has_data_requirement = True
                 elif item['type'] == 'dir' and item['name'] == 'content':
                     has_content_folder = True
                     content_contents = fetch_contents('content')
-                    yield f"data: {json.dumps({'message': 'Listing content folder contents:', 'status': 'info'})}\n\n"
+                    yield f"data: {json.dumps({'message': '📁 Listing content folder contents:', 'status': 'info'})}\n\n"
                     for content_item in content_contents:
-                        yield f"data: {json.dumps({'message': '- ' + content_item['name'], 'status': 'info'})}\n\n"
                         if content_item['name'] == '_toc.yml':
                             has_toc_yml = True
+                            yield f"data: {json.dumps({'message': '- ⚙️ ' + content_item['name'], 'status': 'positive'})}\n\n"
                         elif content_item['name'] == '_config.yml':
                             has_config_yml = True
+                            yield f"data: {json.dumps({'message': '- ⚙️ ' + content_item['name'], 'status': 'positive'})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'message': '- 📄 ' + content_item['name'], 'status': 'info'})}\n\n"
                 elif item['type'] == 'file' and item['name'] == 'myst.yml':
                     has_myst_yml = True
+                    yield f"data: {json.dumps({'message': '- ⚙️ ' + content_item['name'], 'status': 'positive'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'message': '- 📄 ' + item['name'], 'status': 'info'})}\n\n"
 
             # Perform validation checks
             if not has_binder_folder:
-                yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'info'})}\n\n"
-                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'error'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'error'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'failure'})}\n\n"
                 return
 
             if not has_data_requirement:
                 yield f"data: {json.dumps({'message': 'Warning: data_requirement.json not found in binder folder.', 'status': 'warning'})}\n\n"
 
             if has_myst_yml:
-                yield f"data: {json.dumps({'message': 'Repository follows MyST format.', 'status': 'info'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository follows MyST format.', 'status': 'positive'})}\n\n"
                 yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'success'})}\n\n"
             elif has_content_folder and has_toc_yml and has_config_yml:
-                yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'info': 'info'})}\n\n"
+                yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'info': 'positive'})}\n\n"
                 yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'success'})}\n\n"
             else:
                 missing_items = []
