@@ -5,44 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Validation Process</title>
     <style>
-        /* Loading spinner styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+        #start-process {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        #start-process:hover {
+            background-color: #45a049;
+        }
+        #log-output {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1.5rem;
+            text-align: left;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
         .loading {
             display: none;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
+            margin-top: 1rem;
+            font-size: 18px;
+            color: #666;
         }
     </style>
 </head>
 <body>
-    <h1>Validation Process</h1>
-    <button id="start-process">Start Validation</button>
+    <div class="container">
+        <h1>Validation Process</h1>
+        <button id="start-process">Start Validation</button>
 
-    <!-- Loading icon (hidden by default) -->
-    <div id="loading" class="loading">Loading...</div>
+        <!-- Loading icon (hidden by default) -->
+        <div id="loading" class="loading">Processing...</div>
 
-    <!-- Area to show the server response -->
-    <p id="result"></p>
+        <!-- Log output window -->
+        <div id="log-output"></div>
+    </div>
 
     <script>
+        const logOutput = document.getElementById("log-output");
+        const loading = document.getElementById("loading");
+
         document.getElementById("start-process").addEventListener("click", function() {
             // Show loading icon
-            document.getElementById("loading").style.display = "block";
-            document.getElementById("result").innerHTML = "";
+            loading.style.display = "block";
+            logOutput.innerHTML = "";
 
             // Make an AJAX request to the /process route
             fetch("/api/process")
                 .then(response => response.json())
                 .then(data => {
                     // Hide loading icon when the request completes
-                    document.getElementById("loading").style.display = "none";
-                    // Show the response from the server
-                    document.getElementById("result").innerHTML = data.message;
+                    loading.style.display = "none";
+                    // Show the response from the server in the log output
+                    logOutput.innerHTML = data.message;
                 })
                 .catch(error => {
                     console.error('Error:', error);
+                    logOutput.innerHTML = "An error occurred during the validation process.";
                 });
         });
     </script>
