@@ -90,9 +90,9 @@
         .message.warning { background-color: #fff3cd; color: #856404; }
         .message.error { background-color: #f8d7da; color: #721c24; }
         .message.positive { background-color: #d4edda; color: #155724; }
-        .result-icon {
-            font-size: 48px;
-            margin-top: 20px;
+        #result-icon {
+            font-size: 24px;
+            margin-left: 10px;
         }
         .result-icon.valid {
             color: green;
@@ -114,13 +114,22 @@
             max-height: 100%;
             object-fit: contain;
         }
+        .button-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container" id="validation-container">
         <h1>NeuroLibre content validation</h1>
         <input type="text" id="repo-url-input" placeholder="Enter GitHub repository URL" style="width: 100%; padding: 10px; margin-bottom: 10px;">
-        <button id="start-process">Start Validation</button>
+        <div class="button-container">
+            <button id="start-process">Start Validation</button>
+            <div id="result-icon" class="result-icon"></div>
+        </div>
 
         <!-- Spinner and loading text -->
         <div id="loading" class="spinner"></div>
