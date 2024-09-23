@@ -11,9 +11,11 @@ import yaml
 import neurolibre_common_api
 from functools import wraps
 
+template_dir = os.path.abspath('./templates')
+
 class NeuroLibreAPI:
-    def __init__(self, name, config_files):
-        self.app = Flask(name)
+    def __init__(self, name, config_files):        
+        self.app = Flask(name, template_folder=template_dir)
         self.load_config(config_files)
         self.setup_logging()
         self.setup_auth()
