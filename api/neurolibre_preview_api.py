@@ -232,9 +232,9 @@ def validate():
     response.headers['Content-Type'] = 'text/html'
     return response
 
-@app.route('/api/processs',methods=['GET'],endpoint='processs')
-@doc(description='Something', tags=['Book'])
-def processs():
+@app.route('/api/process',methods=['GET'],endpoint='process')
+#@doc(description='Something', tags=['Book'])
+def process():
     # Simulate a long-running process (e.g., 5 seconds)
     app.logger.info(f'Sleeping')
     time.sleep(5)
