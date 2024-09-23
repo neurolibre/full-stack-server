@@ -242,6 +242,7 @@ def process():
     app.logger.info(f'Returning')
     return jsonify({"message": "Process completed successfully!"})
 
+docs.register(process)
 docs.register(api_myst_build)
                 
 for rule in app.url_map.iter_rules():
