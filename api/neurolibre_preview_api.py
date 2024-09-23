@@ -224,11 +224,11 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     response = screening.start_celery_task(preview_build_myst_task)
     return response
 
-@app.route('/validate')
+@app.route('/api/validate',methods=['GET'],endpoint='validate')
 def validate():
     return render_template('validate.html')
 
-@app.route('/process')
+@app.route('/api/process',methods=['GET'],endpoint='process')
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
     time.sleep(5)

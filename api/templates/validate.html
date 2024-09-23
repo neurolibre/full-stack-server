@@ -33,7 +33,7 @@
             document.getElementById("result").innerHTML = "";
 
             // Make an AJAX request to the /process route
-            fetch("/process")
+            fetch("/api/process")
                 .then(response => response.json())
                 .then(data => {
                     // Hide loading icon when the request completes
