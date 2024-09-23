@@ -225,10 +225,16 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     return response
 
 @app.route('/api/validate',methods=['GET'],endpoint='validate')
+@marshal_with(None,code=404,description="Not found.")
+@marshal_with(None,code=200,description="Success.")
+@doc(description='Something else.', tags=['Book'])
 def validate():
     return render_template('validate.html')
 
 @app.route('/api/process',methods=['GET'],endpoint='process')
+@marshal_with(None,code=404,description="Not found.")
+@marshal_with(None,code=200,description="Success.")
+@doc(description='Something', tags=['Book'])
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
     time.sleep(5)
