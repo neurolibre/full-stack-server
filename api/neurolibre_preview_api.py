@@ -247,14 +247,12 @@ def process():
         try:
             yield f"data: {json.dumps({'message': f'Fetching repository contents: {repo_url}'})}\n\n"
             
-            # Parse the GitHub URL to extract owner and repo
             parsed_url = urlparse(repo_url)
             path_parts = parsed_url.path.strip('/').split('/')
             if len(path_parts) < 2:
                 raise ValueError("Invalid GitHub URL")
             owner, repo = path_parts[:2]
 
-            # GitHub API URL for repository contents
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents"
             
             def fetch_contents(path=''):
@@ -262,27 +260,61 @@ def process():
                 response.raise_for_status()
                 return response.json()
 
-            def display_contents(path='', level=0):
-                contents = fetch_contents(path)
-                for item in contents:
-                    indent = '  ' * level
-                    if item['type'] == 'dir':
-                        message = f"{indent}{item['name']}/"
-                        yield f"data: {json.dumps({'message': message})}\n\n"
-                        yield from display_contents(item['path'], level + 1)
-                    else:
-                        message = f"{indent}{item['name']}"
-                        yield f"data: {json.dumps({'message': message})}\n\n"
-                    time.sleep(0.1)  # Small delay to simulate processing
+            def validate_repository():
+                contents = fetch_contents()
+                has_binder_folder = False
+                has_data_requirement = False
+                has_content_folder = False
+                has_toc_yml = False
+                has_config_yml = False
+                has_myst_yml = False
 
-            yield from display_contents()
-            yield f"data: {json.dumps({'message': 'All contents listed.', 'status': 'complete'})}\n\n"
+                for item in contents:
+                    if item['type'] == 'dir' and item['name'] == 'binder':
+                        has_binder_folder = True
+                        binder_contents = fetch_contents('binder')
+                        for binder_item in binder_contents:
+                            if binder_item['name'] == 'data_requirement.json':
+                                has_data_requirement = True
+                    elif item['type'] == 'dir' and item['name'] == 'content':
+                        has_content_folder = True
+                        content_contents = fetch_contents('content')
+                        for content_item in content_contents:
+                            if content_item['name'] == '_toc.yml':
+                                has_toc_yml = True
+                            elif content_item['name'] == '_config.yml':
+                                has_config_yml = True
+                    elif item['type'] == 'file' and item['name'] == 'myst.yml':
+                        has_myst_yml = True
+
+                if not has_binder_folder:
+                    yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'error'})}\n\n"
+                    return False
+
+                if not has_data_requirement:
+                    yield f"data: {json.dumps({'message': 'Warning: data_requirement.json not found in binder folder.', 'status': 'warning'})}\n\n"
+
+                if has_myst_yml:
+                    yield f"data: {json.dumps({'message': 'Repository follows MyST format.', 'status': 'info'})}\n\n"
+                    return True
+                elif has_content_folder and has_toc_yml and has_config_yml:
+                    yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'status': 'info'})}\n\n"
+                    return True
+                else:
+                    yield f"data: {json.dumps({'message': 'Error: Repository does not meet Jupyter Book or MyST format requirements.', 'status': 'error'})}\n\n"
+                    return False
+
+            is_valid = validate_repository()
+            if is_valid:
+                yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'complete'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'complete'})}\n\n"
 
         except requests.RequestException as e:
-            yield f"data: {json.dumps({'message': f'Error fetching repository contents: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'message': f'Error fetching repository contents: {str(e)}', 'status': 'error'})}\n\n"
             yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
         except ValueError as e:
-            yield f"data: {json.dumps({'message': f'Error: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'message': f'Error: {str(e)}', 'status': 'error'})}\n\n"
             yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
 
     return Response(stream_with_context(generate()), content_type='text/event-stream')
