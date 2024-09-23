@@ -15,6 +15,13 @@
             align-items: center;
             min-height: 100vh;
         }
+        .main-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            max-width: 1000px;
+            width: 100%;
+        }
         .container {
             background-color: white;
             border-radius: 8px;
@@ -101,9 +108,7 @@
             color: red;
         }
         #image-container {
-            margin-top: 20px;
-            width: 100%;
-            max-width: 600px;
+            width: 200px;
             height: 200px;
             display: flex;
             justify-content: center;
@@ -118,6 +123,8 @@
     </style>
 </head>
 <body>
+
+<div class="main-container">
     <div class="container" id="validation-container">
         <h1>NeuroLibre content validation</h1>
         <input type="text" id="repo-url-input" placeholder="Enter GitHub repository URL" style="width: 100%; padding: 10px; margin-bottom: 10px;">
@@ -134,6 +141,7 @@
         <div id="log-output"></div>
 
     </div>
+</div>
 
     <div id="image-container">
         <img id="dynamic-image" style="margin-top: 0px !important;" src="" alt="">
