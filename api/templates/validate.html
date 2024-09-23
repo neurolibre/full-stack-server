@@ -88,16 +88,30 @@
         .message.warning { background-color: #fff3cd; color: #856404; }
         .message.error { background-color: #f8d7da; color: #721c24; }
         .message.complete { background-color: #d4edda; color: #155724; }
+        .result-icon {
+            font-size: 48px;
+            margin-top: 20px;
+        }
+        .result-icon.valid {
+            color: green;
+        }
+        .result-icon.invalid {
+            color: red;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>NeuroLibre content validation</h1>
+        <h1>Validation Process</h1>
+        <input type="text" id="repo-url-input" placeholder="Enter GitHub repository URL" style="width: 100%; padding: 10px; margin-bottom: 10px;">
         <button id="start-process">Start Validation</button>
 
         <!-- Spinner and loading text -->
         <div id="loading" class="spinner"></div>
         <div id="loading-text" class="loading-text">Processing...</div>
+
+        <!-- Result icon -->
+        <div id="result-icon" class="result-icon"></div>
 
         <!-- Log output window -->
         <div id="log-output"></div>
@@ -108,6 +122,8 @@
         const loading = document.getElementById("loading");
         const loadingText = document.getElementById("loading-text");
         const startButton = document.getElementById("start-process");
+        const resultIcon = document.getElementById("result-icon");
+        const repoUrlInput = document.getElementById("repo-url-input");
 
         function appendLog(message, status) {
             const messageElement = document.createElement('div');
@@ -121,6 +137,7 @@
             loading.style.display = "block";
             loadingText.style.display = "block";
             logOutput.innerHTML = "";
+            resultIcon.innerHTML = "";
 
             const eventSource = new EventSource(`/api/process?repo_url=${encodeURIComponent(repoUrl)}`);
 
@@ -132,6 +149,11 @@
                     eventSource.close();
                     loading.style.display = "none";
                     loadingText.style.display = "none";
+                    
+                    if (data.valid !== undefined) {
+                        resultIcon.innerHTML = data.valid ? '✅' : '❌';
+                        resultIcon.className = `result-icon ${data.valid ? 'valid' : 'invalid'}`;
+                    }
                 }
             };
 
@@ -141,23 +163,26 @@
                 eventSource.close();
                 loading.style.display = "none";
                 loadingText.style.display = "none";
+                resultIcon.innerHTML = '❌';
+                resultIcon.className = 'result-icon invalid';
             };
         }
 
-        // Check for repo_url in query parameters and start validation if present
+        // Check for repo_url in query parameters and set the input value if present
         const urlParams = new URLSearchParams(window.location.search);
         const repoUrl = urlParams.get('repo_url');
         if (repoUrl) {
+            repoUrlInput.value = repoUrl;
             startButton.style.display = "none";  // Hide the start button
             startValidation(repoUrl);
-        } else {
-            startButton.addEventListener("click", function() {
-                const manualRepoUrl = prompt("Enter the GitHub repository URL:");
-                if (manualRepoUrl) {
-                    startValidation(manualRepoUrl);
-                }
-            });
         }
+
+        startButton.addEventListener("click", function() {
+            const manualRepoUrl = repoUrlInput.value;
+            if (manualRepoUrl) {
+                startValidation(manualRepoUrl);
+            }
+        });
     </script>
 </body>
 </html>
