@@ -238,7 +238,7 @@ def validate():
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
     time.sleep(5)
-    return jsonify({"message": "Process completed successfully!"})
+    return make_response(jsonify({"message": "Process completed successfully!"}),200)
 
 docs.register(api_myst_build)
                 
