@@ -1,5 +1,5 @@
 import os
-from flask import jsonify, make_response, render_template, abort, send_from_directory, send_file, current_app
+from flask import jsonify, make_response, render_template, Response, stream_with_context
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
@@ -235,11 +235,26 @@ def validate():
 @app.route('/api/process',methods=['GET'],endpoint='process')
 @doc(description='Something', tags=['Book'])
 def process():
-    # Simulate a long-running process (e.g., 5 seconds)
-    app.logger.info(f'Sleeping')
-    time.sleep(5)
-    app.logger.info(f'Returning')
-    return jsonify({"message": "Process completed successfully!"})
+    def generate():
+        steps = [
+            "Initializing process...",
+            "Step 1: Validating input...",
+            "Step 2: Processing data...",
+            "Step 3: Analyzing results...",
+            "Step 4: Generating report...",
+            "Process completed successfully!"
+        ]
+        
+        for step in steps:
+            # Simulate some work
+            time.sleep(1)
+            app.logger.info(step)
+            yield f"data: {json.dumps({'message': step})}\n\n"
+        
+        # Send a final message to indicate completion
+        yield f"data: {json.dumps({'message': 'All steps completed.', 'status': 'complete'})}\n\n"
+
+    return Response(stream_with_context(generate()), content_type='text/event-stream')
 
 docs.register(api_myst_build)
 
