@@ -1,5 +1,5 @@
 import os
-from flask import jsonify, make_response, render_template, abort, send_from_directory, send_file
+from flask import jsonify, make_response, render_template, abort, send_from_directory, send_file, current_app
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
