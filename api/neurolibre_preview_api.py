@@ -233,7 +233,8 @@ def validate():
     return response
 
 @app.route('/api/process',methods=['GET'],endpoint='process')
-#@doc(description='Something', tags=['Book'])
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Something', tags=['Book'])
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
     app.logger.info(f'Sleeping')
