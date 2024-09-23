@@ -227,13 +227,10 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
 @app.route('/api/validate',methods=['GET'],endpoint='validate')
 @doc(description='Something else.', tags=['Book'])
 def validate():
-    app.logger.debug(f"Current working directory: {os.getcwd()}")
-    app.logger.debug(f"Template folder: {current_app.template_folder}")
-    try:
-        return render_template('validate.html')
-    except Exception as e:
-        app.logger.error(f"Error rendering template: {str(e)}")
-        return f"Error: {str(e)}", 500
+    rendered = render_template('validate.html')
+    response = make_response(rendered)
+    response.headers['Content-Type'] = 'text/html'
+    return response
 
 @app.route('/api/process',methods=['GET'],endpoint='process')
 @doc(description='Something', tags=['Book'])
