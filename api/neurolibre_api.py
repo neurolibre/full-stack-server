@@ -11,10 +11,11 @@ import yaml
 import neurolibre_common_api
 from functools import wraps
 
+# Get template directory to render HTMLs for certain endpoints
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 
 class NeuroLibreAPI:
-    def __init__(self, name, config_files):        
+    def __init__(self, name, config_files):
         self.app = Flask(name, template_folder=template_dir)
         self.load_config(config_files)
         self.setup_logging()

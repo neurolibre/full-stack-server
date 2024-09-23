@@ -31,35 +31,11 @@ Configuration START
 """
 
 preprint_api = NeuroLibreAPI(__name__, 
-                             config_files=['config/common.yaml', 'config/preprint.yaml'])
+                             config_files=['config/common.yaml', 
+                                           'config/preprint.yaml'])
 
 app = preprint_api.get_app()
 docs = preprint_api.docs
-
-# # Load environment variables and initialize Flask app
-# load_dotenv()
-# app = flask.Flask(__name__)
-
-# # Load configurations from YAML files and update Flask app config
-# preprint_config = load_yaml('config/preprint.yaml')
-# common_config = load_yaml('config/common.yaml')
-# app.config.update(preprint_config)
-# app.config.update(common_config)
-
-# # Register common API blueprint and configure proxy
-# app.register_blueprint(neurolibre_common_api.common_api)
-# app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
-# # Set up logging
-# gunicorn_error_logger = logging.getLogger('gunicorn.error')
-# app.logger.handlers.extend(gunicorn_error_logger.handlers)
-# app.logger.setLevel(logging.DEBUG)
-# app.logger.debug(f'{JOURNAL_NAME} preprint production API.')
-
-# # Set up authentication
-# AUTH_KEY=os.getenv('AUTH_KEY')
-# app.config['FLASK_HTPASSWD_PATH'] = AUTH_KEY
-# htpasswd = HtPasswdAuth(app)
 
 # Extract configuration variables
 REVIEW_REPOSITORY = app.config["REVIEW_REPOSITORY"]
@@ -77,37 +53,9 @@ SERVER_DOMAIN = app.config["SERVER_DOMAIN"]
 SERVER_TOS = app.config["SERVER_TOS"]
 SERVER_ABOUT = app.config["SERVER_ABOUT"] + app.config["SERVER_LOGO"]
 
-# app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
-# app.logger.info(f"Server running https://{SERVER_NAME}.{SERVER_DOMAIN}.")
+app.logger.info(f"Using {BINDER_NAME}.{BINDER_DOMAIN} as BinderHub.")
+app.logger.info(f"Server running https://{SERVER_NAME}.{SERVER_DOMAIN}.")
 
-# # Set up API specification for Swagger UI
-# spec = APISpec(
-#         title="Reproducible preprint API",
-#         version='v1',
-#         plugins=[MarshmallowPlugin()],
-#         openapi_version="3.0.2",
-#         info=dict(description=SERVER_ABOUT,contact=SERVER_CONTACT,termsOfService=SERVER_TOS),
-#         servers = [{'url': f'https://{SERVER_NAME}.{BINDER_DOMAIN}/','description':'Production server.', 'variables': {'SERVER_NAME':{'default':SERVER_NAME},'BINDER_DOMAIN':{'default':BINDER_DOMAIN}}}]
-#         )
-
-# # SWAGGER UI URLS. Interestingly, the preview deployment 
-# # required `/swagger/` instead. This one works as is.
-# app.config.update({'APISPEC_SPEC': spec})
-
-# # Set up security scheme for API
-# # Through Python, there's no way to disable within-documentation API calls.
-# # Even though "Try it out" is not functional, we cannot get rid of it.
-# api_key_scheme = {"type": "http", "scheme": "basic"}
-# spec.components.security_scheme("basicAuth", api_key_scheme)
-
-# # Create swagger UI documentation for the endpoints.
-# docs = FlaskApiSpec(app=app,document_options=False)
-
-# # Register common API endpoints to the documentation
-# docs.register(neurolibre_common_api.api_get_book,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_get_books,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_heartbeat,blueprint="common_api")
-# docs.register(neurolibre_common_api.api_unlock_build,blueprint="common_api")
 
 """
 Configuration END

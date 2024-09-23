@@ -1,12 +1,19 @@
+# Required environment variables:
+# SERVER_DOMAIN
+# SERVER_SUBDOMAIN
+
+# Put log files in /home/ubuntu/ so it is easier to find them
 access_log      /home/ubuntu/nginx-access.log;
 error_log       /home/ubuntu/nginx-error.log;
 
+# Server is configures to run as a unix socket at this pre-determined path
+# /var/run/neurolibre/neurolibre_preprint_api.sock
 upstream app_server {
     server unix:/var/run/neurolibre/neurolibre_preprint_api.sock fail_timeout=0;
 }
 
 server{
-    
+    # Listen on port 80 and 443 for SSL
     listen 80;
     listen 443 ssl;
     ssl_certificate /etc/ssl/${SERVER_DOMAIN}.pem;
@@ -24,11 +31,13 @@ server{
     auth_basic           "Administrator’s Area";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
+    # Location for API
     location /api/ {
       include /etc/nginx/neurolibre_params;
       proxy_pass http://app_server;
     }
 
+    # Location for static HTMLs for jupyterbooks
     location ~* .*?/book-artifacts/.*?/html/ {
         root /DATA;
         auth_basic      off;
@@ -38,6 +47,7 @@ server{
         try_files $uri $uri/ =404;
     }
 
+    # Location for static HTMLs of published preprints
     location ~* .*?/10\.55458/.*? {
         root /DATA;
         auth_basic off;
@@ -47,6 +57,7 @@ server{
         try_files $uri $uri/ =404;
    }
 
+    # Location where zenodo records metadata are stored
     location ~* .*?/zenodo_records/.*? {
         root /DATA;
         autoindex on;
@@ -59,6 +70,7 @@ server{
     auth_basic off;
    }
 
+   # Location for API documentation UI
    location /documentation {
       auth_basic off;
       autoindex on;
@@ -66,6 +78,7 @@ server{
       proxy_pass http://app_server;
     }
 
+    # Location for API documentation content
    location /swagger {
       auth_basic off;
       autoindex on;
@@ -75,12 +88,14 @@ server{
 
    rewrite  ^/$  /index.html  last;
 
+   # Rewrite index page for a fancier look
    location /index.html {
    auth_basic off;
    root /var/run/neurolibre/assets;
    internal;
    }
 
+   # Status page for newrelic
     location = /status {
             auth_basic off;
             stub_status on;
@@ -88,6 +103,7 @@ server{
             deny all;
     }
 
+    # Custom 404 page
     error_page 404 /custom_404.html;
     location = /custom_404.html {
         auth_basic off;

@@ -228,9 +228,24 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     response = screening.start_celery_task(preview_build_myst_task)
     return response
 
+
+"""
+EXTERNAL, PUBLIC ENDPOINTS for mini apps
+
+Nginx checks for the exact matches for these, and routes the requests
+to the corresponding Flask endpoints explicitly (unix.sock/api/this/that)
+"""
+
 @app.route('/api/validate',methods=['GET'],endpoint='validate')
 @doc(description='Something else.', tags=['Book'])
 def validate():
+    """
+    This enpoint serves a simple UI to validate repository structure
+    for Jupyter Book or MyST format.
+    It redirects ?repo_url=https://github.com/username/reponame
+    to /api/process?repo_url=https://github.com/username/reponame
+    see the template in templates/validate.html
+    """
     rendered = render_template('validate.html')
     response = make_response(rendered)
     response.headers['Content-Type'] = 'text/html'
@@ -239,6 +254,23 @@ def validate():
 @app.route('/api/process', methods=['GET'], endpoint='process')
 @doc(description='Validate repository structure for Jupyter Book or MyST format', tags=['Book'])
 def process():
+    """
+    This endpoint applies the logic to validate the repository structure for
+    Jupyter Book or MyST format using the GitHub API.
+
+    Conditions:
+    - Has binder folder (error if not)
+    - Has data_requirement.json in binder folder (warning if not)
+    - Has content folder (error if not)
+    - Has _toc.yml in content folder (error if not)
+    - Has _config.yml in content folder (error if not, jb_exclusive)
+    - Has myst.yml in content folder (myst exclusive)
+
+    Conditions are not really through or strict, but more to guide the user.
+    This can be a part of myst_libre, opportunity to make it cleaner and more comprehensive.
+
+    Uses stream events to return the status and messages to the client in real time.
+    """
     repo_url = request.args.get('repo_url')
     if not repo_url:
         return jsonify({"error": "No repo_url provided"}), 400
@@ -335,8 +367,8 @@ def process():
 
 docs.register(api_myst_build)
 
-for rule in app.url_map.iter_rules():
-    if "POST" in rule.methods:
-        app.logger.info(f"{rule.rule} - {rule.endpoint}")
-    if "GET" in rule.methods:
-        app.logger.info(f"{rule.rule} - {rule.endpoint}")
+# for rule in app.url_map.iter_rules():
+#     if "POST" in rule.methods:
+#         app.logger.info(f"{rule.rule} - {rule.endpoint}")
+#     if "GET" in rule.methods:
+#         app.logger.info(f"{rule.rule} - {rule.endpoint}")

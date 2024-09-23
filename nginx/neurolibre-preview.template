@@ -1,47 +1,57 @@
+# Required environment variables:
+# SERVER_DOMAIN
+# MYST_THEME_SUBDOMAIN
+# CONTENT_CDN_SUBDOMAIN
+
+# Put log files in /home/ubuntu/ so it is easier to find them
 access_log      /home/ubuntu/nginx-access.log;
 error_log       /home/ubuntu/nginx-error.log;
 
+# Server is configures to run as a unix socket at this pre-determined path
+# /var/run/neurolibre/neurolibre_preview_api.sock
 upstream app_server {
     server unix:/var/run/neurolibre/neurolibre_preview_api.sock fail_timeout=0;
 }
 
+# Localhost:3000 is where MyST theme (article) React server is expected to run
+# An example URL would be myst.neurolibre.org
+# See systemd/neurolibre-myst-theme.service for more details
 server {
     listen 80;
     listen 443 ssl;
-    ssl_certificate /etc/ssl/conp.cloud.pem;
-    ssl_certificate_key /etc/ssl/conp.cloud.key;
+    ssl_certificate /etc/ssl/${SERVER_DOMAIN}.pem;
+    ssl_certificate_key /etc/ssl/${SERVER_DOMAIN}.key;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
-    server_name curve.neurolibre.org;
+    server_name ${MYST_THEME_SUBDOMAIN}.${SERVER_DOMAIN};
 
     location / {
-       
       proxy_pass http://localhost:3000;
       auth_basic off;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
-
     }
     
 }
 
+# Localhost:3100 is where the MyST content server is expected to run
+# An example URL would be cdn.neurolibre.org
 server {
     listen 80;
     listen 443 ssl;
-    ssl_certificate /etc/ssl/conp.cloud.pem;
-    ssl_certificate_key /etc/ssl/conp.cloud.key;
+    ssl_certificate /etc/ssl/${SERVER_DOMAIN}.pem;
+    ssl_certificate_key /etc/ssl/${SERVER_DOMAIN}.key;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
-    server_name cdn.neurolibre.org;
+    server_name ${CONTENT_CDN_SUBDOMAIN}.${SERVER_DOMAIN};
 
  location / {
-
       proxy_pass http://localhost:3100;
       auth_basic off;
       proxy_set_header Host $host;
@@ -52,12 +62,14 @@ server {
 
 }
 
+# The server that uses WSGI'd Neurolibre API (socket) and serves misc static files
+# including the HTMLs for jupyterbooks, static myst content, pdfs, etc.
 server{
     
     listen 80;
     listen 443 ssl;
-    ssl_certificate /etc/ssl/conp.cloud.pem;
-    ssl_certificate_key /etc/ssl/conp.cloud.key;
+    ssl_certificate /etc/ssl/${SERVER_DOMAIN}.pem;
+    ssl_certificate_key /etc/ssl/${SERVER_DOMAIN}.key;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
@@ -67,6 +79,7 @@ server{
     client_max_body_size 4G;
     keepalive_timeout 30;
 
+    # Main Neurolibre API entrypoint
     location /api/ {
       auth_basic           "Administrator’s Area";
       auth_basic_user_file /etc/nginx/.htpasswd;
@@ -75,12 +88,14 @@ server{
       send_timeout 120s;
     }
 
+    # Neurolibre public assets for myst
     location /public/ {
       auth_basic      off;
       include /etc/nginx/neurolibre_params;
       proxy_pass http://app_server;
     }
 
+    # Location to serve static HTMLs for previewd upyterbooks (new convention)
     location ~* .*?/jbook/.*? {
         include       /etc/nginx/mime.types;
         root /DATA;
@@ -91,6 +106,7 @@ server{
         try_files $uri $uri.html  $uri/ =404;
     }
 
+    # Location to serve static HTMLs for previewd jupyterbooks (old convention)
     location ~* .*?/book-artifacts/.*? {
         include       /etc/nginx/mime.types;
         root /DATA;
@@ -101,6 +117,7 @@ server{
         try_files $uri $uri.html  $uri/ =404;
     }
 
+    # Location to serve static HTMLs for myst
     location ~* ^/myst/.* {
         root /DATA;
         auth_basic      off;
@@ -110,7 +127,7 @@ server{
         try_files $uri $uri.html  $uri/ =404;
     }
 
-
+   # This will be deprecated, a dumb file of lookup table
    location =/book-artifacts/lookup_table.tsv {
        root /DATA;
        auth_basic on;
@@ -118,10 +135,13 @@ server{
        sendfile_max_chunk 1m;
    }
 
+   # Icon for Neurolibre
    location /icon.png {
     auth_basic off;
    }
 
+   # Swagger API docs UI assets copied from venv to this particular location
+   # should help render subdomain.domain/documentation
    location /flask-apispec/ {
 	root /var/run/neurolibre/doc_assets/;
 	autoindex on;
@@ -129,6 +149,7 @@ server{
         auth_basic off;
 	}
 
+   # Swagger API docs
    location /documentation {
       auth_basic off;
       autoindex on;
@@ -136,6 +157,7 @@ server{
       proxy_pass http://app_server;
     }
 
+   # Swagger API content
    location /swagger {
       auth_basic off;
       autoindex on;
@@ -145,12 +167,14 @@ server{
 
    rewrite  ^/$  /index.html  last;
 
+   # Rewrite index page for a fancier look
    location /index.html {
    auth_basic off;
    root /var/run/neurolibre/assets;
    internal;
    }
 
+   # Status page for newrelic
     location = /status {
             auth_basic off;
             stub_status on;
@@ -158,6 +182,7 @@ server{
             deny all;
     }
 
+    # Custom 404 page
     error_page 404 /custom_404.html;
     location = /custom_404.html {
         auth_basic off;
