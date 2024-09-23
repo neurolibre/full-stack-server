@@ -293,6 +293,7 @@ def process():
                     elif item['type'] == 'file' and item['name'] == 'myst.yml':
                         has_myst_yml = True
 
+                # Perform validation checks
                 if not has_binder_folder:
                     yield f"data: {json.dumps({'message': 'Error: binder folder not found at the root.', 'status': 'error'})}\n\n"
                     return False
@@ -307,10 +308,24 @@ def process():
                     yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'status': 'info'})}\n\n"
                     return True
                 else:
-                    yield f"data: {json.dumps({'message': 'Error: Repository does not meet Jupyter Book or MyST format requirements.', 'status': 'error'})}\n\n"
+                    missing_items = []
+                    if not has_content_folder:
+                        missing_items.append("content folder")
+                    if not has_toc_yml:
+                        missing_items.append("_toc.yml")
+                    if not has_config_yml:
+                        missing_items.append("_config.yml")
+                    
+                    error_message = f"Error: Repository does not meet Jupyter Book or MyST format requirements. Missing: {', '.join(missing_items)}."
+                    yield f"data: {json.dumps({'message': error_message, 'status': 'error'})}\n\n"
                     return False
+            # Call the validate_repository function
+            is_valid = True
+            for message in validate_repository():
+                yield message
+                if '"status": "error"' in message:
+                    is_valid = False
 
-            is_valid = yield from validate_repository()
             if is_valid:
                 yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'complete'})}\n\n"
             else:
@@ -324,6 +339,7 @@ def process():
             yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
 
     return Response(stream_with_context(generate()), content_type='text/event-stream')
+
 
 
 docs.register(api_myst_build)
