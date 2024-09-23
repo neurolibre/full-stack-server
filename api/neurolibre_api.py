@@ -11,7 +11,7 @@ import yaml
 import neurolibre_common_api
 from functools import wraps
 
-template_dir = os.path.abspath('./templates')
+template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 
 class NeuroLibreAPI:
     def __init__(self, name, config_files):        
