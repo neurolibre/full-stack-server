@@ -284,7 +284,7 @@ def process():
                     content_contents = fetch_contents('content')
                     yield f"data: {json.dumps({'message': 'Listing content folder contents:', 'status': 'info'})}\n\n"
                     for content_item in content_contents:
-                        yield f"data: {json.dumps({'message': f"  - {content_item['name']}", 'status': 'info'})}\n\n"
+                        yield f"data: {json.dumps({'message': f'  - {content_item['name']}', 'status': 'info'})}\n\n"
                         if content_item['name'] == '_toc.yml':
                             has_toc_yml = True
                         elif content_item['name'] == '_config.yml':
