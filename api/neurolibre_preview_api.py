@@ -267,10 +267,12 @@ def process():
                 for item in contents:
                     indent = '  ' * level
                     if item['type'] == 'dir':
-                        yield f"data: {json.dumps({'message': f'{indent}{item['name']}/'})}\n\n"
+                        message = f"{indent}{item['name']}/"
+                        yield f"data: {json.dumps({'message': message})}\n\n"
                         yield from display_contents(item['path'], level + 1)
                     else:
-                        yield f"data: {json.dumps({'message': f'{indent}{item['name']}'})}\n\n"
+                        message = f"{indent}{item['name']}"
+                        yield f"data: {json.dumps({'message': message})}\n\n"
                     time.sleep(0.1)  # Small delay to simulate processing
 
             yield from display_contents()
