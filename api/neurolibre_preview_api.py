@@ -236,7 +236,9 @@ def validate():
 @doc(description='Something', tags=['Book'])
 def process():
     # Simulate a long-running process (e.g., 5 seconds)
+    app.logger.info(f'Sleeping')
     time.sleep(5)
+    app.logger.info(f'Returning')
     return jsonify({"message": "Process completed successfully!"})
 
 docs.register(api_myst_build)
