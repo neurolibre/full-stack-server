@@ -271,13 +271,13 @@ def process():
 
                 yield f"data: {json.dumps({'message': 'Listing repository contents:', 'status': 'info'})}\n\n"
                 for item in contents:
-                    yield f"data: {json.dumps({'message': f'- {item["name"]}', 'status': 'info'})}\n\n"
+                    yield f"data: {json.dumps({'message': f"- {item['name']}", 'status': 'info'})}\n\n"
                     if item['type'] == 'dir' and item['name'] == 'binder':
                         has_binder_folder = True
                         binder_contents = fetch_contents('binder')
                         yield f"data: {json.dumps({'message': 'Listing binder folder contents:', 'status': 'info'})}\n\n"
                         for binder_item in binder_contents:
-                            yield f"data: {json.dumps({'message': f'  - {binder_item["name"]}', 'status': 'info'})}\n\n"
+                            yield f"data: {json.dumps({'message': f"  - {binder_item['name']}", 'status': 'info'})}\n\n"
                             if binder_item['name'] == 'data_requirement.json':
                                 has_data_requirement = True
                     elif item['type'] == 'dir' and item['name'] == 'content':
@@ -285,7 +285,7 @@ def process():
                         content_contents = fetch_contents('content')
                         yield f"data: {json.dumps({'message': 'Listing content folder contents:', 'status': 'info'})}\n\n"
                         for content_item in content_contents:
-                            yield f"data: {json.dumps({'message': f'  - {content_item["name"]}', 'status': 'info'})}\n\n"
+                            yield f"data: {json.dumps({'message': f"  - {content_item['name']}", 'status': 'info'})}\n\n"
                             if content_item['name'] == '_toc.yml':
                                 has_toc_yml = True
                             elif content_item['name'] == '_config.yml':
@@ -324,6 +324,8 @@ def process():
             yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
 
     return Response(stream_with_context(generate()), content_type='text/event-stream')
+
+
 docs.register(api_myst_build)
 
 for rule in app.url_map.iter_rules():
