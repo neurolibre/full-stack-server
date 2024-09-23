@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validation Process</title>
+    <style>
+        /* Loading spinner styles */
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Validation Process</h1>
+    <button id="start-process">Start Validation</button>
+
+    <!-- Loading icon (hidden by default) -->
+    <div id="loading" class="loading">Loading...</div>
+
+    <!-- Area to show the server response -->
+    <p id="result"></p>
+
+    <script>
+        document.getElementById("start-process").addEventListener("click", function() {
+            // Show loading icon
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("result").innerHTML = "";
+
+            // Make an AJAX request to the /process route
+            fetch("/process")
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading icon when the request completes
+                    document.getElementById("loading").style.display = "none";
+                    // Show the response from the server
+                    document.getElementById("result").innerHTML = data.message;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+    </script>
+</body>
+</html>

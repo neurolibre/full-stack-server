@@ -224,6 +224,16 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None)
     response = screening.start_celery_task(preview_build_myst_task)
     return response
 
+@app.route('/validate')
+def validate():
+    return render_template('validate.html')
+
+@app.route('/process')
+def process():
+    # Simulate a long-running process (e.g., 5 seconds)
+    time.sleep(5)
+    return jsonify({"message": "Process completed successfully!"})
+
 docs.register(api_myst_build)
                 
 for rule in app.url_map.iter_rules():
