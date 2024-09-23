@@ -276,7 +276,7 @@ def process():
                     binder_contents = fetch_contents('binder')
                     yield f"data: {json.dumps({'message': 'Listing binder folder contents:', 'status': 'info'})}\n\n"
                     for binder_item in binder_contents:
-                        yield f"data: {json.dumps({'message': f"  - {binder_item['name']}", 'status': 'info'})}\n\n"
+                        yield f"data: {json.dumps({'message': f'  - {binder_item['name']}', 'status': 'info'})}\n\n"
                         if binder_item['name'] == 'data_requirement.json':
                             has_data_requirement = True
                 elif item['type'] == 'dir' and item['name'] == 'content':
