@@ -24,7 +24,7 @@
             max-width: 600px;
             width: 100%;
             transition: background-color 0.3s;
-            margin-top: 50px;
+            margin-top: 25px;
         }
         h1 {
             color: #333;
@@ -91,7 +91,7 @@
         .message.error { background-color: #f8d7da; color: #721c24; }
         .message.positive { background-color: #d4edda; color: #155724; }
         #result-icon {
-            font-size: 24px;
+            font-size: 35px;
             margin-left: 10px;
         }
         .result-icon.valid {
@@ -104,7 +104,8 @@
             width: 100%;
             max-width: 600px;
             height: 200px;
-            display: flex;
+            display: block;
+            margin-top: 20px;
             justify-content: center;
             align-items: center;
             overflow: hidden;
@@ -127,8 +128,8 @@
         <h1>NeuroLibre content validation</h1>
         <input type="text" id="repo-url-input" placeholder="Enter GitHub repository URL" style="width: 100%; padding: 10px; margin-bottom: 10px;">
         <div class="button-container">
-            <button id="start-process">Start Validation</button>
             <div id="result-icon" class="result-icon"></div>
+            <button id="start-process">Start Validation</button>
         </div>
 
         <!-- Spinner and loading text -->
