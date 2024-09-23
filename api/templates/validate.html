@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Validation Process</title>
+    <title>Validate NeuroLibre repository structure</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -23,6 +23,7 @@
             text-align: center;
             max-width: 600px;
             width: 100%;
+            transition: background-color 0.3s;
         }
         h1 {
             color: #333;
@@ -101,7 +102,7 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="validation-container">
         <h1>Validation Process</h1>
         <input type="text" id="repo-url-input" placeholder="Enter GitHub repository URL" style="width: 100%; padding: 10px; margin-bottom: 10px;">
         <button id="start-process">Start Validation</button>
@@ -124,6 +125,7 @@
         const startButton = document.getElementById("start-process");
         const resultIcon = document.getElementById("result-icon");
         const repoUrlInput = document.getElementById("repo-url-input");
+        const validationContainer = document.getElementById("validation-container");
 
         function appendLog(message, status) {
             const messageElement = document.createElement('div');
@@ -138,6 +140,7 @@
             loadingText.style.display = "block";
             logOutput.innerHTML = "";
             resultIcon.innerHTML = "";
+            validationContainer.style.backgroundColor = "white";
 
             const eventSource = new EventSource(`/api/process?repo_url=${encodeURIComponent(repoUrl)}`);
 
@@ -149,10 +152,12 @@
                     eventSource.close();
                     loading.style.display = "none";
                     loadingText.style.display = "none";
+                    startButton.style.display = "inline-block";  // Show the start button again
                     
                     if (data.valid !== undefined) {
                         resultIcon.innerHTML = data.valid ? '✅' : '❌';
                         resultIcon.className = `result-icon ${data.valid ? 'valid' : 'invalid'}`;
+                        validationContainer.style.backgroundColor = data.valid ? 'green' : 'crimson';
                     }
                 }
             };
@@ -165,6 +170,8 @@
                 loadingText.style.display = "none";
                 resultIcon.innerHTML = '❌';
                 resultIcon.className = 'result-icon invalid';
+                validationContainer.style.backgroundColor = 'crimson';
+                startButton.style.display = "inline-block";  // Show the start button again
             };
         }
 
@@ -173,7 +180,6 @@
         const repoUrl = urlParams.get('repo_url');
         if (repoUrl) {
             repoUrlInput.value = repoUrl;
-            startButton.style.display = "none";  // Hide the start button
             startValidation(repoUrl);
         }
 
