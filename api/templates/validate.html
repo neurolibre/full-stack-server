@@ -109,7 +109,7 @@
             loadingText.style.display = "block";
             logOutput.innerHTML = "";
 
-            const eventSource = new EventSource("/api/process-stream");
+            const eventSource = new EventSource("/api/process");
 
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
