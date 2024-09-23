@@ -1,5 +1,5 @@
 import os
-from flask import jsonify, make_response, render_template, Response, stream_with_context
+from flask import jsonify, make_response, render_template, Response, stream_with_context, request, urlparse
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
 from flask_htpasswd import HtPasswdAuth
@@ -235,24 +235,49 @@ def validate():
 @app.route('/api/process',methods=['GET'],endpoint='process')
 @doc(description='Something', tags=['Book'])
 def process():
+    repo_url = request.args.get('repo_url')
+    if not repo_url:
+        return jsonify({"error": "No repo_url provided"}), 400
+
     def generate():
-        steps = [
-            "Initializing process...",
-            "Step 1: Validating input...",
-            "Step 2: Processing data...",
-            "Step 3: Analyzing results...",
-            "Step 4: Generating report...",
-            "Process completed successfully!"
-        ]
-        
-        for step in steps:
-            # Simulate some work
-            time.sleep(1)
-            app.logger.info(step)
-            yield f"data: {json.dumps({'message': step})}\n\n"
-        
-        # Send a final message to indicate completion
-        yield f"data: {json.dumps({'message': 'All steps completed.', 'status': 'complete'})}\n\n"
+        try:
+            yield f"data: {json.dumps({'message': f'Fetching repository contents: {repo_url}'})}\n\n"
+            
+            # Parse the GitHub URL to extract owner and repo
+            parsed_url = urlparse(repo_url)
+            path_parts = parsed_url.path.strip('/').split('/')
+            if len(path_parts) < 2:
+                raise ValueError("Invalid GitHub URL")
+            owner, repo = path_parts[:2]
+
+            # GitHub API URL for repository contents
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents"
+            
+            def fetch_contents(path=''):
+                response = requests.get(f"{api_url}/{path}")
+                response.raise_for_status()
+                return response.json()
+
+            def display_contents(path='', level=0):
+                contents = fetch_contents(path)
+                for item in contents:
+                    indent = '  ' * level
+                    if item['type'] == 'dir':
+                        yield f"data: {json.dumps({'message': f'{indent}{item['name']}/'})}\n\n"
+                        yield from display_contents(item['path'], level + 1)
+                    else:
+                        yield f"data: {json.dumps({'message': f'{indent}{item['name']}'})}\n\n"
+                    time.sleep(0.1)  # Small delay to simulate processing
+
+            yield from display_contents()
+            yield f"data: {json.dumps({'message': 'All contents listed.', 'status': 'complete'})}\n\n"
+
+        except requests.RequestException as e:
+            yield f"data: {json.dumps({'message': f'Error fetching repository contents: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
+        except ValueError as e:
+            yield f"data: {json.dumps({'message': f'Error: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'message': 'Process failed.', 'status': 'complete'})}\n\n"
 
     return Response(stream_with_context(generate()), content_type='text/event-stream')
 
