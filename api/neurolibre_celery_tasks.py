@@ -1340,26 +1340,34 @@ def preview_build_myst_task(self, screening_dict):
     except:
         task.fail("Problem reading myst.yml")
 
+    noexec = False
     task.start("Started ✨MyST✨ build...")
     task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
+    noexec = True if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
     task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
 
-    rees_resources = REES(dict(
-                  registry_url=BINDER_REGISTRY,
-                  gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
-                  gh_repo_commit_hash = task.screening.commit_hash,
-                  binder_image_tag = task.screening.binder_hash,
-                  dotenv = task.get_dotenv_path()))
-    
-    hub = JupyterHubLocalSpawner(rees_resources,
-                             host_build_source_parent_dir = task.join_myst_path(),
-                             container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
-                             host_data_parent_dir = DATA_ROOT_PATH, #optional
-                             container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
-    # Spawn the JupyterHub
-    task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
-    hub.spawn_jupyter_hub()
-    # hub.rees.
+    if not noexec:
+        rees_resources = REES(dict(
+                    registry_url=BINDER_REGISTRY,
+                    gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+                    gh_repo_commit_hash = task.screening.commit_hash,
+                    binder_image_tag = task.screening.binder_hash,
+                    dotenv = task.get_dotenv_path()))
+
+        if rees_resources.search_img_by_repo_name():
+            print(f"FOUND, PULLING {rees_resources.found_image_name}")
+            rees_resources.pull_image()
+        else:
+            print(f"NOT FOUND {item[repo_name]}")
+        
+        hub = JupyterHubLocalSpawner(rees_resources,
+                                host_build_source_parent_dir = task.join_myst_path(),
+                                container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
+                                host_data_parent_dir = DATA_ROOT_PATH, #optional
+                                container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
+        # Spawn the JupyterHub
+        task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
+        hub.spawn_jupyter_hub()
     
     expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
     if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
@@ -1370,13 +1378,21 @@ def preview_build_myst_task(self, screening_dict):
     # Initialize the builder
     task.start("Warming up the myst builder...")
     
-    builder = MystBuilder(hub)
-    # Set the base url
+    if noexec:
+        builder = MystBuilder(hub=None, build_dir=expected_source_path)
+    else:
+        builder = MystBuilder(hub=hub)
+        
+        # Set the base url
     base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     builder.setenv('BASE_URL',base_url)
     # Start the build
     task.start("Started MyST build...")
-    builder.build('--execute','--html')
+    if noexec:
+        builder.build('--html')
+    else:
+        builder.build('--execute','--html')
+        
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
     if os.path.exists(expected_webpage_path):

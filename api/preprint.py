@@ -219,7 +219,8 @@ def zenodo_get_status(issue_id):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
 
-    data_archive_exists = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"data-archive")
+    data_archive_value = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"data-archive")
+    docker_archive_value = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"docker-archive")
 
     regex_repository_upload = re.compile(r"(zenodo_uploaded_repository)(.*?)(?=.json)")
     regex_data_upload = re.compile(r"(zenodo_uploaded_data)(.*?)(?=.json)")
@@ -229,12 +230,16 @@ def zenodo_get_status(issue_id):
     regex_publish = re.compile(r"(zenodo_published)(.*?)(?=.json)")
     hash_regex = re.compile(r"_(?!.*_)(.*)")
 
-    if data_archive_exists:
-        zenodo_regexs = [regex_repository_upload, regex_book_upload, regex_docker_upload]
-        types = ['Repository', 'Book', 'Docker']
-    else:
-        zenodo_regexs = [regex_repository_upload, regex_data_upload, regex_book_upload, regex_docker_upload]
-        types = ['Repository', 'Data', 'Book', 'Docker']
+    zenodo_regexs = [regex_repository_upload, regex_book_upload]
+    types = ['Repository', 'Book']
+
+    if docker_archive_value is None:
+        zenodo_regexs.append(regex_docker_upload)
+        types.append('Docker')
+
+    if data_archive_value is None:
+        zenodo_regexs.append(regex_data_upload)
+        types.append('Data')
 
     rsp = []
 
