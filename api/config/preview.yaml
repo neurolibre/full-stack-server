@@ -1,6 +1,6 @@
 # BINDER_NAME.BINDER_DOMAIN below defines 
 # the binderhub service to be used by the preview server
-BINDER_NAME: "test"
+BINDER_NAME: "binder-preview"
 BINDER_DOMAIN: "conp.cloud"
 
 # Binderhub build rate limit (mins)
