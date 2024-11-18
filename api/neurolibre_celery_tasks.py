@@ -1343,8 +1343,12 @@ def preview_build_myst_task(self, screening_dict):
     noexec = False
     task.start("Started ✨MyST✨ build...")
     task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
-    noexec = True if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
+    noexec = True if task.screening.binder_hash in [None, "noexec"] else False
     task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+
+    docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
+    if docker_archive_value == "N/A":
+        noexec = True
 
     if not noexec:
         rees_resources = REES(dict(
@@ -1368,7 +1372,12 @@ def preview_build_myst_task(self, screening_dict):
         # Spawn the JupyterHub
         task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
         hub.spawn_jupyter_hub()
-    
+    else:
+        hub = None
+        task.start("Cloning repository, checking out commit, noexec...")
+        rees_resources.git_clone_repo(task.join_myst_path())
+        rees_resources.git_checkout_commit()
+
     expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
     if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
         task.start("Successfully cloned the repository.")
@@ -1379,7 +1388,7 @@ def preview_build_myst_task(self, screening_dict):
     task.start("Warming up the myst builder...")
     
     if noexec:
-        builder = MystBuilder(hub=None, build_dir=expected_source_path)
+        builder = MystBuilder(hub=hub, build_dir=expected_source_path)
     else:
         builder = MystBuilder(hub=hub)
         
@@ -1397,10 +1406,11 @@ def preview_build_myst_task(self, screening_dict):
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
     if os.path.exists(expected_webpage_path):
         task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
-        logging.info(f"Stopping container {hub.container.short_id}")
-        hub.stop_container()
-        logging.info(f"Removing stopped containers.")
-        hub.delete_stopped_containers()
-        logging.info(f"Cleanup successful...")
+        if hub:
+            logging.info(f"Stopping container {hub.container.short_id}")
+            hub.stop_container()
+            logging.info(f"Removing stopped containers.")
+            hub.delete_stopped_containers()
+            logging.info(f"Cleanup successful...")
     else:
         raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")

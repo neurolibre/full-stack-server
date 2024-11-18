@@ -219,8 +219,8 @@ def zenodo_get_status(issue_id):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
 
-    data_archive_value = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"data-archive")
-    docker_archive_value = gh_read_from_issue_body(github_client,"neurolibre/neurolibre-reviews",issue_id,"docker-archive")
+    data_archive_value = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"data-archive")
+    docker_archive_value = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"docker-archive")
 
     regex_repository_upload = re.compile(r"(zenodo_uploaded_repository)(.*?)(?=.json)")
     regex_data_upload = re.compile(r"(zenodo_uploaded_data)(.*?)(?=.json)")
