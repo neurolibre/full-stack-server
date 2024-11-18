@@ -1350,14 +1350,14 @@ def preview_build_myst_task(self, screening_dict):
     if docker_archive_value == "N/A":
         noexec = True
 
-    if not noexec:
-        rees_resources = REES(dict(
-                    registry_url=BINDER_REGISTRY,
-                    gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
-                    gh_repo_commit_hash = task.screening.commit_hash,
-                    binder_image_tag = task.screening.binder_hash,
-                    dotenv = task.get_dotenv_path()))
+    rees_resources = REES(dict(
+                registry_url=BINDER_REGISTRY,
+                gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+                gh_repo_commit_hash = task.screening.commit_hash,
+                binder_image_tag = task.screening.binder_hash,
+                dotenv = task.get_dotenv_path()))        
 
+    if not noexec:
         if rees_resources.search_img_by_repo_name():
             print(f"FOUND, PULLING {rees_resources.found_image_name}")
             rees_resources.pull_image()
