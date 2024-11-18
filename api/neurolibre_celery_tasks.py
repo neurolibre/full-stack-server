@@ -1344,7 +1344,10 @@ def preview_build_myst_task(self, screening_dict):
     task.start("Started ✨MyST✨ build...")
     task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
     noexec = True if task.screening.binder_hash in [None, "noexec"] else False
-    task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+    if not noexec:
+        task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+    else:
+        task.screening.binder_hash = task.screening.commit_hash
 
     docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
     if docker_archive_value == "N/A":
