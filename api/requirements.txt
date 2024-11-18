@@ -27,3 +27,4 @@ repo2data
 openai
 myst-libre
 humanize==4.9.0
+psutil

@@ -1399,11 +1399,20 @@ def preview_build_myst_task(self, screening_dict):
     base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     builder.setenv('BASE_URL',base_url)
     # Start the build
+
+    active_ports_before = get_active_ports()
+
     task.start("Started MyST build...")
     if noexec:
         builder.build('--html')
     else:
         builder.build('--execute','--html')
+
+    active_ports_after = get_active_ports()
+
+    new_active_ports = set(active_ports_after) - set(active_ports_before)
+    for port in new_active_ports:
+        close_port(port)
         
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
@@ -1416,4 +1425,5 @@ def preview_build_myst_task(self, screening_dict):
             hub.delete_stopped_containers()
             logging.info(f"Cleanup successful...")
     else:
-        raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
+        task.fail(f"MyST build failed did not produce the expected webpage.")
+        #raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")

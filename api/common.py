@@ -14,6 +14,8 @@ from openai import OpenAI
 import humanize
 import subprocess
 import logging
+import psutil
+import socket
 
 """
 Helper functions for the tasks 
@@ -448,3 +450,19 @@ def run_celery_subprocess(command, log_output=True):
         logging.error(f"Unexpected error: {e}")
         logging.error(f"Command: {' '.join(command)}")
         return -1, str(e)
+
+def get_active_ports(start=3001, end=3099):
+    active_ports = []
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.status == psutil.CONN_LISTEN and start <= conn.laddr.port <= end:
+            active_ports.append(conn.laddr.port)
+    return active_ports
+
+def close_port(port):
+    try:
+        logging.info(f"Closing port {port}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(('localhost', port))
+            s.shutdown(socket.SHUT_RDWR)
+    except Exception as e:
+        logging.error(f"Error closing port {port}: {e}")
