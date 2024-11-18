@@ -1404,7 +1404,7 @@ def preview_build_myst_task(self, screening_dict):
 
     task.start("Started MyST build...")
     if noexec:
-        builder.build('--html')
+        builder.build('--html --debug')
     else:
         builder.build('--execute','--html')
 
@@ -1415,12 +1415,11 @@ def preview_build_myst_task(self, screening_dict):
     # for port in new_active_ports:
     #     close_port(port)
 
-    for port in new_active_ports:
-        try:
-            response = requests.get(f"http://localhost:{port}/mystpaper.json", timeout=5)
-            logging.info(f"Response status code: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            logging.info(f"Request exception: {e}")
+    try:
+        response = requests.get(f"http://localhost:3100/config.json", timeout=5)
+        logging.info(f"Response status code: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        logging.info(f"Request exception: {e}")
         
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
