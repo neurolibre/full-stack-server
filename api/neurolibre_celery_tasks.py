@@ -1404,7 +1404,7 @@ def preview_build_myst_task(self, screening_dict):
 
     task.start("Started MyST build...")
     if noexec:
-        builder.build('--html --debug')
+        builder.build('--html','--debug')
     else:
         builder.build('--execute','--html')
 
