@@ -1324,21 +1324,21 @@ def preprint_build_pdf_draft(self, payload):
 def preview_build_myst_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
 
-    try:
-        myst_content = task.screening.repo_object.get_contents("myst.yml")
-        logging.info("myst.yml")
-        logging.info(myst_content)
-        # myst_config = json.loads(content.decoded_content)
-    except:
-        task.fail("Problem reading myst.yml")
+    # try:
+    #     myst_content = task.screening.repo_object.get_contents("myst.yml")
+    #     logging.info("myst.yml")
+    #     logging.info(myst_content)
+    #     # myst_config = json.loads(content.decoded_content)
+    # except:
+    #     task.fail("Problem reading myst.yml")
 
-    try:
-        jb_content = task.screening.repo_object.get_contents("content/_config.yml")
-        logging.info("content/_config.yml")
-        logging.info(jb_content)
-        # myst_config = json.loads(content.decoded_content)
-    except:
-        task.fail("Problem reading myst.yml")
+    # try:
+    #     jb_content = task.screening.repo_object.get_contents("content/_config.yml")
+    #     logging.info("content/_config.yml")
+    #     logging.info(jb_content)
+    #     # myst_config = json.loads(content.decoded_content)
+    # except:
+    #     task.fail("Problem reading myst.yml")
 
     noexec = False
     task.start("Initiating ✨MyST✨ build...")
