@@ -470,10 +470,21 @@ def get_active_ports(start=3001, end=3099):
     return active_ports
 
 def close_port(port):
+    """
+    Find and terminate processes using the specified port
+    """
     try:
-        logging.info(f"Closing port {port}")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(('localhost', port))
-            s.shutdown(socket.SHUT_RDWR)
+        logging.info(f"Attempting to close port {port}")
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.laddr.port == port:
+                process = psutil.Process(conn.pid)
+                process.terminate()
+                logging.info(f"Terminated process {conn.pid} using port {port}")
+                # Wait for the process to actually terminate
+                process.wait(timeout=5)
+                return True
+        logging.warning(f"No process found using port {port}")
+        return False
     except Exception as e:
         logging.error(f"Error closing port {port}: {e}")
+        return False
