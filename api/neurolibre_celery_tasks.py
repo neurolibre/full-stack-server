@@ -1417,7 +1417,7 @@ def preview_build_myst_task(self, screening_dict):
 
     task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
 
-    builder.build('--execute','--html', '--debug')
+    builder.build('--execute','--html')
 
     # if noexec:
     #     builder.build('--html','--debug')
@@ -1449,5 +1449,11 @@ def preview_build_myst_task(self, screening_dict):
             hub.delete_stopped_containers()
             logging.info(f"Cleanup successful...")
     else:
+        if hub:
+            logging.info(f"Stopping container {hub.container.short_id}")
+            hub.stop_container()
+            logging.info(f"Removing stopped containers.")
+            hub.delete_stopped_containers()
+            logging.info(f"Cleanup successful...")
         task.fail(f"MyST build failed did not produce the expected webpage.")
         #raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
