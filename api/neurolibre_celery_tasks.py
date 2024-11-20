@@ -1341,45 +1341,57 @@ def preview_build_myst_task(self, screening_dict):
         task.fail("Problem reading myst.yml")
 
     noexec = False
-    task.start("Started ✨MyST✨ build...")
+    task.start("Initiating ✨MyST✨ build...")
     task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
     noexec = True if task.screening.binder_hash in [None, "noexec"] else False
-    if not noexec:
-        task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
-    else:
-        task.screening.binder_hash = task.screening.commit_hash
 
+    # No docker archive signals no user-defined runtime.
     docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
     if docker_archive_value == "N/A":
         noexec = True
+    
+    if noexec:
+        # Base runtime.
+        task.screening.binder_hash = "8ae33ea7795c843bb0bd0437e3dd6198761be30c" # mystical-article
+    else:
+        # User defined runtime.
+        task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+
+    if noexec:
+        # Overrides build image to the base
+        binder_image_name = "neurolibre/mystical-article"
+    else:
+        # Falls back to the repo name to look for the image. 
+        binder_image_name = None        
 
     rees_resources = REES(dict(
-                registry_url=BINDER_REGISTRY,
-                gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
-                gh_repo_commit_hash = task.screening.commit_hash,
-                binder_image_tag = task.screening.binder_hash,
-                dotenv = task.get_dotenv_path()))        
+        registry_url=BINDER_REGISTRY,
+        gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+        gh_repo_commit_hash = task.screening.commit_hash,
+        binder_image_tag = task.screening.binder_hash,
+        binder_image_name = binder_image_name,
+        dotenv = task.get_dotenv_path()))      
 
-    if not noexec:
-        if rees_resources.search_img_by_repo_name():
-            print(f"FOUND, PULLING {rees_resources.found_image_name}")
-            rees_resources.pull_image()
-        else:
-            print(f"NOT FOUND {item[repo_name]}")
-        
-        hub = JupyterHubLocalSpawner(rees_resources,
-                                host_build_source_parent_dir = task.join_myst_path(),
-                                container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
-                                host_data_parent_dir = DATA_ROOT_PATH, #optional
-                                container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
-        # Spawn the JupyterHub
-        task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
-        hub.spawn_jupyter_hub()
+    if rees_resources.search_img_by_repo_name():
+        print(f"FOUND, PULLING {rees_resources.found_image_name}")
+        rees_resources.pull_image()
     else:
-        hub = None
-        task.start("Cloning repository, checking out commit, noexec...")
-        rees_resources.git_clone_repo(task.join_myst_path())
-        rees_resources.git_checkout_commit()
+        print(f"NOT FOUND {item[repo_name]}")
+    
+    hub = JupyterHubLocalSpawner(rees_resources,
+                            host_build_source_parent_dir = task.join_myst_path(),
+                            container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
+                            host_data_parent_dir = DATA_ROOT_PATH, #optional
+                            container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
+    # Spawn the JupyterHub
+    task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
+    hub.spawn_jupyter_hub()
+
+    # Pure myst build no runtime
+    # else:
+    #     task.start("Cloning repository, checking out commit, @base_image...")
+    #     rees_resources.git_clone_repo(task.join_myst_path())
+    #     rees_resources.git_checkout_commit()
 
     expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
     if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
@@ -1388,12 +1400,13 @@ def preview_build_myst_task(self, screening_dict):
         task.fail(f"Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
     
     # Initialize the builder
-    task.start("Warming up the myst builder...")
-    
-    if noexec:
-        builder = MystBuilder(hub=hub, build_dir=expected_source_path)
-    else:
-        builder = MystBuilder(hub=hub)
+    task.start("Warming up the myst builder...")   
+    builder = MystBuilder(hub=hub)
+
+    # if noexec:
+    #     builder = MystBuilder(hub=hub, build_dir=expected_source_path)
+    # else:
+    #     builder = MystBuilder(hub=hub)
         
         # Set the base url
     base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
@@ -1402,24 +1415,28 @@ def preview_build_myst_task(self, screening_dict):
 
     active_ports_before = get_active_ports()
 
-    task.start("Started MyST build...")
-    if noexec:
-        builder.build('--html','--debug')
-    else:
-        builder.build('--execute','--html')
+    task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
+
+    builder.build('--execute','--html', '--debug')
+
+    # if noexec:
+    #     builder.build('--html','--debug')
+    # else:
+    #     builder.build('--execute','--html')
 
     active_ports_after = get_active_ports()
 
     new_active_ports = set(active_ports_after) - set(active_ports_before)
     logging.info(f"New active ports: {new_active_ports}")
-    # for port in new_active_ports:
-    #     close_port(port)
+    # Flush.
+    for port in new_active_ports:
+        close_port(port)
 
-    try:
-        response = requests.get(f"http://localhost:3100/config.json", timeout=5)
-        logging.info(f"Response status code: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        logging.info(f"Request exception: {e}")
+    # try:
+    #     response = requests.get(f"http://localhost:3100/config.json", timeout=5)
+    #     logging.info(f"Response status code: {response.status_code}")
+    # except requests.exceptions.RequestException as e:
+    #     logging.info(f"Request exception: {e}")
         
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
