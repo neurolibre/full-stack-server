@@ -1352,7 +1352,7 @@ def preview_build_myst_task(self, screening_dict):
     
     if noexec:
         # Base runtime.
-        task.screening.binder_hash = "8ae33ea7795c843bb0bd0437e3dd6198761be30c" # mystical-article
+        task.screening.binder_hash = "66bba73ee1b8093e2eac2818ecd69f695ff085d6" # mystical-article
     else:
         # User defined runtime.
         task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
