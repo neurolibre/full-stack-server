@@ -128,16 +128,27 @@ def get_owner_repo_provider(repo_url,provider_full_name=False):
 
     return [owner,repo,provider]
 
-def format_commit_hash(repo_url,commit_hash):
+def format_commit_hash(repo_url, commit_hash):
     """
     Returns the latest commit if HEAD (default endpoint value)
     Returns the hash itself otherwise.
     """
     if commit_hash == "HEAD":
-        refs = git.cmd.Git().ls_remote(repo_url).split("\n")
-        for ref in refs:
-            if ref.split('\t')[1] == "HEAD":
-                commit_hash = ref.split('\t')[0]
+        attempt = 0
+        max_attempts = 5
+        while attempt < max_attempts:
+            try:
+                refs = git.cmd.Git().ls_remote(repo_url).split("\n")
+                for ref in refs:
+                    if ref.split('\t')[1] == "HEAD":
+                        commit_hash = ref.split('\t')[0]
+                break  # Exit the loop if successful
+            except Exception as e:
+                attempt += 1
+                if attempt < max_attempts:
+                    time.sleep(10)  # Wait for 10 seconds before retrying
+                else:
+                    raise e  # Re-raise the exception if all attempts fail
     return commit_hash
 
 def get_binder_build_url(binderName, domainName, repo, owner, provider, commit_hash):
