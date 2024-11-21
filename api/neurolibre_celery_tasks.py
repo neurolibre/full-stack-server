@@ -1417,7 +1417,7 @@ def preview_build_myst_task(self, screening_dict):
 
     task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
 
-    builder.build('--execute','--html')
+    builder.build('--execute','--html',user="ubuntu",group="ubuntu")
 
     # if noexec:
     #     builder.build('--html','--debug')
