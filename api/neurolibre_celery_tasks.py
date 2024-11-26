@@ -1355,7 +1355,7 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.binder_hash = "66bba73ee1b8093e2eac2818ecd69f695ff085d6" # mystical-article
     else:
         # User defined runtime.
-        task.screening.binder_hash = task.screening.binder_hash or task.screening.commit_hash
+        task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
 
     if noexec:
         # Overrides build image to the base
