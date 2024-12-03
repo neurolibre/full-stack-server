@@ -33,8 +33,14 @@ common_config  = load_yaml('config/common.yaml')
 preview_config  = load_yaml('config/preview.yaml')
 
 # GLOBAL VARIABLES
-BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"
-PREVIEW_BOOK_URL = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}"
+# BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"
+BOOK_PATHS = {
+    "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz",
+    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*/*.tar.gz"}
+
+PREVIEW_BOOK_URL = {
+    "jupyter_book": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}",
+    "myst": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['MYST_FOLDER']}"}
 
 JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}"
 
@@ -49,37 +55,48 @@ def load_all(globpath=BOOK_PATHS):
     single_page_path = "/_build/_page/index/jupyter_execute"
     multi_page_path  = "/_build/jupyter_execute"
     paths = glob.glob(globpath)
-    for path in paths:
-        curr_dir = path.replace(".tar.gz", "")
-        path_list = curr_dir.split("/")
-        commit_hash = path_list[-1]
-        repo = path_list[-2]
-        provider = path_list[-3]
-        user = path_list[-4]
-        nb_list = []
-        for (dirpath, dirnames, filenames) in chain(os.walk(curr_dir + multi_page_path),os.walk(curr_dir + single_page_path)):
-            for input_file in filenames:
-                if input_file.split(".")[-1] == "ipynb":
-                    nb_list += [os.path.join(dirpath, input_file).replace(JB_ROOT_PATH, PREVIEW_BOOK_URL)]
-        nb_list = sorted(nb_list)
-        # The directory of html pages depends on whether the book was built as a 
-        # single page or multi-page. This is to ensure the right one is 
-        # returned.
-        if multi_page_path in dirpath:
-            cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
-        elif single_page_path in dirpath:
-            cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
-        book_dict = {"book_url": cur_url
-                     , "book_build_logs": PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
-                     , "download_link": PREVIEW_BOOK_URL + path.replace(JB_ROOT_PATH, "")
-                     , "notebook_list": nb_list
-                     , "repo_link": f"https://{provider}/{user}/{repo}"
-                     , "user_name": user
-                     , "repo_name": repo
-                     , "provider_name": provider
-                     , "commit_hash": commit_hash
-                     , "time_added": time.ctime(os.path.getctime(path))}
-        book_collection += [book_dict]
+    for format_type, path_pattern in globpath.items():
+        paths = glob.glob(path_pattern)
+        root_path = JB_ROOT_PATH if format_type == "jupyter_book" else MYST_ROOT_PATH
+        preview_url = PREVIEW_BOOK_URL[format_type]
+        for path in paths:
+            curr_dir = path.replace(".tar.gz", "")
+            path_list = curr_dir.split("/")
+            commit_hash = path_list[-1]
+            repo = path_list[-2]
+            provider = path_list[-3]
+            user = path_list[-4]
+            nb_list = []
+
+            # Only look for notebooks in Jupyter Book format
+            if format_type == "jupyter_book":
+                for (dirpath, dirnames, filenames) in chain(
+                    os.walk(curr_dir + multi_page_path),
+                    os.walk(curr_dir + single_page_path)
+                ):
+                    for input_file in filenames:
+                        if input_file.split(".")[-1] == "ipynb":
+                            nb_list += [os.path.join(dirpath, input_file).replace(root_path, preview_url)]
+                nb_list = sorted(nb_list)
+
+                if multi_page_path in dirpath:
+                    cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+                elif single_page_path in dirpath:
+                    cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
+            else:
+                cur_url = preview_url + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+
+            book_dict = {"book_url": cur_url
+                        , "book_build_logs": PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
+                        , "download_link": PREVIEW_BOOK_URL + path.replace(JB_ROOT_PATH, "")
+                        , "notebook_list": nb_list
+                        , "repo_link": f"https://{provider}/{user}/{repo}"
+                        , "user_name": user
+                        , "repo_name": repo
+                        , "provider_name": provider
+                        , "commit_hash": commit_hash
+                        , "time_added": time.ctime(os.path.getctime(path))}
+            book_collection += [book_dict]
     return book_collection
 
 def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
