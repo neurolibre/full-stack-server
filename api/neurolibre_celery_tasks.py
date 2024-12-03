@@ -26,6 +26,7 @@ from myst_libre.builders import MystBuilder
 from celery.schedules import crontab
 import zipfile
 import tempfile
+import tarfile
 
 '''
 TODO: IMPORTANT REFACTORING
@@ -1407,9 +1408,31 @@ def preview_build_myst_task(self, screening_dict):
     #     builder = MystBuilder(hub=hub, build_dir=expected_source_path)
     # else:
     #     builder = MystBuilder(hub=hub)
+
+    base_user_dir = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name)
+
+    latest_file = os.path.join(base_user_dir, "latest.txt")
+    previous_commit = None
+    if os.path.exists(latest_file):
+        with open(latest_file, 'r') as f:
+            previous_commit = f.read().strip()
+            task.start(f"Found previous build at commit {previous_commit}")
+
+    # Copy previous build folder to the new build folder to take advantage of caching.
+    if previous_commit and previous_commit != task.screening.commit_hash:
+        previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
+        current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
         
-        # Set the base url
-    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+        if os.path.exists(previous_execute_dir):
+            task.start(f"Copying execute folder from previous build {previous_commit}")
+            os.makedirs(current_build_dir, exist_ok=True)
+            try:
+                shutil.copytree(previous_execute_dir, current_build_dir)
+                task.start("Successfully copied previous build folder")
+            except Exception as e:
+                task.start(f"Warning: Failed to copy previous build folder: {str(e)}")
+
+    base_url = os.path.join(base_user_dir,task.screening.commit_hash,"_build","html")
     builder.setenv('BASE_URL',base_url)
     # Start the build
 
@@ -1441,7 +1464,26 @@ def preview_build_myst_task(self, screening_dict):
 
     expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
     if os.path.exists(expected_webpage_path):
+        
+        source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+        archive_path = f"{source_dir}.tar.gz"
+                
+        try:
+            with tarfile.open(archive_path, "w:gz") as tar:
+                tar.add(source_dir, arcname=os.path.basename(source_dir))
+            task.start(f"Created archive at {archive_path}")
+        except Exception as e:
+            task.start(f"Warning: Failed to create archive: {str(e)}")
+        
+        try:
+            with open(latest_file, 'w') as f:
+                f.write(task.screening.commit_hash)
+            task.start(f"Updated latest.txt to {task.screening.commit_hash}")
+        except Exception as e:
+            task.start(f"Warning: Failed to update latest.txt: {str(e)}")
+        
         task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
+        
         if hub:
             logging.info(f"Stopping container {hub.container.short_id}")
             hub.stop_container()

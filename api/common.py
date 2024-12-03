@@ -38,6 +38,8 @@ PREVIEW_BOOK_URL = f"https://{preview_config['SERVER_SLUG']}.{common_config['SER
 
 JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}"
 
+MYST_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}"
+
 def load_all(globpath=BOOK_PATHS):
     """
     Get the list of all the jupyter books that exist in the
