@@ -46,19 +46,19 @@ JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDE
 
 MYST_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}"
 
-def load_all(globpath=BOOK_PATHS):
+def load_all(globpaths=BOOK_PATHS):
     """
-    Get the list of all the jupyter books that exist in the
-    respective server.
+    Get the list of all books (Jupyter Book and MyST) that exist in the server.
     """
     book_collection = []
     single_page_path = "/_build/_page/index/jupyter_execute"
-    multi_page_path  = "/_build/jupyter_execute"
+    multi_page_path = "/_build/jupyter_execute"
 
-    for format_type, path_pattern in globpath.items():
+    for format_type, path_pattern in globpaths.items():
         paths = glob.glob(path_pattern)
         root_path = JB_ROOT_PATH if format_type == "jupyter_book" else MYST_ROOT_PATH
-        preview_url = PREVIEW_BOOK_URL[format_type]
+        preview_url = PREVIEW_BOOK_URL[format_type]  # Get the correct preview URL for this format
+
         for path in paths:
             curr_dir = path.replace(".tar.gz", "")
             path_list = curr_dir.split("/")
@@ -80,23 +80,27 @@ def load_all(globpath=BOOK_PATHS):
                 nb_list = sorted(nb_list)
 
                 if multi_page_path in dirpath:
-                    cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+                    cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
                 elif single_page_path in dirpath:
-                    cur_url = PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
-            else:
-                cur_url = preview_url + f"/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
+                    cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
+            else:  # MyST format
+                cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
 
-            book_dict = {"book_url": cur_url
-                        , "book_build_logs": PREVIEW_BOOK_URL + f"/{user}/{provider}/{repo}/{commit_hash}/book-build.log"
-                        , "download_link": PREVIEW_BOOK_URL + path.replace(JB_ROOT_PATH, "")
-                        , "notebook_list": nb_list
-                        , "repo_link": f"https://{provider}/{user}/{repo}"
-                        , "user_name": user
-                        , "repo_name": repo
-                        , "provider_name": provider
-                        , "commit_hash": commit_hash
-                        , "time_added": time.ctime(os.path.getctime(path))}
+            book_dict = {
+                "book_url": cur_url,
+                "book_build_logs": f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/book-build.log",
+                "download_link": f"{preview_url}{path.replace(root_path, '')}",
+                "notebook_list": nb_list,
+                "repo_link": f"https://{provider}/{user}/{repo}",
+                "user_name": user,
+                "repo_name": repo,
+                "provider_name": provider,
+                "commit_hash": commit_hash,
+                "format_type": format_type,
+                "time_added": time.ctime(os.path.getctime(path))
+            }
             book_collection += [book_dict]
+    
     return book_collection
 
 def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):
