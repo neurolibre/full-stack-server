@@ -1409,14 +1409,17 @@ def preview_build_myst_task(self, screening_dict):
     # else:
     #     builder = MystBuilder(hub=hub)
 
-    base_user_dir = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name)
+    base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,task.owner_name,task.repo_name)
 
     latest_file = os.path.join(base_user_dir, "latest.txt")
     previous_commit = None
     if os.path.exists(latest_file):
+        logging.info(f"Found latest.txt")
         with open(latest_file, 'r') as f:
             previous_commit = f.read().strip()
             task.start(f"Found previous build at commit {previous_commit}")
+    
+    logging.info(f"Previous commit: {previous_commit}")
 
     # Copy previous build folder to the new build folder to take advantage of caching.
     if previous_commit and previous_commit != task.screening.commit_hash:
@@ -1424,7 +1427,7 @@ def preview_build_myst_task(self, screening_dict):
         current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
         
         if os.path.exists(previous_execute_dir):
-            task.start(f"Copying execute folder from previous build {previous_commit}")
+            task.start(f"Copying _build folder from previous build {previous_commit}")
             os.makedirs(current_build_dir, exist_ok=True)
             try:
                 shutil.copytree(previous_execute_dir, current_build_dir)
@@ -1432,7 +1435,7 @@ def preview_build_myst_task(self, screening_dict):
             except Exception as e:
                 task.start(f"Warning: Failed to copy previous build folder: {str(e)}")
 
-    base_url = os.path.join(base_user_dir,task.screening.commit_hash,"_build","html")
+    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     builder.setenv('BASE_URL',base_url)
     # Start the build
 
@@ -1440,7 +1443,7 @@ def preview_build_myst_task(self, screening_dict):
 
     task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
 
-    logs = builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+    builder.build('--execute','--html',user="ubuntu",group="ubuntu")
 
 
     # if noexec:
