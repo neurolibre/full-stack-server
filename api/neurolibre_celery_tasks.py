@@ -1428,7 +1428,6 @@ def preview_build_myst_task(self, screening_dict):
         
         if os.path.exists(previous_execute_dir):
             task.start(f"Copying _build folder from previous build {previous_commit}")
-            os.makedirs(current_build_dir, exist_ok=True)
             try:
                 shutil.copytree(previous_execute_dir, current_build_dir)
                 task.start("Successfully copied previous build folder")
