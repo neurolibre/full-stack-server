@@ -36,7 +36,7 @@ preview_config  = load_yaml('config/preview.yaml')
 # BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"
 BOOK_PATHS = {
     "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz",
-    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*/*.tar.gz"}
+    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*.tar.gz"}
 
 PREVIEW_BOOK_URL = {
     "jupyter_book": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}",
