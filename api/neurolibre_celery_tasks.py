@@ -1486,7 +1486,7 @@ def preview_build_myst_task(self, screening_dict):
         except Exception as e:
             task.start(f"Warning: Failed to update latest.txt: {str(e)}")
         
-        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html \n\n {logs}", collapsable=False)
+        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
         
         if hub:
             logging.info(f"Stopping container {hub.container.short_id}")
@@ -1501,5 +1501,5 @@ def preview_build_myst_task(self, screening_dict):
             logging.info(f"Removing stopped containers.")
             hub.delete_stopped_containers()
             logging.info(f"Cleanup successful...")
-        task.fail(f"MyST build failed did not produce the expected webpage: \n\n {logs}")
+        task.fail(f"MyST build failed did not produce the expected webpage")
         #raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
