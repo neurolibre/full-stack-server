@@ -54,7 +54,7 @@ def load_all(globpath=BOOK_PATHS):
     book_collection = []
     single_page_path = "/_build/_page/index/jupyter_execute"
     multi_page_path  = "/_build/jupyter_execute"
-    paths = glob.glob(globpath)
+
     for format_type, path_pattern in globpath.items():
         paths = glob.glob(path_pattern)
         root_path = JB_ROOT_PATH if format_type == "jupyter_book" else MYST_ROOT_PATH
