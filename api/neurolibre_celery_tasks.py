@@ -474,7 +474,7 @@ def fork_configure_repository_task(self, payload):
     jb_toc = gh_get_jb_toc(github_client,forked_name)
     myst_config = gh_get_myst_config(github_client,forked_name)
     
-    if not jb_config or not jb_toc or not myst_config:
+    if (not jb_config or not jb_toc) and (not myst_config):
         msg = f"Could not load [_config.yml and _toc.yml] under the content or myst.yml at the base of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
