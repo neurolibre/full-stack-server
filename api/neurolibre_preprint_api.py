@@ -744,14 +744,14 @@ docs.register(api_production_start_post)
 @preprint_api.auth_required
 @doc(description=f'Request a binderhub build on the production server for a given repo and hash. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
-def api_binder_build(user,repo_url, commit_hash):
+def api_binder_build(user,repository_url):
 
-    binderhub_request = run_binder_build_preflight_checks(repo_url,commit_hash,RATE_LIMIT, BINDER_NAME, BINDER_DOMAIN)
+    binderhub_request = run_binder_build_preflight_checks(repository_url,"HEAD",RATE_LIMIT, BINDER_NAME, BINDER_DOMAIN)
 
     # Request build from the preview binderhub instance
     app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
 
-    lock_filename = get_lock_filename(repo_url)
+    lock_filename = get_lock_filename(repository_url)
 
     response = requests.get(binderhub_request, stream=True)
     if response.ok:

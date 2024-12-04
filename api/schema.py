@@ -61,8 +61,7 @@ class BinderSchema(Schema):
     """
     Defines payload types and requirements for binderhub build request.
     """
-    repo_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
-    commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for the build. Defaults to HEAD.")
+    repository_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
 
 class BucketsSchema(Schema):
     """
