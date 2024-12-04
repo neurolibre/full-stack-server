@@ -503,7 +503,8 @@ def fork_configure_repository_task(self, payload):
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update myst.yml for {forked_name}"})
             return
-
+        
+        msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>myst.yml</code>) properly configured."
     else:
         # UPDATE JB CONFIG
         if 'launch_buttons' not in jb_config:
@@ -562,14 +563,14 @@ def fork_configure_repository_task(self, payload):
             return
 
         msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
-        gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         # Write production record.
-        now = get_time()
-        rec_info['forked_at'] = now
-        rec_info['forked_repository'] = f"https://github.com/{forked_name}"
-        with open(local_file, 'w') as outfile:
-            json.dump(rec_info, outfile)
+    now = get_time()
+    rec_info['forked_at'] = now
+    rec_info['forked_repository'] = f"https://github.com/{forked_name}"
+    with open(local_file, 'w') as outfile:
+        json.dump(rec_info, outfile)
     
+    gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 
