@@ -416,7 +416,7 @@ def fork_configure_repository_task(self, payload):
     # Production cannot be started if there's a book at the latest commit hash at which
     # the production is asked for.
     if not book_tested_check['status']:
-        msg = f"\n > [!WARNING] \n > A book build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
+        msg = f"\n > [!WARNING] \n > A living preprint build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
@@ -472,76 +472,104 @@ def fork_configure_repository_task(self, payload):
 
     jb_config = gh_get_jb_config(github_client,forked_name)
     jb_toc = gh_get_jb_toc(github_client,forked_name)
-
-    if not jb_config or not jb_toc:
-        msg = f"Could not load _config.yml or _toc.yml under the content directory of {forked_name}"
+    myst_config = gh_get_myst_config(github_client,forked_name)
+    
+    if not jb_config or not jb_toc or not myst_config:
+        msg = f"Could not load [_config.yml and _toc.yml] under the content or myst.yml at the base of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
+    
+    if myst_config:
 
-    if 'launch_buttons' not in jb_config:
-        jb_config['launch_buttons'] = {}
-    # Configure the book to use the production BinderHUB
-    jb_config['launch_buttons']['binderhub_url'] = PRODUCTION_BINDERHUB
-    # Override this choice.
-    jb_config['launch_buttons']['notebook_interface'] = JB_INTERFACE_OVERRIDE
+        myst_config_new = myst_config   
+        myst_config_new['project']['copyright'] = JOURNAL_NAME
+        myst_config_new['project']['thebe'] = {}
+        myst_config_new['project']['thebe']['binder'] = {}
+        myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
+        myst_config_new['project']['thebe']['binder']['repo'] = f"https://github.com/{forked_name}"
+        myst_config_new['project']['thebe']['binder']['ref'] = "main"
+        myst_config_new['project']['open_access'] = True
+        myst_config_new['project']['license'] = "CC-BY-4.0"
+        myst_config_new['project']['venue'] = JOURNAL_NAME
+        myst_config_new['project']['subject'] = "Living Preprint"
+        myst_config_new['project']['doi'] = f"10.55458/neurolibre.{payload['issue_id']:05d}"
 
-    # Update repository address
-    if 'repository' not in jb_config:
-        jb_config['repository'] = {}
-    # Make sure that there's a link to the forked source.
-    jb_config['repository']['url'] = f"https://github.com/{forked_name}"
+        if not myst_config_new != myst_config:
+            response = gh_update_myst_config(github_client,forked_name,myst_config_new)
+        
+        if not response['status']:
+            msg = f"Could not update myst.yml for {forked_name}: \n {response['message']}"
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update myst.yml for {forked_name}"})
+            return
 
-    # Update configuration file in the forked repo
-    response = gh_update_jb_config(github_client,forked_name,jb_config)
+    else:
+        # UPDATE JB CONFIG
+        if 'launch_buttons' not in jb_config:
+            jb_config['launch_buttons'] = {}
+        # Configure the book to use the production BinderHUB
+        jb_config['launch_buttons']['binderhub_url'] = PRODUCTION_BINDERHUB
+        # Override this choice.
+        jb_config['launch_buttons']['notebook_interface'] = JB_INTERFACE_OVERRIDE
 
-    if not response['status']:
-        msg = f"Could not update _config.yml for {forked_name}: \n {response['message']}"
-        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-        return
+        # Update repository address
+        if 'repository' not in jb_config:
+            jb_config['repository'] = {}
+        # Make sure that there's a link to the forked source.
+        jb_config['repository']['url'] = f"https://github.com/{forked_name}"
 
-    jb_toc_new = jb_toc
-    if 'parts' in jb_toc:
-        jb_toc_new['parts'].append({
-            "caption": JOURNAL_NAME,
-            "chapters": [{
+        # Update configuration file in the forked repo
+        response = gh_update_jb_config(github_client,forked_name,jb_config)
+
+        if not response['status']:
+            msg = f"Could not update _config.yml for {forked_name}: \n {response['message']}"
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            return
+
+        jb_toc_new = jb_toc
+        if 'parts' in jb_toc:
+            jb_toc_new['parts'].append({
+                "caption": JOURNAL_NAME,
+                "chapters": [{
+                    "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
+                    "title": "Citable PDF and archives"
+                }]
+            })
+
+        if 'chapters' in jb_toc:
+            jb_toc_new['chapters'].append({
                 "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
                 "title": "Citable PDF and archives"
-            }]
-        })
+            })
 
-    if 'chapters' in jb_toc:
-        jb_toc_new['chapters'].append({
-            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
-            "title": "Citable PDF and archives"
-        })
+        if jb_toc['format'] == 'jb-article' and 'sections' in jb_toc:
+            jb_toc_new['sections'].append({
+                "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
+                "title": "Citable PDF and archives"
+            })
 
-    if jb_toc['format'] == 'jb-article' and 'sections' in jb_toc:
-        jb_toc_new['sections'].append({
-            "url": f"{PAPERS_PATH}/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}",
-            "title": "Citable PDF and archives"
-        })
+        # Update TOC file in the forked repo only if the new toc is different
+        # otherwise github api will complain.
+        if not jb_toc_new != jb_toc:
+            response = gh_update_jb_toc(github_client,forked_name,jb_toc)
 
-    # Update TOC file in the forked repo only if the new toc is different
-    # otherwise github api will complain.
-    if not jb_toc_new != jb_toc:
-        response = gh_update_jb_toc(github_client,forked_name,jb_toc)
+        if not response['status']:
+            msg = f"Could not update toc.yml for {forked_name}: \n {response['message']}"
+            gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update _toc.yml for {forked_name}"})
+            return
 
-    if not response['status']:
-        msg = f"Could not update toc.yml for {forked_name}: \n {response['message']}"
-        gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update _toc.yml for {forked_name}"})
-        return
-
-    msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
-    gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-    # Write production record.
-    now = get_time()
-    rec_info['forked_at'] = now
-    rec_info['forked_repository'] = f"https://github.com/{forked_name}"
-    with open(local_file, 'w') as outfile:
-        json.dump(rec_info, outfile)
+        msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
+        gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+        # Write production record.
+        now = get_time()
+        rec_info['forked_at'] = now
+        rec_info['forked_repository'] = f"https://github.com/{forked_name}"
+        with open(local_file, 'w') as outfile:
+            json.dump(rec_info, outfile)
+    
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 

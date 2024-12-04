@@ -175,7 +175,7 @@ def gh_get_file_content(github_client,repo,file_path):
         file_content = repo.get_contents(file_path).decoded_content.decode()
     except Exception as e:
         print(f"Error retrieving file content: {str(e)}")
-        return ""
+        return None
     return file_content
 
 def gh_update_file_content(github_client,repo,file_path,new_content,commit_message):
@@ -193,51 +193,73 @@ def gh_update_file_content(github_client,repo,file_path,new_content,commit_messa
     except Exception as e:
         return {"status": False, "message": str(e)}
 
-def gh_get_jb_config(github_client,repo):
+def gh_get_yaml(github_client, repo, file_path):
     """
-    Get Jupyter Book configuration YAML file content 
-    that is under the content directory as required by
-    the neurolibre repository structure.
+    Get YAML file content from a repository.
+
+    Parameters:
+    - github_client: GitHub client instance
+    - repo: Repository name/path
+    - file_path: Path to the YAML file in the repository
+
+    Returns:
+    - dict: Parsed YAML content or empty dict if file not found
     """
-    file_content = gh_get_file_content(github_client,repo,"content/_config.yml")
+    file_content = gh_get_file_content(github_client, repo, file_path)
     if file_content:
         yaml_data = yaml.safe_load(file_content)
     else:
-        yaml_data = {}
+        yaml_data = None
     return yaml_data
 
-def gh_update_jb_config(github_client,repo,content):
+def gh_update_yaml(github_client, repo, file_path, content, commit_message=None):
     """
-    Update the content of the Jupyter Book configuration YAML 
-    that is under the content directory as required by
-    the neurolibre repository structure.
-    """
-    updated_config = yaml.dump(content)
-    response = gh_update_file_content(github_client,repo,"content/_config.yml",updated_config,":robot: [Automated] JB configuration update")
-    return response
+    Update YAML file content in a repository.
 
-def gh_get_jb_toc(github_client,repo):
-    """
-    Get Jupyter Book Table Of Contents (TOC) YAML content 
-    that is under the content directory as required by
-    the neurolibre repository structure.
-    """
-    file_content = gh_get_file_content(github_client,repo,"content/_toc.yml")
-    if file_content:
-        yaml_data = yaml.safe_load(file_content)
-    else:
-        yaml_data = {}
-    return yaml_data
+    Parameters:
+    - github_client: GitHub client instance
+    - repo: Repository name/path
+    - file_path: Path to the YAML file in the repository
+    - content: New content to write (will be converted to YAML)
+    - commit_message: Optional custom commit message
 
-def gh_update_jb_toc(github_client,repo,content):
+    Returns:
+    - dict: Response from gh_update_file_content
     """
-    Update the Jupyter Book Table Of Contents (TOC) YAML content 
-    that is under the content directory as required by
-    the neurolibre repository structure.
-    """
+    if commit_message is None:
+        file_name = file_path.split('/')[-1]
+        commit_message = f":robot: [Automated] Update {file_name}"
+    
     updated_config = yaml.dump(content)
-    response = gh_update_file_content(github_client,repo,"content/_toc.yml",updated_config,":robot: [Automated] JB TOC update")
-    return response
+    return gh_update_file_content(github_client, repo, file_path, updated_config, commit_message)
+
+# The following functions can now use the generic ones above
+def gh_get_jb_config(github_client, repo):
+    """Get Jupyter Book configuration YAML"""
+    return gh_get_yaml(github_client, repo, "content/_config.yml")
+
+def gh_get_myst_config(github_client, repo):
+    """Get MyST configuration YAML"""
+    return gh_get_yaml(github_client, repo, "myst.yml")
+
+def gh_update_myst_config(github_client, repo, content):
+    """Update MyST configuration YAML"""
+    return gh_update_yaml(github_client, repo, "myst.yml", content, 
+                         ":robot: [Automated] MyST configuration update")
+
+def gh_update_jb_config(github_client, repo, content):
+    """Update Jupyter Book configuration YAML"""
+    return gh_update_yaml(github_client, repo, "content/_config.yml", content, 
+                         ":robot: [Automated] JB configuration update")
+
+def gh_get_jb_toc(github_client, repo):
+    """Get Jupyter Book TOC YAML"""
+    return gh_get_yaml(github_client, repo, "content/_toc.yml")
+
+def gh_update_jb_toc(github_client, repo, content):
+    """Update Jupyter Book TOC YAML"""
+    return gh_update_yaml(github_client, repo, "content/_toc.yml", content,
+                         ":robot: [Automated] JB TOC update")
 
 def gh_get_paper_markdown(github_client,repo):
     """

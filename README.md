@@ -240,7 +240,7 @@ Host neurolibre-preview
 
 Ensure that the you replaced `xxx.xx.xx.xxx` with the public IP address of the preview server. The first line of the configuration above declares the alias `neurolibre-preview`. If you change this name, you will need to make respective changes in the `neurolibre_preprint_api.py`. 
 
-5. Test file transfer. SSH into the destination (preprint) server and pull an example file from the source server: 
+5. Test file transfer. SSH into the destination (preprint) server and pull an example file from the source (preview) server: 
 
 ```
 rsync -avR neurolibre-preview:/DATA/foo.txt /

@@ -68,3 +68,6 @@ CONTAINER_MYST_SOURCE_PATH: "/home/jovyan"
 
 # Container path where the data will be mounted (read-only)
 CONTAINER_MYST_DATA_PATH: "/home/jovyan/data"
+
+# Sender email address
+SENDER_EMAIL: "no-reply@neurolibre.org"

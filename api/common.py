@@ -32,29 +32,27 @@ def load_yaml(file):
 common_config  = load_yaml('config/common.yaml')
 preview_config  = load_yaml('config/preview.yaml')
 
-# GLOBAL VARIABLES
-# BOOK_PATHS = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"
-BOOK_PATHS = {
-    "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz",
-    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*.tar.gz"}
-
-PREVIEW_BOOK_URL = {
-    "jupyter_book": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}",
-    "myst": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['MYST_FOLDER']}"}
-
 JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}"
 
 MYST_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}"
 
-def load_all(globpaths=BOOK_PATHS):
+def load_all():
     """
     Get the list of all books (Jupyter Book and MyST) that exist in the server.
     """
+    BOOK_PATHS = {
+    "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz",
+    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*.tar.gz"}
+
+    PREVIEW_BOOK_URL = {
+        "jupyter_book": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}",
+        "myst": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['MYST_FOLDER']}"}
+
     book_collection = []
     single_page_path = "/_build/_page/index/jupyter_execute"
     multi_page_path = "/_build/jupyter_execute"
 
-    for format_type, path_pattern in globpaths.items():
+    for format_type, path_pattern in BOOK_PATHS.items():
         paths = glob.glob(path_pattern)
         root_path = JB_ROOT_PATH if format_type == "jupyter_book" else MYST_ROOT_PATH
         preview_url = PREVIEW_BOOK_URL[format_type]  # Get the correct preview URL for this format
@@ -326,7 +324,7 @@ def parse_front_matter(markdown_string):
 
 def send_email(to_email, subject, body):
     sg_api_key = os.getenv('SENDGRID_API_KEY')
-    sender_email = "no-reply@neurolibre.org"
+    sender_email = common_config['SENDER_EMAIL']
 
     message = Mail(
         from_email=sender_email,
