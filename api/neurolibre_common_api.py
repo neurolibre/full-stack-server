@@ -5,6 +5,9 @@ from urllib.parse import urlparse
 from schema import UnlockSchema, StatusSchema, BookSchema, TaskSchema
 from flask_htpasswd import HtPasswdAuth
 from neurolibre_celery_tasks import celery_app, sleep_task
+from flask_cors import cross_origin
+from werkzeug.exceptions import HTTPException
+import traceback
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
@@ -120,50 +123,52 @@ def api_preview_list():
     return make_response(jsonify(files),200)
 
 @common_api.route('/api/chat', methods=['POST'])
-@marshal_with(None, code=400, description="Bad request - missing required fields")
-@marshal_with(None, code=500, description="Server error - API configuration or request failed")
-@marshal_with(None, code=200, description="Successfully processed chat request")
-@doc(description='Process chat messages using Groq API to analyze build logs', tags=['Chat'])
+@cross_origin()  # Add CORS support
 def chat():
-    # Validate request data
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No JSON data provided'}), 400
-    
-    message = data.get('message')
-    log_content = data.get('log_content')
-    if not message or not log_content:
-        return jsonify({'error': 'Missing required fields: message and log_content'}), 400
-    
-    # Get API key from environment variable
-    api_key = os.getenv('GROQ_API_KEY')
-    if not api_key:
-        current_app.logger.error('Groq API key not configured')
-        return jsonify({'error': 'Chat service not properly configured'}), 500
-    
-    chat_history = data.get('chat_history', [])
-    
-    # Format messages for Groq API
-    messages = [
-        {
-            "role": "system",
-            "content": """You are a helpful assistant analyzing build logs. 
-            You have access to the full log content and can help users understand issues and provide solutions. 
-            Be concise but thorough in your responses."""
-        },
-        *[{"role": msg["role"], "content": msg["content"]} for msg in chat_history],
-        {
-            "role": "user",
-            "content": f"""Context - Build Log Content:
-            {log_content}
-
-            User Question: {message}
-
-            Please provide a helpful response based on the build log content above."""
-        }
-    ]
-
     try:
+        # Validate request data
+        if not request.is_json:
+            return jsonify({
+                'error': 'Content-Type must be application/json'
+            }), 400
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        message = data.get('message')
+        log_content = data.get('log_content')
+        if not message or not log_content:
+            return jsonify({'error': 'Missing required fields: message and log_content'}), 400
+        
+        # Get API key from environment variable
+        api_key = os.getenv('GROQ_API_KEY')
+        if not api_key:
+            current_app.logger.error('Groq API key not configured')
+            return jsonify({'error': 'Chat service not properly configured'}), 500
+        
+        chat_history = data.get('chat_history', [])
+        
+        # Format messages for Groq API
+        messages = [
+            {
+                "role": "system",
+                "content": """You are a helpful assistant analyzing build logs. 
+                You have access to the full log content and can help users understand issues and provide solutions. 
+                Be concise but thorough in your responses."""
+            },
+            *[{"role": msg["role"], "content": msg["content"]} for msg in chat_history],
+            {
+                "role": "user",
+                "content": f"""Context - Build Log Content:
+                {log_content}
+
+                User Question: {message}
+
+                Please provide a helpful response based on the build log content above."""
+            }
+        ]
+
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
@@ -193,3 +198,17 @@ def chat():
     except requests.RequestException as e:
         current_app.logger.error(f'Groq API request failed: {str(e)}')
         return jsonify({'error': 'Failed to process chat request'}), 500
+    except HTTPException as e:
+        # Handle Flask/Werkzeug HTTP exceptions
+        return jsonify({
+            'error': str(e),
+            'status_code': e.code
+        }), e.code
+        
+    except Exception as e:
+        # Log the full traceback for debugging
+        current_app.logger.error(f'Unexpected error in /api/chat: {traceback.format_exc()}')
+        return jsonify({
+            'error': 'Internal server error',
+            'details': str(e)
+        }), 500

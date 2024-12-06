@@ -222,11 +222,7 @@
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
             try {
-                // Log the full URL we're hitting
-                const url = new URL('/api/chat', window.location.href);
-                console.log('Sending request to:', url.toString());
-                
-                const response = await fetch(url, {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -239,23 +235,23 @@
                     })
                 });
                 
-                // Log the response details
-                console.log('Response status:', response.status);
-                console.log('Response headers:', Object.fromEntries(response.headers));
-                
-                const responseText = await response.text();
-                console.log('Raw response:', responseText);
-                
-                // If we got HTML instead of JSON, throw a clear error
-                if (responseText.trim().startsWith('<')) {
-                    throw new Error(`Received HTML instead of JSON. Check server configuration. URL: ${url}`);
+                // First check if the response is ok
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    try {
+                        // Try to parse as JSON
+                        const errorJson = JSON.parse(errorText);
+                        throw new Error(errorJson.error || `Server error: ${response.status}`);
+                    } catch (parseError) {
+                        // If can't parse as JSON, use text
+                        throw new Error(`Server error: ${errorText || response.status}`);
+                    }
                 }
-                
-                const data = JSON.parse(responseText);
+
+                const data = await response.json();
                 return data.response;
             } catch (error) {
-                console.error('Full error details:', error);
-                console.error('Request URL:', window.location.href);
+                console.error('Chat API Error:', error);
                 return `Sorry, I encountered an error: ${error.message}. Please try again later.`;
             }
         }

@@ -26,6 +26,7 @@ from github import Github
 import yaml
 from screening_client import ScreeningClient
 from neurolibre_api import NeuroLibreAPI
+from flask_cors import CORS
 
 """
 Configuration START
@@ -36,6 +37,7 @@ preprint_api = NeuroLibreAPI(__name__,
                                            'config/preprint.yaml'])
 
 app = preprint_api.get_app()
+CORS(app)
 docs = preprint_api.docs
 
 # Extract configuration variables
