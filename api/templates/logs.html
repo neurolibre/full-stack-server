@@ -303,19 +303,27 @@
         // Initialize chat with log analysis
         async function initializeChat() {
             try {
-                addMessage("Analyzing logs...", 'bot');
-                const initialPrompt = "Analyze these build logs and provide a brief summary of any important information or errors:";
-                const response = await queryLLM(initialPrompt, content);
-                
-                // Remove the "Analyzing logs..." message
                 const messages = document.getElementById('chatMessages');
-                messages.removeChild(messages.lastChild);
+                messages.innerHTML = '<div class="chat-message bot">Roboneuro is working on your logs...</div>';
                 
-                addMessage(response, 'bot');
-                chatHistory.push({ role: "assistant", content: response });
+                const initialPrompt = "Analyze these build logs and provide a brief summary of any important information or errors:";
+                
+                // Use smart truncation for the initial log analysis
+                const truncatedLogContent = truncateLogContent(content, 5000);
+                
+                const response = await queryLLM(initialPrompt, truncatedLogContent);
+                
+                // Update the message instead of removing/adding
+                const firstMessage = messages.querySelector('.chat-message.bot');
+                if (firstMessage) {
+                    firstMessage.textContent = response;
+                } else {
+                    messages.innerHTML = `<div class="chat-message bot">${response}</div>`;
+                }
             } catch (error) {
                 console.error('Initialization Error:', error);
-                addMessage("Sorry, I couldn't analyze the logs. Please try refreshing the page.", 'bot');
+                const messages = document.getElementById('chatMessages');
+                messages.innerHTML = '<div class="chat-message bot">Sorry, I couldn\'t analyze the logs. Please try refreshing the page.</div>';
             }
         }
 
