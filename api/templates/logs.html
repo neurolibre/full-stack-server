@@ -221,52 +221,48 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
-            const apiUrl = 'https://preprint.neurolibre.org/api/chat';  // Full URL without trailing slash
-            console.log('Sending request to:', apiUrl);
+            const apiUrl = '/api/chat';  // Back to relative URL
+            console.log('Attempting to send request to:', apiUrl);
             
             try {
-                const response = await fetch(apiUrl, {
+                // First try with relative URL
+                let response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    redirect: 'manual',  // Don't automatically follow redirects
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         message: message,
                         log_content: logContent,
                         chat_history: chatHistory
                     })
                 });
-                
-                // If we get a redirect response, try the redirected URL once
-                if (response.status === 301 || response.status === 308) {
-                    console.log('Received redirect to:', response.headers.get('Location'));
-                    const redirectUrl = new URL(response.headers.get('Location'), window.location.origin).href;
-                    
-                    const finalResponse = await fetch(redirectUrl, {
+
+                // If that fails, try with absolute URL
+                if (!response.ok && response.status === 0) {
+                    console.log('Relative URL failed, trying absolute URL...');
+                    response = await fetch('https://preprint.neurolibre.org/api/chat', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
                         },
-                        redirect: 'error',  // Fail if we get another redirect
+                        credentials: 'include',
                         body: JSON.stringify({
                             message: message,
                             log_content: logContent,
                             chat_history: chatHistory
                         })
                     });
-                    
-                    if (!finalResponse.ok) {
-                        throw new Error(`Server error: ${finalResponse.status}`);
-                    }
-                    
-                    return await finalResponse.json();
                 }
-                
+
                 if (!response.ok) {
-                    const errorText = await response.text();
+                    const errorText = await response.text().catch(e => 'No error text available');
+                    console.error('Response status:', response.status);
+                    console.error('Response status text:', response.statusText);
+                    console.error('Response error text:', errorText);
                     throw new Error(`Server error: ${response.status} - ${errorText}`);
                 }
 
