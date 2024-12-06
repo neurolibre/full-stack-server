@@ -118,3 +118,69 @@ def api_preview_list():
     """
     files = os.listdir(DATA_ROOT_PATH)
     return make_response(jsonify(files),200)
+
+@common_api.route('/api/chat', methods=['POST'])
+def chat():
+    # Get API key from environment variable
+    api_key = os.getenv('GROQ_API_KEY')
+    if not api_key:
+        return jsonify({'error': 'API key not configured'}), 500
+    
+    data = request.json
+    message = data.get('message')
+    log_content = data.get('log_content')
+    chat_history = data.get('chat_history', [])
+
+    # Format messages for Groq API
+    messages = []
+    
+    # Add system message
+    messages.append({
+        "role": "system",
+        "content": """You are a helpful assistant analyzing build logs. 
+        You have access to the full log content and can help users understand issues and provide solutions. 
+        Be concise but thorough in your responses."""
+    })
+
+    # Add chat history
+    for msg in chat_history:
+        messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+
+    # Add current message with context
+    current_prompt = f"""Context - Build Log Content:
+    {log_content}
+
+    User Question: {message}
+
+    Please provide a helpful response based on the build log content above."""
+
+    messages.append({
+        "role": "user",
+        "content": current_prompt
+    })
+
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama-3.1-70b-versatile",
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 1024
+            }
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"API request failed: {response.text}")
+            
+        response_data = response.json()
+        return jsonify({'response': response_data['choices'][0]['message']['content']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

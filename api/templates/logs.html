@@ -205,7 +205,7 @@
             </div>
             <div class="chat-messages" id="chatMessages">
                 <div class="chat-message bot">
-                    Hello! I'm here to help you understand the build logs. What would you like to know?
+                    Hello! I'm here to help you understand the build logs. You can ask me "How can I fix this error?"
                 </div>
             </div>
             <div class="chat-input-container">
@@ -217,6 +217,69 @@
 
     <script>
         const content = {{ content | safe }};
+        let chatHistory = [];  // Store chat history
+
+        // Add this near the top of your script
+        async function queryLLM(message, logContent) {
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        log_content: logContent,
+                        chat_history: chatHistory
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                
+                const data = await response.json();
+                return data.response;
+            } catch (error) {
+                console.error('Error:', error);
+                return "Sorry, I encountered an error while processing your request.";
+            }
+        }
+
+        // Modify your existing sendMessage function
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (message) {
+                addMessage(message, 'user');
+                chatHistory.push({ role: "user", content: message });
+                input.value = '';
+                
+                // Show typing indicator
+                addMessage("Analyzing...", 'bot typing');
+                
+                // Get LLM response
+                const response = await queryLLM(message, content);
+                
+                // Remove typing indicator and add response
+                const messages = document.getElementById('chatMessages');
+                messages.removeChild(messages.lastChild);
+                
+                addMessage(response, 'bot');
+                chatHistory.push({ role: "assistant", content: response });
+            }
+        }
+
+        // Initialize chat with log analysis
+        async function initializeChat() {
+            const initialPrompt = "Analyze these build logs and provide a brief summary of any important information or errors:";
+            const response = await queryLLM(initialPrompt, content);
+            addMessage(response, 'bot');
+            chatHistory.push({ role: "assistant", content: response });
+        }
+
+        // Call initializeChat when the page loads
+        window.addEventListener('load', initializeChat);
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
@@ -305,20 +368,6 @@
         function toggleChat() {
             const panel = document.getElementById('chatPanel');
             panel.classList.toggle('active');
-        }
-
-        function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const message = input.value.trim();
-            if (message) {
-                addMessage(message, 'user');
-                input.value = '';
-                
-                // Simulate bot response
-                setTimeout(() => {
-                    addMessage("I'm analyzing the logs to help answer your question...", 'bot');
-                }, 500);
-            }
         }
 
         function handleKeyPress(event) {
