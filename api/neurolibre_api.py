@@ -48,6 +48,7 @@ class NeuroLibreAPI:
         gunicorn_logger = logging.getLogger('gunicorn.error')
         self.app.logger.handlers.extend(gunicorn_logger.handlers)
         self.app.logger.setLevel(logging.DEBUG)
+        logging.getLogger('flask_cors').level = logging.DEBUG
 
     def setup_auth(self):
         self.app.config['FLASK_HTPASSWD_PATH'] = os.getenv('AUTH_KEY')
