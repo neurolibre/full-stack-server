@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>NeuroLibre Log Viewer</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+    <!-- Common Styles -->
     <style>
         body {
             background-color: #1e1e1e;
@@ -16,43 +16,182 @@
             max-width: 1200px;
             margin: 0 auto;
         }
-        .log-viewer {
+        .viewer-controls {
+            margin-bottom: 20px;
+            background-color: #252526;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .radio-toolbar {
+            margin-bottom: 10px;
+        }
+        .radio-toolbar input[type="radio"] {
+            display: none;
+        }
+        .radio-toolbar label {
+            display: inline-block;
+            padding: 5px 15px;
+            background-color: #333;
+            color: #d4d4d4;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .radio-toolbar input[type="radio"]:checked + label {
+            background-color: #0078d4;
+            color: white;
+        }
+        .viewer {
+            display: none;
             background-color: #252526;
             border-radius: 6px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            height: 800px;
         }
-        pre {
-            margin: 0;
-            white-space: pre-wrap;
-            word-wrap: break-word;
+        .viewer.active {
+            display: block;
         }
-        .error { color: #f44747; }
-        .warning { color: #dcdcaa; }
-        .info { color: #6a9955; }
-        .timestamp { color: #569cd6; }
+        #monaco-container {
+            height: 100%;
+        }
+        #ace-container {
+            height: 100%;
+        }
     </style>
+
+    <!-- Prism -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+    
+    <!-- Highlight.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 </head>
 <body>
     <div class="container">
-        <div class="log-viewer">
+        <div class="viewer-controls">
+            <div class="radio-toolbar">
+                <input type="radio" id="prism" name="viewer" value="prism" checked>
+                <label for="prism">Prism</label>
+                
+                <input type="radio" id="highlight" name="viewer" value="highlight">
+                <label for="highlight">Highlight.js</label>
+                
+                <input type="radio" id="monaco" name="viewer" value="monaco">
+                <label for="monaco">Monaco (VS Code)</label>
+                
+                <input type="radio" id="ace" name="viewer" value="ace">
+                <label for="ace">Ace</label>
+            </div>
+        </div>
+
+        <!-- Prism Viewer -->
+        <div id="prism-viewer" class="viewer active">
             <pre><code class="language-log">{{ content | safe }}</code></pre>
         </div>
+
+        <!-- Highlight.js Viewer -->
+        <div id="highlight-viewer" class="viewer">
+            <pre><code class="language-log">{{ content | safe }}</code></pre>
+        </div>
+
+        <!-- Monaco Viewer -->
+        <div id="monaco-container" class="viewer"></div>
+
+        <!-- Ace Viewer -->
+        <div id="ace-container" class="viewer"></div>
     </div>
+
+    <!-- Load all required scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-log.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
+
     <script>
-        // Highlight log patterns
-        document.addEventListener('DOMContentLoaded', (event) => {
+        const content = `{{ content | safe }}`;
+        let monacoEditor = null;
+        let aceEditor = null;
+
+        // Initialize Prism
+        function initPrism() {
             Prism.highlightAll();
-            
-            // Additional highlighting for common log patterns
-            const logContent = document.querySelector('code');
+            const logContent = document.querySelector('#prism-viewer code');
             logContent.innerHTML = logContent.innerHTML
                 .replace(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/g, '<span class="timestamp">$1</span>')
                 .replace(/(?:error|ERROR|Error):/g, '<span class="error">$&</span>')
                 .replace(/(?:warning|WARNING|Warning):/g, '<span class="warning">$&</span>')
                 .replace(/(?:info|INFO|Info):/g, '<span class="info">$&</span>');
+        }
+
+        // Initialize Highlight.js
+        function initHighlight() {
+            hljs.highlightAll();
+        }
+
+        // Initialize Monaco
+        function initMonaco() {
+            if (!monacoEditor) {
+                require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' }});
+                require(['vs/editor/editor.main'], function() {
+                    monacoEditor = monaco.editor.create(document.getElementById('monaco-container'), {
+                        value: content,
+                        language: 'log',
+                        theme: 'vs-dark',
+                        readOnly: true,
+                        minimap: { enabled: true }
+                    });
+                });
+            }
+        }
+
+        // Initialize Ace
+        function initAce() {
+            if (!aceEditor) {
+                aceEditor = ace.edit("ace-container");
+                aceEditor.setTheme("ace/theme/monokai");
+                aceEditor.session.setMode("ace/mode/text");
+                aceEditor.setReadOnly(true);
+                aceEditor.setValue(content, -1);
+                aceEditor.setOptions({
+                    maxLines: Infinity,
+                    wrap: true
+                });
+            }
+        }
+
+        // Handle viewer switching
+        document.querySelectorAll('input[name="viewer"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                // Hide all viewers
+                document.querySelectorAll('.viewer').forEach(viewer => {
+                    viewer.classList.remove('active');
+                });
+                
+                // Show selected viewer
+                const selectedViewer = e.target.value;
+                document.getElementById(`${selectedViewer}-viewer`)?.classList.add('active');
+                document.getElementById(`${selectedViewer}-container`)?.classList.add('active');
+                
+                // Initialize the selected viewer
+                switch(selectedViewer) {
+                    case 'prism':
+                        initPrism();
+                        break;
+                    case 'highlight':
+                        initHighlight();
+                        break;
+                    case 'monaco':
+                        initMonaco();
+                        break;
+                    case 'ace':
+                        initAce();
+                        break;
+                }
+            });
+        });
+
+        // Initialize default viewer (Prism)
+        document.addEventListener('DOMContentLoaded', () => {
+            initPrism();
         });
     </script>
 </body>
