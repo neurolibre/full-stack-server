@@ -46,9 +46,10 @@
             background-color: #252526;
             border-radius: 6px;
             height: 800px;
+            border: 5px solid red;
         }
         .viewer.active {
-            display: block;
+            display: block !important;
         }
         #monaco-container {
             height: 100%;
@@ -114,19 +115,28 @@
         let monacoEditor = null;
         let aceEditor = null;
 
+        // Add console log to check if content is loaded
+        console.log("Content loaded:", content.substring(0, 100));
+
         // Initialize Prism
         function initPrism() {
+            console.log("Initializing Prism");
             Prism.highlightAll();
             const logContent = document.querySelector('#prism-viewer code');
-            logContent.innerHTML = logContent.innerHTML
-                .replace(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/g, '<span class="timestamp">$1</span>')
-                .replace(/(?:error|ERROR|Error):/g, '<span class="error">$&</span>')
-                .replace(/(?:warning|WARNING|Warning):/g, '<span class="warning">$&</span>')
-                .replace(/(?:info|INFO|Info):/g, '<span class="info">$&</span>');
+            if (logContent) {
+                logContent.innerHTML = logContent.innerHTML
+                    .replace(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/g, '<span class="timestamp">$1</span>')
+                    .replace(/(?:error|ERROR|Error):/g, '<span class="error">$&</span>')
+                    .replace(/(?:warning|WARNING|Warning):/g, '<span class="warning">$&</span>')
+                    .replace(/(?:info|INFO|Info):/g, '<span class="info">$&</span>');
+            } else {
+                console.error("Prism viewer element not found");
+            }
         }
 
         // Initialize Highlight.js
         function initHighlight() {
+            console.log("Initializing Highlight.js");
             document.querySelectorAll('#highlight-viewer pre code').forEach((block) => {
                 hljs.highlightBlock(block);
             });
@@ -134,9 +144,11 @@
 
         // Initialize Monaco
         function initMonaco() {
+            console.log("Initializing Monaco");
             if (!monacoEditor) {
                 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' }});
                 require(['vs/editor/editor.main'], function() {
+                    console.log("Monaco loaded");
                     monacoEditor = monaco.editor.create(document.getElementById('monaco-container'), {
                         value: content,
                         language: 'log',
@@ -144,33 +156,27 @@
                         readOnly: true,
                         minimap: { enabled: true }
                     });
-                    
-                    // Handle container resize
-                    window.addEventListener('resize', function() {
-                        monacoEditor.layout();
-                    });
                 });
             }
         }
 
         // Initialize Ace
         function initAce() {
+            console.log("Initializing Ace");
             if (!aceEditor) {
                 aceEditor = ace.edit("ace-container");
                 aceEditor.setTheme("ace/theme/monokai");
                 aceEditor.session.setMode("ace/mode/text");
                 aceEditor.setReadOnly(true);
                 aceEditor.setValue(content, -1);
-                aceEditor.setOptions({
-                    maxLines: Infinity,
-                    wrap: true
-                });
             }
         }
 
         // Handle viewer switching
         document.querySelectorAll('input[name="viewer"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
+                console.log("Switching to viewer:", e.target.value);
+                
                 // Hide all viewers
                 document.querySelectorAll('.viewer').forEach(viewer => {
                     viewer.classList.remove('active');
@@ -180,8 +186,12 @@
                 const selectedViewer = e.target.value;
                 const viewerElement = document.getElementById(`${selectedViewer}-viewer`) || 
                                     document.getElementById(`${selectedViewer}-container`);
+                
                 if (viewerElement) {
+                    console.log("Found viewer element:", selectedViewer);
                     viewerElement.classList.add('active');
+                } else {
+                    console.error("Viewer element not found:", selectedViewer);
                 }
                 
                 // Initialize the selected viewer
@@ -204,6 +214,7 @@
 
         // Initialize default viewer (Prism)
         document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM Content Loaded");
             initPrism();
         });
     </script>
