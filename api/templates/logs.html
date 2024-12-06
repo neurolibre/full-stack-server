@@ -221,12 +221,14 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
-            const apiUrl = '/api/chat';  // Back to relative URL
-            console.log('Attempting to send request to:', apiUrl);
+            const maxLogSize = 5000;  // Set a maximum size for the log content
+            const truncatedLogContent = logContent.length > maxLogSize ? logContent.substring(0, maxLogSize) + '...' : logContent;
+
+            const apiUrl = '/api/chat/';
+            console.log('Sending request to:', apiUrl);
             
             try {
-                // First try with relative URL
-                let response = await fetch(apiUrl, {
+                const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -235,34 +237,13 @@
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         message: message,
-                        log_content: logContent,
+                        log_content: truncatedLogContent,
                         chat_history: chatHistory
                     })
                 });
 
-                // If that fails, try with absolute URL
-                if (!response.ok && response.status === 0) {
-                    console.log('Relative URL failed, trying absolute URL...');
-                    response = await fetch('https://preprint.neurolibre.org/api/chat', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            message: message,
-                            log_content: logContent,
-                            chat_history: chatHistory
-                        })
-                    });
-                }
-
                 if (!response.ok) {
-                    const errorText = await response.text().catch(e => 'No error text available');
-                    console.error('Response status:', response.status);
-                    console.error('Response status text:', response.statusText);
-                    console.error('Response error text:', errorText);
+                    const errorText = await response.text();
                     throw new Error(`Server error: ${response.status} - ${errorText}`);
                 }
 
