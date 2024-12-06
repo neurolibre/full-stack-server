@@ -63,6 +63,9 @@
     
     <!-- Highlight.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    
+    <!-- Add specific language support for logs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/accesslog.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -89,7 +92,7 @@
 
         <!-- Highlight.js Viewer -->
         <div id="highlight-viewer" class="viewer">
-            <pre><code class="language-log">{{ content | safe }}</code></pre>
+            <pre><code class="hljs language-accesslog">{{ content | safe }}</code></pre>
         </div>
 
         <!-- Monaco Viewer -->
@@ -124,7 +127,9 @@
 
         // Initialize Highlight.js
         function initHighlight() {
-            hljs.highlightAll();
+            document.querySelectorAll('#highlight-viewer pre code').forEach((block) => {
+                hljs.highlightBlock(block);
+            });
         }
 
         // Initialize Monaco
@@ -138,6 +143,11 @@
                         theme: 'vs-dark',
                         readOnly: true,
                         minimap: { enabled: true }
+                    });
+                    
+                    // Handle container resize
+                    window.addEventListener('resize', function() {
+                        monacoEditor.layout();
                     });
                 });
             }
@@ -168,8 +178,11 @@
                 
                 // Show selected viewer
                 const selectedViewer = e.target.value;
-                document.getElementById(`${selectedViewer}-viewer`)?.classList.add('active');
-                document.getElementById(`${selectedViewer}-container`)?.classList.add('active');
+                const viewerElement = document.getElementById(`${selectedViewer}-viewer`) || 
+                                    document.getElementById(`${selectedViewer}-container`);
+                if (viewerElement) {
+                    viewerElement.classList.add('active');
+                }
                 
                 // Initialize the selected viewer
                 switch(selectedViewer) {
