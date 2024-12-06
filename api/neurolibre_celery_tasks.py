@@ -430,7 +430,7 @@ def fork_configure_repository_task(self, payload):
         rec_info['source_repository']['commit_hash'] = payload['commit_hash']
         rec_info['source_repository']['book_url'] = book_tested_check['book_url']
 
-    forked_name = gh_forkify_name(payload['repository_url'])
+    forked_name = gh_forkify_it(payload['repository_url'])
     # First check if a fork already exists.
     fork_exists  = False
     try:
@@ -580,95 +580,95 @@ def preview_build_book_task(self, payload):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
-    binderhub_request = run_binder_build_preflight_checks(payload['repo_url'],
-                                                          payload['commit_hash'],
-                                                          payload['rate_limit'],
-                                                          payload['binder_name'],
-                                                          payload['domain_name'])
-    lock_filename = get_lock_filename(payload['repo_url'])
-    response = requests.get(binderhub_request, stream=True)
-    gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
-    if response.ok:
-        # Create binder_stream generator object
-        def generate():
-            #start_time = time.time()
-            #messages = []
-            #n_updates = 0
-            for line in response.iter_lines():
-                if line:
-                    event_string = line.decode("utf-8")
-                    try:
-                        event = json.loads(event_string.split(': ', 1)[1])
-                        # https://binderhub.readthedocs.io/en/latest/api.html
-                        if event.get('phase') == 'failed':
-                            message = event.get('message')
-                            yield message
-                            response.close()
-                            #messages.append(message)
-                            #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
-                            # Remove the lock as binder build failed.
-                            #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                            if os.path.exists(lock_filename):
-                                os.remove(lock_filename)
-                            return
-                        message = event.get('message')
-                        if message:
-                            yield message
-                            #messages.append(message)
-                            #elapsed_time = time.time() - start_time
-                            # Update issue every two minutes
-                            #if elapsed_time >= 120:
-                            #    n_updates = n_updates + 1
-                            #    gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
-                            #    start_time = time.time()
-                    except GeneratorExit:
-                        pass
-                    except:
-                        pass
-        # Use the generator object as the source of flask eventstream response
-        binder_response = Response(generate(), mimetype='text/event-stream')
-        # Fetch all the yielded messages
-    binder_logs = binder_response.get_data(as_text=True)
-    binder_logs = "".join(binder_logs)
-    # After the upstream closes, check the server if there's
-    # a book built successfully.
-    book_status = book_get_by_params(commit_hash=payload['commit_hash'])
-    # For now, remove the block either way.
-    # The main purpose is to avoid triggering
-    # a build for the same request. Later on
-    # you may choose to add dead time after a successful build.
-    if os.path.exists(lock_filename):
-        os.remove(lock_filename)
-        # Append book-related response downstream
-    if not book_status:
-        # These flags will determine how the response will be
-        # interpreted and returned outside the generator
-        gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")
-        issue_comment = []
-        msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
-        issue_comment.append(msg)
-        owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
-        # Retrieve book build and execution report logs.
-        book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
-        issue_comment.append(book_logs)
-        msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
-        issue_comment.append(msg)
-        issue_comment = "\n".join(issue_comment)
-        # Send a new comment
-        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
-    else:
-        gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f":confetti_ball: Roboneuro will send you the book URL.")
-        issue_comment = []
-        try:
-            paper_string = gh_get_paper_markdown(github_client,payload['repo_url'])
-            fm = parse_front_matter(paper_string)
-            prompt = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
-            gpt_response = get_gpt_response(prompt)
-            issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {gpt_response} \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
-        except Exception as e:
-            logging.info(f"{str(e)}")
-            issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})"
-        gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
+    # binderhub_request = run_binder_build_preflight_checks(payload['repo_url'],
+    #                                                       payload['commit_hash'],
+    #                                                       payload['rate_limit'],
+    #                                                       payload['binder_name'],
+    #                                                       payload['domain_name'])
+    # lock_filename = get_lock_filename(payload['repo_url'])
+    # response = requests.get(binderhub_request, stream=True)
+    gh_template_respond(github_client,"failure",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"🚧 This endpoint has been deprecated. 🚧",False)
+    # if response.ok:
+    #     # Create binder_stream generator object
+    #     def generate():
+    #         #start_time = time.time()
+    #         #messages = []
+    #         #n_updates = 0
+    #         for line in response.iter_lines():
+    #             if line:
+    #                 event_string = line.decode("utf-8")
+    #                 try:
+    #                     event = json.loads(event_string.split(': ', 1)[1])
+    #                     # https://binderhub.readthedocs.io/en/latest/api.html
+    #                     if event.get('phase') == 'failed':
+    #                         message = event.get('message')
+    #                         yield message
+    #                         response.close()
+    #                         #messages.append(message)
+    #                         #gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+    #                         # Remove the lock as binder build failed.
+    #                         #app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
+    #                         if os.path.exists(lock_filename):
+    #                             os.remove(lock_filename)
+    #                         return
+    #                     message = event.get('message')
+    #                     if message:
+    #                         yield message
+    #                         #messages.append(message)
+    #                         #elapsed_time = time.time() - start_time
+    #                         # Update issue every two minutes
+    #                         #if elapsed_time >= 120:
+    #                         #    n_updates = n_updates + 1
+    #                         #    gh_template_respond(github_client,"started",payload['task_title'] + f" {n_updates*2} minutes passed",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], messages)
+    #                         #    start_time = time.time()
+    #                 except GeneratorExit:
+    #                     pass
+    #                 except:
+    #                     pass
+    #     # Use the generator object as the source of flask eventstream response
+    #     binder_response = Response(generate(), mimetype='text/event-stream')
+    #     # Fetch all the yielded messages
+    # binder_logs = binder_response.get_data(as_text=True)
+    # binder_logs = "".join(binder_logs)
+    # # After the upstream closes, check the server if there's
+    # # a book built successfully.
+    # book_status = book_get_by_params(commit_hash=payload['commit_hash'])
+    # # For now, remove the block either way.
+    # # The main purpose is to avoid triggering
+    # # a build for the same request. Later on
+    # # you may choose to add dead time after a successful build.
+    # if os.path.exists(lock_filename):
+    #     os.remove(lock_filename)
+    #     # Append book-related response downstream
+    # if not book_status:
+    #     # These flags will determine how the response will be
+    #     # interpreted and returned outside the generator
+    #     gh_template_respond(github_client,"failure","Binder build has failed &#129344;",payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], "The next comment will forward the logs")
+    #     issue_comment = []
+    #     msg = f"<p>&#129344; We ran into a problem building your book. Please see the log files below.</p><details><summary> <b>BinderHub build log</b> </summary><pre><code>{binder_logs}</code></pre></details><p>If the BinderHub build looks OK, please see the Jupyter Book build log(s) below.</p>"
+    #     issue_comment.append(msg)
+    #     owner,repo,provider = get_owner_repo_provider(payload['repo_url'],provider_full_name=True)
+    #     # Retrieve book build and execution report logs.
+    #     book_logs = book_log_collector(owner,repo,provider,payload['commit_hash'])
+    #     issue_comment.append(book_logs)
+    #     msg = "<p>&#128030; After inspecting the logs above, you can interactively debug your notebooks on our <a href=\"https://binder.conp.cloud\">BinderHub server</a>.</p> <p>For guidelines, please see <a href=\"https://docs.neurolibre.org/en/latest/TEST_SUBMISSION.html#debugging-for-long-neurolibre-submission\">the relevant documentation.</a></p>"
+    #     issue_comment.append(msg)
+    #     issue_comment = "\n".join(issue_comment)
+    #     # Send a new comment
+    #     gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
+    # else:
+    #     gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f":confetti_ball: Roboneuro will send you the book URL.")
+    #     issue_comment = []
+    #     try:
+    #         paper_string = gh_get_paper_markdown(github_client,payload['repo_url'])
+    #         fm = parse_front_matter(paper_string)
+    #         prompt = f"Based on the title {fm['title']} and keywords of {fm['tags']}, congratulate the authors by saying a few nice things about the neurolibre reproducible preprint (NRP) the authors just successfully built! Keep it short (2 sentences) and witty."
+    #         gpt_response = get_gpt_response(prompt)
+    #         issue_comment = f":robot::speech_balloon::confetti_ball::rocket: \n {gpt_response} \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})! :hibiscus: \n --- \n > [!IMPORTANT] \n > Please make sure the figures are displayed correctly, code cells are collapsible, and that BinderHub execution is successful."
+    #     except Exception as e:
+    #         logging.info(f"{str(e)}")
+    #         issue_comment = f":confetti_ball::confetti_ball::confetti_ball: Good news! \n\n :hibiscus: Take a look at the [latest version of your NRP]({book_status[0]['book_url']})"
+    #     gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
 @celery_app.task(bind=True)
 def zenodo_create_buckets_task(self, payload):
@@ -1351,35 +1351,37 @@ def preprint_build_pdf_draft(self, payload):
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
-def preview_build_myst_task(self, screening_dict):
+def preview_build_myst_task(self, screening_dict, is_prod = False):
+
     task = BaseNeuroLibreTask(self, screening_dict)
-
-    # try:
-    #     myst_content = task.screening.repo_object.get_contents("myst.yml")
-    #     logging.info("myst.yml")
-    #     logging.info(myst_content)
-    #     # myst_config = json.loads(content.decoded_content)
-    # except:
-    #     task.fail("Problem reading myst.yml")
-
-    # try:
-    #     jb_content = task.screening.repo_object.get_contents("content/_config.yml")
-    #     logging.info("content/_config.yml")
-    #     logging.info(jb_content)
-    #     # myst_config = json.loads(content.decoded_content)
-    # except:
-    #     task.fail("Problem reading myst.yml")
-
     noexec = False
-    task.start("Initiating ✨MyST✨ build...")
-    task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
-    noexec = True if task.screening.binder_hash in [None, "noexec"] else False
 
     # No docker archive signals no user-defined runtime.
     docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
     if docker_archive_value == "N/A":
         noexec = True
     
+    noexec = True if task.screening.binder_hash in ["noexec"] else False
+    
+    original_owner = task.owner_name
+    if is_prod:
+        task.start("⚡️ Initiating PRODUCTION MyST build.")
+        # Transform the target repo URL to point to the forked version.
+        task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
+        task.owner_name = GH_ORGANIZATION
+        # Enforce the latest commit
+        task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
+        # Enforce latest binder image
+        task.screening.binder_hash = None
+        base_url = os.path.join("/",DOI_PREFIX,f"neurolibre.{task.screening.issue_id:05d}")
+        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"neurolibre.{task.screening.issue_id:05d}")
+        os.makedirs(prod_path, exist_ok=True)
+    else:
+        task.start("🔎 Initiating PREVIEW MyST build.")
+        task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
+        base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+    hub = None
+
     if noexec:
         # Base runtime.
         task.screening.binder_hash = "66bba73ee1b8093e2eac2818ecd69f695ff085d6" # mystical-article
@@ -1392,142 +1394,200 @@ def preview_build_myst_task(self, screening_dict):
         binder_image_name = "neurolibre/mystical-article"
     else:
         # Falls back to the repo name to look for the image. 
-        binder_image_name = None        
+        binder_image_name = None
 
-    rees_resources = REES(dict(
-        registry_url=BINDER_REGISTRY,
-        gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
-        gh_repo_commit_hash = task.screening.commit_hash,
-        binder_image_tag = task.screening.binder_hash,
-        binder_image_name = binder_image_name,
-        dotenv = task.get_dotenv_path()))      
+    try:
 
-    if rees_resources.search_img_by_repo_name():
-        print(f"FOUND, PULLING {rees_resources.found_image_name}")
-        rees_resources.pull_image()
-    else:
-        print(f"NOT FOUND {item[repo_name]}")
-    
-    hub = JupyterHubLocalSpawner(rees_resources,
-                            host_build_source_parent_dir = task.join_myst_path(),
-                            container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
-                            host_data_parent_dir = DATA_ROOT_PATH, #optional
-                            container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
-    # Spawn the JupyterHub
-    task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
-    hub.spawn_jupyter_hub()
+        rees_resources = REES(dict(
+            registry_url=BINDER_REGISTRY,
+            gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+            gh_repo_commit_hash = task.screening.commit_hash,
+            binder_image_tag = task.screening.binder_hash,
+            binder_image_name = binder_image_name,
+            dotenv = task.get_dotenv_path()))      
 
-    # Pure myst build no runtime
-    # else:
-    #     task.start("Cloning repository, checking out commit, @base_image...")
-    #     rees_resources.git_clone_repo(task.join_myst_path())
-    #     rees_resources.git_checkout_commit()
-
-    expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
-    if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
-        task.start("Successfully cloned the repository.")
-    else:
-        task.fail(f"Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
-    
-    # Initialize the builder
-    task.start("Warming up the myst builder...")   
-    builder = MystBuilder(hub=hub)
-
-    # if noexec:
-    #     builder = MystBuilder(hub=hub, build_dir=expected_source_path)
-    # else:
-    #     builder = MystBuilder(hub=hub)
-
-    base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,task.owner_name,task.repo_name)
-
-    latest_file = os.path.join(base_user_dir, "latest.txt")
-    previous_commit = None
-    if os.path.exists(latest_file):
-        logging.info(f"Found latest.txt")
-        with open(latest_file, 'r') as f:
-            previous_commit = f.read().strip()
-            task.start(f"Found previous build at commit {previous_commit}")
-    
-    logging.info(f"Previous commit: {previous_commit}")
-
-    # Copy previous build folder to the new build folder to take advantage of caching.
-    if previous_commit and previous_commit != task.screening.commit_hash:
-        previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
-        current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
+        if rees_resources.search_img_by_repo_name():
+            logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
+            rees_resources.pull_image()
+        else:
+            if (not noexec) and is_prod:
+                task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
+                logging.error(f"⛔️ NOT FOUND {rees_resources.found_image_name}")
         
-        if os.path.exists(previous_execute_dir):
-            task.start(f"Copying _build folder from previous build {previous_commit}")
+        hub = JupyterHubLocalSpawner(rees_resources,
+                                host_build_source_parent_dir = task.join_myst_path(),
+                                container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
+                                host_data_parent_dir = DATA_ROOT_PATH, #optional
+                                container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
+
+        task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
+        hub.spawn_jupyter_hub()
+
+        expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+        if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
+            task.start("🎉 Successfully cloned the repository.")
+        else:
+            task.fail(f"⛔️ Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
+        
+        # Initialize the builder
+        task.start("Warming up the myst builder...")   
+        builder = MystBuilder(hub=hub)
+
+        # This will use exec cache both for preview and production.
+        base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+        latest_file = os.path.join(base_user_dir, "latest.txt")
+
+        previous_commit = None
+        if os.path.exists(latest_file):
+            logging.info(f"✔️ Found latest.txt at {base_user_dir}")
+            with open(latest_file, 'r') as f:
+                previous_commit = f.read().strip()
+                task.start(f"✔️ Found previous build at commit {previous_commit}")
+        
+        logging.info(f"💾 Cache will be loaded from commit: {previous_commit}")
+
+        # Copy previous build folder to the new build folder to take advantage of caching.
+        if previous_commit and previous_commit != task.screening.commit_hash:
+            previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
+            current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
+            
+            if os.path.exists(previous_execute_dir):
+                task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
+                try:
+                    shutil.copytree(previous_execute_dir, current_build_dir)
+                    task.start("✔️ Successfully copied previous build folder")
+                except Exception as e:
+                    task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
+
+        builder.setenv('BASE_URL',base_url)
+
+        active_ports_before = get_active_ports()
+
+        task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
+
+        builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+
+        active_ports_after = get_active_ports()
+
+        new_active_ports = set(active_ports_after) - set(active_ports_before)
+        logging.info(f"New active ports: {new_active_ports}")
+        # Flush.
+        for port in new_active_ports:
+            close_port(port)
+
+        expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
+        if os.path.exists(expected_webpage_path):
+            
+            source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+            archive_path = f"{source_dir}.tar.gz"
+                    
             try:
-                shutil.copytree(previous_execute_dir, current_build_dir)
-                task.start("Successfully copied previous build folder")
-            except Exception as e:
-                task.start(f"Warning: Failed to copy previous build folder: {str(e)}")
-
-    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
-    builder.setenv('BASE_URL',base_url)
-    # Start the build
-
-    active_ports_before = get_active_ports()
-
-    task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
-
-    builder.build('--execute','--html',user="ubuntu",group="ubuntu")
-
-
-    # if noexec:
-    #     builder.build('--html','--debug')
-    # else:
-    #     builder.build('--execute','--html')
-
-    active_ports_after = get_active_ports()
-
-    new_active_ports = set(active_ports_after) - set(active_ports_before)
-    logging.info(f"New active ports: {new_active_ports}")
-    # Flush.
-    for port in new_active_ports:
-        close_port(port)
-
-    # try:
-    #     response = requests.get(f"http://localhost:3100/config.json", timeout=5)
-    #     logging.info(f"Response status code: {response.status_code}")
-    # except requests.exceptions.RequestException as e:
-    #     logging.info(f"Request exception: {e}")
-        
-
-    expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
-    if os.path.exists(expected_webpage_path):
-        
-        source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
-        archive_path = f"{source_dir}.tar.gz"
+                source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+                archive_path = f"{source_dir}.tar.gz"
+                with tarfile.open(archive_path, "w:gz") as tar:
+                    tar.add(source_dir, arcname=os.path.basename(source_dir))
+                task.start(f"Created archive at {archive_path}")
                 
-        try:
-            with tarfile.open(archive_path, "w:gz") as tar:
-                tar.add(source_dir, arcname=os.path.basename(source_dir))
-            task.start(f"Created archive at {archive_path}")
-        except Exception as e:
-            task.start(f"Warning: Failed to create archive: {str(e)}")
+                with open(latest_file, 'w') as f:
+                    f.write(task.screening.commit_hash)
+                task.start(f"Updated latest.txt to {task.screening.commit_hash}")
+
+                if is_prod:
+                    html_source = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash, "_build", "html")
+                    temp_archive = os.path.join(prod_path, "temp.tar.gz")
+                    try:
+                        # Create tar archive
+                        with tarfile.open(temp_archive, "w:gz") as tar:
+                            tar.add(html_source, arcname=".")
+                        
+                        # Extract archive
+                        with tarfile.open(temp_archive, "r:gz") as tar:
+                            tar.extractall(prod_path)
+                            
+                        task.start(f"Copied HTML contents to production path at {prod_path}")
+                    finally:
+                        # Clean up temp archive
+                        if os.path.exists(temp_archive):
+                            os.remove(temp_archive)                    
+                
+            except Exception as e:
+                task.start(f"Warning: Failed to create archive/update latest: {str(e)}")
+            if is_prod:
+                task.succeed(f"🌺 MyST build succeeded (PRODUCTION): \n\n {PREVIEW_SERVER}/{DOI_PREFIX}/neurolibre.{task.screening.issue_id:05d}/index.html", collapsable=False)
+            else:
+                task.succeed(f"🌺 MyST build succeeded (PREVIEW): \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
+        else:
+            task.fail(f"MyST build failed did not produce the expected webpage")
+
+    finally:
+        cleanup_hub(hub)
+
+# -------------------------------------------------------------------------------------------------
+# Static helper functions
+# Consider moving elsewhere conviniently.
+# -------------------------------------------------------------------------------------------------
+
+def cleanup_hub(hub):
+    """Helper function to clean up JupyterHub resources"""
+    if hub:
+        logging.info(f"Stopping container {hub.container.short_id}")
+        hub.stop_container()
+        logging.info("Removing stopped containers.")
+        hub.delete_stopped_containers() 
+        logging.info("Cleanup successful...")
+
+def stream_binderhub_build(binderhub_request, lock_filename):
+    """
+    Streams the BinderHub build process and collects logs.
+    
+    Args:
+        binderhub_request (str): The BinderHub API request URL
+        lock_filename (str): Path to the lock file
         
-        try:
-            with open(latest_file, 'w') as f:
-                f.write(task.screening.commit_hash)
-            task.start(f"Updated latest.txt to {task.screening.commit_hash}")
-        except Exception as e:
-            task.start(f"Warning: Failed to update latest.txt: {str(e)}")
+    Returns:
+        tuple: (logs: str, success: bool)
+            - logs: Concatenated build logs
+            - success: False if build failed or errored, True otherwise
+    """
+    response = requests.get(binderhub_request, stream=True)
+    if not response.ok:
+        return "", False
+    
+    build_failed = False
+    collected_messages = []
         
-        task.succeed(f"🌺 MyST build succeeded: \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
-        
-        if hub:
-            logging.info(f"Stopping container {hub.container.short_id}")
-            hub.stop_container()
-            logging.info(f"Removing stopped containers.")
-            hub.delete_stopped_containers()
-            logging.info(f"Cleanup successful...")
-    else:
-        if hub:
-            logging.info(f"Stopping container {hub.container.short_id}")
-            hub.stop_container()
-            logging.info(f"Removing stopped containers.")
-            hub.delete_stopped_containers()
-            logging.info(f"Cleanup successful...")
-        task.fail(f"MyST build failed did not produce the expected webpage")
-        #raise FileNotFoundError(f"Expected build path not found: {expected_webpage_path}")
+    def generate():
+        nonlocal build_failed
+        for line in response.iter_lines():
+            if line:
+                event_string = line.decode("utf-8")
+                try:
+                    event = json.loads(event_string.split(': ', 1)[1])
+                    
+                    # Check for build failure
+                    if event.get('phase') == 'failed':
+                        build_failed = True
+                        message = event.get('message')
+                        collected_messages.append(message)
+                        yield message
+                        response.close()
+                        if os.path.exists(lock_filename):
+                            os.remove(lock_filename)
+                        return
+                        
+                    # Stream build messages
+                    message = event.get('message')
+                    if message:
+                        collected_messages.append(message)
+                        yield message
+                except GeneratorExit:
+                    pass
+                except:
+                    pass
+
+    # Collect all build logs
+    binder_response = Response(generate(), mimetype='text/event-stream')
+    binder_response.get_data(as_text=True)  # Ensure generator runs to completion
+    
+    logs = "\n".join(collected_messages)
+    return logs, not build_failed

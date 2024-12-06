@@ -165,12 +165,6 @@ class ScreeningClient:
             return f"{owner}/{repo_name}"
         return input_str
 
-    def gh_forkify_name(self, input_str):
-        source_name = self.gh_filter(input_str)
-        parts = source_name.split("/", 1)
-        fork_name = f"{self.GH_ORGANIZATION}/{parts[1]}"
-        return fork_name
-
     def gh_create_comment(self, comment_body, override_assign=False):
         repo = self.github_client.get_repo(self.gh_filter(self.review_repository))
         issue = repo.get_issue(number=self.issue_id)

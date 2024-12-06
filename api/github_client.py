@@ -53,19 +53,29 @@ def gh_filter(input_str):
     else:
         return input_str
 
-def gh_forkify_name(input_str):
+def gh_forkify_it(input_str):
     """
-    Repository name in owner/repo format
-    after the repository is forked into the GH_ORGANIZATION.
+    Transforms repository identifiers to point to the forked version in GH_ORGANIZATION.
     
-    Does not perform fork operation, string manipulation only. 
+    Handles both URLs and owner/repo format strings:
+    - URL input: https://github.com/owner/repo -> https://github.com/GH_ORGANIZATION/repo
+    - owner/repo input: owner/repo -> GH_ORGANIZATION/repo
 
-    E.g., agahkarakuzu/template --> roboneuro/template.
+    Does not perform fork operation, string manipulation only.
     """
+    # Check if input is a URL
+    is_url = input_str.startswith('https://') or input_str.startswith('http://')
+    
+    # Get the owner/repo format
     source_name = gh_filter(input_str)
     parts = source_name.split("/", 1)
-    fork_name = GH_ORGANIZATION + "/" + parts[1]
-    return fork_name
+    
+    if is_url:
+        # Replace the owner in the original URL
+        return input_str.replace(f"/{parts[0]}/", f"/{GH_ORGANIZATION}/")
+    else:
+        # Return in owner/repo format
+        return f"{GH_ORGANIZATION}/{parts[1]}"
 
 def gh_create_comment(github_client,issue_repo,issue_id,comment_body):
     """
