@@ -20,6 +20,7 @@
             border-radius: 6px;
             padding: 20px;
             margin-bottom: 20px;
+            margin-top: 10px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -38,6 +39,10 @@
         .banner-subtitle {
             color: #6a9955;
             font-size: 14px;
+        }
+        .banner-details {
+            color: #8c4cc3;
+            font-size: 12px;
         }
         .file-info {
             background-color: #333;
@@ -61,7 +66,11 @@
             <div class="banner-left">
                 <div>
                     <div class="banner-title">NeuroLibre Logs</div>
-                    <div class="banner-subtitle">Real-time build monitoring</div>
+                    <div class="banner-subtitle">BinderHub Build Logs</div>
+                    <div class="banner-details">
+                        <span>Build ID: {{ build_id }}</span>
+                        <span>Build Started: {{ build_started }}</span>
+                    </div>
                 </div>
             </div>
             <div class="file-info">
