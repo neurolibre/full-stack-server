@@ -46,6 +46,7 @@ class MystBuildSchema(Schema):
     repository_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
     binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
+    is_prod = fields.Boolean(required=False,dump_default=False,description="Whether or not the build is intended for production.")
 
 class BuildTestSchema(Schema):
     """
@@ -61,6 +62,7 @@ class BinderSchema(Schema):
     """
     Defines payload types and requirements for binderhub build request.
     """
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
 
 class BucketsSchema(Schema):

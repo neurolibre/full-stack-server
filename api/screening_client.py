@@ -5,7 +5,7 @@ import datetime
 import json
 import yaml
 import git
-from github import Github
+from github import Github, InputFileContent
 from common  import load_yaml
 from dotenv import load_dotenv
 from flask import jsonify, make_response
@@ -261,3 +261,25 @@ class ScreeningClient:
         if not os.path.exists(target_path):
             os.makedirs(target_path)
         git.Repo.clone_from(repo_url, target_path, depth=depth)
+
+    def STATE_WITH_ATTACHMENT(self, message, file_path, failure=False):
+        """Post failure message with file attachment to GitHub issue"""
+        
+        # Create a gist with the file content
+        with open(file_path, 'r') as f:
+            content = f.read()
+            
+        gist = self.github_client.get_user().create_gist(
+            public=True,
+            files={os.path.basename(file_path): InputFileContent(content)},
+            description=f"Attachment for {self.task_name} logs"
+        )
+        
+        # Add gist link to message
+        message += f"\n\n[Download logs]({gist.html_url})"
+        
+        # Post comment with gist link
+        if failure:
+            self.respond.FAILURE(message, False)
+        else:
+            self.respond.SUCCESS(message, False)

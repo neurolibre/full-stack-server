@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
-     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task
+     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task
 from github import Github
 import yaml
 from screening_client import ScreeningClient
@@ -742,54 +742,19 @@ docs.register(api_production_start_post)
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'])
 @preprint_api.auth_required
-@doc(description=f'Request a binderhub build on the production server for a given repo and hash. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
+@doc(description=f'Request a binderhub build on the production server for a given repo. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
-def api_binder_build(user,repository_url):
+def api_binder_build(user,id,repository_url,is_prod=False):
+    app.logger.info(f'Entered binderhub build endpoint')
+    extra_payload = dict(is_prod=True)
+    screening = ScreeningClient(task_name="Build Binderhub (PRODUCTION)", 
+                                issue_id=id, 
+                                target_repo_url=repository_url,
+                                **extra_payload)
+    response = screening.start_celery_task(binder_build_task)
+    return response
 
-    binderhub_request = run_binder_build_preflight_checks(repository_url,"HEAD",RATE_LIMIT, BINDER_NAME, BINDER_DOMAIN)
 
-    # Request build from the preview binderhub instance
-    app.logger.info(f"Starting BinderHub request at {binderhub_request } ...")
-
-    lock_filename = get_lock_filename(repository_url)
-
-    response = requests.get(binderhub_request, stream=True)
-    if response.ok:
-        # Forward the response as an event stream
-        def generate():
-            for line in response.iter_lines():
-                if line:
-                    # Fetch streamed block
-                    event_string = line.decode("utf-8")
-                    try:
-                        # Try getting an event object if the emit message
-                        # is json (e.g., may be keepalive otherwise)
-                        event = json.loads(event_string.split(': ', 1)[1])
-
-                        # https://binderhub.readthedocs.io/en/latest/api.html
-                        # MUST close response when phase is failed
-                        if event.get('phase') == 'failed':
-                            response.close()
-                            # Remove the lock as binder build failed.
-                            app.logger.info(f"[FAILED] BinderHub build {binderhub_request}.")
-                            os.remove(lock_filename)
-                            return
-
-                        message = event.get('message')
-                        if message:
-                            # Only print when phase emits a message to
-                            # keep the logs neat.
-                            yield message
-                    # An exception to handle 
-                    # for Gunicorn asynchronous worker (gevent)
-                    except GeneratorExit:
-                        pass
-                    except:
-                        # Pass other events
-                        pass
-
-    os.remove(lock_filename)
-    return flask.Response(generate(), mimetype='text/event-stream')
 
 @app.route('/api/pdf/draft', methods=['POST'])
 @preprint_api.auth_required

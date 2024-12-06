@@ -71,3 +71,9 @@ CONTAINER_MYST_DATA_PATH: "/home/jovyan/data"
 
 # Sender email address
 SENDER_EMAIL: "no-reply@neurolibre.org"
+
+# Noexec container repository
+NOEXEC_CONTAINER_REPOSITORY: "neurolibre/mystical-article"
+
+# Noexec container repository commit hash
+NOEXEC_CONTAINER_COMMIT_HASH: "66bba73ee1b8093e2eac2818ecd69f695ff085d6"

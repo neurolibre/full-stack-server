@@ -135,17 +135,26 @@ class BaseNeuroLibreTask:
         self.screening.respond.STARTED(message)
         self.update_state(states.STARTED, {'message': message})
 
-    def fail(self, message):
-        self.screening.respond.FAILURE(message,collapsable=False)
+    def fail(self, message, attachment_path=None):
+        if attachment_path and os.path.exists(attachment_path):
+            # Create comment with file attachment
+            self.screening.respond.STATE_WITH_ATTACHMENT(message, attachment_path, failure=True)
+        else:
+            # Original failure response
+            self.screening.respond.FAILURE(message, collapsable=False)
+            
         self.update_state(state=states.FAILURE, meta={
             'exc_type': f"{JOURNAL_NAME} celery exception",
-            'exc_message': "Custom",
+            'exc_message': "Custom", 
             'message': message
         })
         raise Ignore()
 
-    def succeed(self, message, collapsable=True):
-        self.screening.respond.SUCCESS(message, collapsable=collapsable)
+    def succeed(self, message, collapsable=True, attachment_path=None):
+        if attachment_path:
+            self.screening.respond.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
+        else:
+            self.screening.respond.SUCCESS(message, collapsable=collapsable)
 
     def update_state(self, state, meta):
         self.celery_task.update_state(state=state, meta=meta)
@@ -1351,9 +1360,44 @@ def preprint_build_pdf_draft(self, payload):
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
-def preview_build_myst_task(self, screening_dict, is_prod = False):
+def binder_build_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
+    is_prod = task.screening.is_prod
+
+    cur_config = preprint_config if is_prod else preview_config
+
+    if is_prod:
+        task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
+        task.owner_name = GH_ORGANIZATION
+        task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
+
+    binderhub_request = run_binder_build_preflight_checks(
+        task.screening.target_repo_url,
+        task.screening.commit_hash,
+        cur_config['RATE_LIMIT'],
+        cur_config['BINDER_NAME'], 
+        cur_config['BINDER_DOMAIN'])
+
+    lock_filename = get_lock_filename(task.screening.target_repo_url)
+
+    task.start("▶️ Started BinderHub build.")
+    binder_logs, build_succeeded = stream_binderhub_build(binderhub_request, lock_filename)
+
+    tmp_log_path = f"/tmp/binder_build_{task.task_id}.log"
+    with open(tmp_log_path, "w") as f:
+        f.write(binder_logs)
+
+    if build_succeeded:
+        task.succeed("🌺 BinderHub build succeeded.",collapsable=False, attachment_path=tmp_log_path)
+    else:
+        task.fail("⛔️ BinderHub build failed.", tmp_log_path)
+
+@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
+def preview_build_myst_task(self, screening_dict):
+
+    task = BaseNeuroLibreTask(self, screening_dict)
+    is_prod = task.screening.is_prod
     noexec = False
 
     # No docker archive signals no user-defined runtime.
@@ -1373,8 +1417,8 @@ def preview_build_myst_task(self, screening_dict, is_prod = False):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
         # Enforce latest binder image
         task.screening.binder_hash = None
-        base_url = os.path.join("/",DOI_PREFIX,f"neurolibre.{task.screening.issue_id:05d}")
-        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"neurolibre.{task.screening.issue_id:05d}")
+        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
+        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
@@ -1384,14 +1428,14 @@ def preview_build_myst_task(self, screening_dict, is_prod = False):
 
     if noexec:
         # Base runtime.
-        task.screening.binder_hash = "66bba73ee1b8093e2eac2818ecd69f695ff085d6" # mystical-article
+        task.screening.binder_hash = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
     else:
         # User defined runtime.
         task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
 
     if noexec:
         # Overrides build image to the base
-        binder_image_name = "neurolibre/mystical-article"
+        binder_image_name = common_config['NOEXEC_CONTAINER_REPOSITORY']
     else:
         # Falls back to the repo name to look for the image. 
         binder_image_name = None
@@ -1513,7 +1557,7 @@ def preview_build_myst_task(self, screening_dict, is_prod = False):
             except Exception as e:
                 task.start(f"Warning: Failed to create archive/update latest: {str(e)}")
             if is_prod:
-                task.succeed(f"🌺 MyST build succeeded (PRODUCTION): \n\n {PREVIEW_SERVER}/{DOI_PREFIX}/neurolibre.{task.screening.issue_id:05d}/index.html", collapsable=False)
+                task.succeed(f"🌺 MyST build succeeded (PRODUCTION): \n\n {PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}/index.html", collapsable=False)
             else:
                 task.succeed(f"🌺 MyST build succeeded (PREVIEW): \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
         else:
