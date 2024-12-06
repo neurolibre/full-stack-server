@@ -221,9 +221,6 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
-            const maxLogSize = 5000;  // Set a maximum size for the log content
-            const truncatedLogContent = logContent.length > maxLogSize ? logContent.substring(0, maxLogSize) + '...' : logContent;
-
             const apiUrl = '/api/chat/';
             console.log('Sending request to:', apiUrl);
             
@@ -237,7 +234,7 @@
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         message: message,
-                        log_content: truncatedLogContent,
+                        log_content: logContent,  // Send log content only if requested
                         chat_history: chatHistory
                     })
                 });
@@ -267,8 +264,12 @@
                 // Show typing indicator
                 addMessage("Analyzing...", 'bot typing');
                 
+                // Determine if the user wants to include the log content
+                const includeLogContent = message.toLowerCase().includes('include log');
+                const logContentToSend = includeLogContent ? content : '';
+
                 // Get LLM response
-                const response = await queryLLM(message, content);
+                const response = await queryLLM(message, logContentToSend);
                 
                 // Remove typing indicator and add response
                 const messages = document.getElementById('chatMessages');
