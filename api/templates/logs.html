@@ -221,7 +221,7 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
-            const apiUrl = window.location.origin + '/api/chat';
+            const apiUrl = 'https://preprint.neurolibre.org/api/chat';  // Full URL without trailing slash
             console.log('Sending request to:', apiUrl);
             
             try {
@@ -231,8 +231,7 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    redirect: 'follow',
-                    credentials: 'same-origin',
+                    redirect: 'manual',  // Don't automatically follow redirects
                     body: JSON.stringify({
                         message: message,
                         log_content: logContent,
@@ -240,14 +239,18 @@
                     })
                 });
                 
-                if (response.redirected) {
-                    const redirectResponse = await fetch(response.url, {
+                // If we get a redirect response, try the redirected URL once
+                if (response.status === 301 || response.status === 308) {
+                    console.log('Received redirect to:', response.headers.get('Location'));
+                    const redirectUrl = new URL(response.headers.get('Location'), window.location.origin).href;
+                    
+                    const finalResponse = await fetch(redirectUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
                         },
-                        credentials: 'same-origin',
+                        redirect: 'error',  // Fail if we get another redirect
                         body: JSON.stringify({
                             message: message,
                             log_content: logContent,
@@ -255,10 +258,11 @@
                         })
                     });
                     
-                    if (!redirectResponse.ok) {
-                        throw new Error(`Server error: ${redirectResponse.status}`);
+                    if (!finalResponse.ok) {
+                        throw new Error(`Server error: ${finalResponse.status}`);
                     }
-                    return await redirectResponse.json();
+                    
+                    return await finalResponse.json();
                 }
                 
                 if (!response.ok) {
