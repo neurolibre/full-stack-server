@@ -222,10 +222,15 @@
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
             try {
-                const response = await fetch('/api/chat', {
+                // Log the full URL we're hitting
+                const url = new URL('/api/chat', window.location.href);
+                console.log('Sending request to:', url.toString());
+                
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     body: JSON.stringify({
                         message: message,
@@ -234,16 +239,23 @@
                     })
                 });
                 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    console.error('API Error:', errorData);
-                    throw new Error(`API Error: ${errorData.error || response.statusText}`);
+                // Log the response details
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers));
+                
+                const responseText = await response.text();
+                console.log('Raw response:', responseText);
+                
+                // If we got HTML instead of JSON, throw a clear error
+                if (responseText.trim().startsWith('<')) {
+                    throw new Error(`Received HTML instead of JSON. Check server configuration. URL: ${url}`);
                 }
                 
-                const data = await response.json();
+                const data = JSON.parse(responseText);
                 return data.response;
             } catch (error) {
-                console.error('Detailed Error:', error);
+                console.error('Full error details:', error);
+                console.error('Request URL:', window.location.href);
                 return `Sorry, I encountered an error: ${error.message}. Please try again later.`;
             }
         }
