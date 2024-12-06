@@ -41,6 +41,9 @@
             monaco.languages.setMonarchTokensProvider('colorful-log', {
                 tokenizer: {
                     root: [
+                        // Pushing image messages
+                        [/\b(?:Pushing image)\b.*$/, 'pushing'],
+                        
                         // Timestamps
                         [/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'timestamp'],
                         
@@ -79,6 +82,7 @@
                 base: 'vs-dark',
                 inherit: true,
                 rules: [
+                    { token: 'pushing', foreground: '4EC9B0', fontStyle: 'bold' },
                     { token: 'timestamp', foreground: '569cd6', fontStyle: 'bold' },
                     { token: 'error', foreground: 'f44747' },
                     { token: 'warning', foreground: 'dcdcaa' },
