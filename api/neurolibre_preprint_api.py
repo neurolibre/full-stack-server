@@ -1,4 +1,5 @@
-import flask
+
+from flask import render_template, abort, Response, jsonify, make_response
 import os
 import json
 import requests
@@ -400,7 +401,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
     fork_repo = fork_url.split("/")[-2]
     fork_provider = fork_url.split("/")[-3]
     if not ((fork_provider == "github.com") | (fork_provider == "gitlab.com")):
-        flask.abort(400)
+        abort(400)
     def run():
         ZENODO_TOKEN = os.getenv('ZENODO_API')
         params = {'access_token': ZENODO_TOKEN}
@@ -590,7 +591,7 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
                 yield "\n" + json.dumps(r.json())
                 yield ""
 
-    return flask.Response(run(), mimetype='text/plain')
+    return Response(run(), mimetype='text/plain')
 
 # Register endpoint to the documentation
 docs.register(api_upload_post)
@@ -615,7 +616,7 @@ def api_zenodo_list_post(user,issue_id):
             for file in files:
                 yield f"<li>{file}</li>"
             yield "</ul>"
-    return flask.Response(run(), mimetype='text/plain')
+    return Response(run(), mimetype='text/plain')
 
 # Register endpoint to the documentation
 docs.register(api_zenodo_list_post)
@@ -836,3 +837,22 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
+
+@app.route('/api/logs/<path:file_path>', methods=['GET'])
+@doc(description='View log files with syntax highlighting', tags=['Logs'])
+def view_logs(user, file_path):
+    """
+    This endpoint serves a simple UI to view log files with syntax highlighting.
+    """
+    try:
+        with open(os.path.join("/tmp",file_path), 'r') as f:
+            content = f.read()
+        
+        rendered = render_template('logs.html', content=content)
+        response = make_response(rendered)
+        response.headers['Content-Type'] = 'text/html'
+        return response
+    except Exception as e:
+        return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
+
+docs.register(view_logs)

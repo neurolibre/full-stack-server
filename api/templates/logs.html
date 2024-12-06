@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NeuroLibre Log Viewer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', monospace;
+            padding: 20px;
+            margin: 0;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .log-viewer {
+            background-color: #252526;
+            border-radius: 6px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .error { color: #f44747; }
+        .warning { color: #dcdcaa; }
+        .info { color: #6a9955; }
+        .timestamp { color: #569cd6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="log-viewer">
+            <pre><code class="language-log">{{ content | safe }}</code></pre>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-log.min.js"></script>
+    <script>
+        // Highlight log patterns
+        document.addEventListener('DOMContentLoaded', (event) => {
+            Prism.highlightAll();
+            
+            // Additional highlighting for common log patterns
+            const logContent = document.querySelector('code');
+            logContent.innerHTML = logContent.innerHTML
+                .replace(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/g, '<span class="timestamp">$1</span>')
+                .replace(/(?:error|ERROR|Error):/g, '<span class="error">$&</span>')
+                .replace(/(?:warning|WARNING|Warning):/g, '<span class="warning">$&</span>')
+                .replace(/(?:info|INFO|Info):/g, '<span class="info">$&</span>');
+        });
+    </script>
+</body>
+</html>
