@@ -221,8 +221,8 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
-            const apiUrl = window.location.origin + '/api/chat';  // Removed trailing slash
-            console.log('Sending request to:', apiUrl); // Debug log
+            const apiUrl = window.location.origin + '/api/chat';
+            console.log('Sending request to:', apiUrl);
             
             try {
                 const response = await fetch(apiUrl, {
@@ -231,6 +231,7 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
+                    redirect: 'follow',
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         message: message,
@@ -238,6 +239,27 @@
                         chat_history: chatHistory
                     })
                 });
+                
+                if (response.redirected) {
+                    const redirectResponse = await fetch(response.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            message: message,
+                            log_content: logContent,
+                            chat_history: chatHistory
+                        })
+                    });
+                    
+                    if (!redirectResponse.ok) {
+                        throw new Error(`Server error: ${redirectResponse.status}`);
+                    }
+                    return await redirectResponse.json();
+                }
                 
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -248,9 +270,6 @@
                 return data.response;
             } catch (error) {
                 console.error('Chat API Error:', error);
-                if (error.message.includes('ERR_TOO_MANY_REDIRECTS')) {
-                    return 'The server is experiencing configuration issues. Please contact support.';
-                }
                 return `Sorry, I encountered an error: ${error.message}. Please try again later.`;
             }
         }
