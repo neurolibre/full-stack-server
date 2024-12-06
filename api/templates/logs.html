@@ -255,6 +255,23 @@
             }
         }
 
+        function truncateLogContent(logContent, maxLogSize) {
+            const lines = logContent.split('\n');
+            const errorLines = lines.filter(line => /error/i.test(line));
+            const nonErrorLines = lines.filter(line => !/error/i.test(line));
+
+            const maxNonErrorSize = maxLogSize - errorLines.join('\n').length;
+            const third = Math.floor(maxNonErrorSize / 3);
+
+            const startSample = nonErrorLines.slice(0, third);
+            const middleSample = nonErrorLines.slice(Math.floor(nonErrorLines.length / 2) - Math.floor(third / 2), Math.floor(nonErrorLines.length / 2) + Math.floor(third / 2));
+            const endSample = nonErrorLines.slice(-third);
+
+            const sampledContent = [...errorLines, ...startSample, ...middleSample, ...endSample].join('\n');
+
+            return sampledContent.length > maxLogSize ? sampledContent.substring(0, maxLogSize) + '...' : sampledContent;
+        }
+
         // Modify your existing sendMessage function
         async function sendMessage() {
             const input = document.getElementById('chatInput');
@@ -267,8 +284,12 @@
                 // Show typing indicator
                 addMessage("Analyzing...", 'bot typing');
                 
+                // Determine if the user wants to include the log content
+                const includeLogContent = message.toLowerCase().includes('include log');
+                const logContentToSend = includeLogContent ? truncateLogContent(content, 5000) : '';
+
                 // Get LLM response
-                const response = await queryLLM(message, content);
+                const response = await queryLLM(message, logContentToSend);
                 
                 // Remove typing indicator and add response
                 const messages = document.getElementById('chatMessages');
