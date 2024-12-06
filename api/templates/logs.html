@@ -222,7 +222,7 @@
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
             try {
-                const response = await fetch('https://preprint.neurolibre.org/api/chat', {
+                const response = await fetch('/api/chat/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

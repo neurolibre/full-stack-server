@@ -122,7 +122,7 @@ def api_preview_list():
     files = os.listdir(DATA_ROOT_PATH)
     return make_response(jsonify(files),200)
 
-@common_api.route('/api/chat', methods=['POST', 'OPTIONS'])
+@common_api.route('/api/chat/', methods=['POST', 'OPTIONS'])
 @cross_origin(methods=['POST', 'OPTIONS'], allow_headers=['Content-Type'])
 def chat():
     # Handle OPTIONS request for CORS preflight
