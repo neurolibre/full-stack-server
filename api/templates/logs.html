@@ -46,7 +46,6 @@
             background-color: #252526;
             border-radius: 6px;
             height: 800px;
-            border: 5px solid red;
         }
         .viewer.active {
             display: block !important;
@@ -93,12 +92,12 @@
 
         <!-- Prism Viewer -->
         <div id="prism-viewer" class="viewer active">
-            <pre><code class="language-log"></code></pre>
+            <pre><code class="language-log">{{ content | safe }}</code></pre>
         </div>
 
         <!-- Highlight.js Viewer -->
         <div id="highlight-viewer" class="viewer">
-            <pre><code class="hljs language-accesslog"></code></pre>
+            <pre><code class="hljs language-accesslog">{{ content | safe }}</code></pre>
         </div>
 
         <!-- Monaco Viewer -->

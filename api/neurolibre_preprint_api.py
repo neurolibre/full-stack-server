@@ -849,13 +849,12 @@ def view_logs(file_path):
             content = f.read()
         
 
-        escaped_content = json.dumps(content)
+        content = content.replace('{', '{{').replace('}', '}}')
 
-        # rendered = render_template('logs.html', content=content)
-        # response = make_response(rendered)
-        # response.headers['Content-Type'] = 'text/html'
-        # return response
-        return render_template('logs.html', content=escaped_content)
+        rendered = render_template('logs.html', content=content)
+        response = make_response(rendered)
+        response.headers['Content-Type'] = 'text/html'
+        return response
     except Exception as e:
         return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
 
