@@ -27,7 +27,8 @@ class NeuroLibreAPI:
                             neurolibre_common_api.api_get_books,
                             neurolibre_common_api.api_heartbeat,
                             neurolibre_common_api.api_unlock_build,
-                            neurolibre_common_api.api_preview_list]
+                            neurolibre_common_api.api_preview_list,
+                            neurolibre_common_api.chat]
         self.register_docs_common_endpoints(common_endpoints)
 
     def get_app(self):
