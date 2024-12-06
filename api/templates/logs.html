@@ -52,9 +52,43 @@
         }
         #monaco-container {
             height: 100%;
+            width: 100%;
+            padding: 10px;
         }
         #ace-container {
             height: 100%;
+            width: 100%;
+            padding: 10px;
+        }
+        #highlight-viewer {
+            height: 100%;
+            overflow: auto;
+            padding: 10px;
+        }
+        #highlight-viewer pre {
+            margin: 0;
+            height: 100%;
+        }
+        #highlight-viewer code {
+            height: 100%;
+        }
+        #prism-viewer {
+            height: 100%;
+            overflow: auto;
+            padding: 10px;
+        }
+        #prism-viewer pre {
+            margin: 0;
+            height: 100%;
+        }
+        #prism-viewer code {
+            height: 100%;
+        }
+        
+        /* Override highlight.js theme */
+        .hljs {
+            background: #252526 !important;
+            padding: 0 !important;
         }
     </style>
 
@@ -147,7 +181,8 @@
                         language: 'log',
                         theme: 'vs-dark',
                         readOnly: true,
-                        minimap: { enabled: true }
+                        minimap: { enabled: true },
+                        automaticLayout: true
                     });
                 });
             }
