@@ -228,7 +228,6 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    credentials: 'same-origin',
                     body: JSON.stringify({
                         message: message,
                         log_content: logContent,
@@ -236,17 +235,8 @@
                     })
                 });
                 
-                // First check if the response is ok
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    try {
-                        // Try to parse as JSON
-                        const errorJson = JSON.parse(errorText);
-                        throw new Error(errorJson.error || `Server error: ${response.status}`);
-                    } catch (parseError) {
-                        // If can't parse as JSON, use text
-                        throw new Error(`Server error: ${errorText || response.status}`);
-                    }
+                    throw new Error(`Server error: ${response.status} - ${response.statusText}`);
                 }
 
                 const data = await response.json();
