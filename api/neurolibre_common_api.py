@@ -123,13 +123,13 @@ def api_preview_list():
     return make_response(jsonify(files),200)
 
 @common_api.route('/api/chat/', methods=['POST','OPTIONS'])
-@cross_origin(origins=[r"https://.*\.neurolibre\.org"], allow_headers=['Content-Type'])
+# @cross_origin(origins=[r"https://.*\.neurolibre\.org"], allow_headers=['Content-Type'])
 def chat():
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Methods', 'POST')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        return response
+    # if request.method == 'OPTIONS':
+    #     response = make_response()
+    #     response.headers.add('Access-Control-Allow-Methods', 'POST')
+    #     response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    #     return response
     
     try:
         # Validate request data
