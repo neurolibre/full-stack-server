@@ -840,7 +840,7 @@ docs.register(get_task_status_test)
 
 @app.route('/api/logs/<path:file_path>', methods=['GET'])
 @doc(description='View log files with syntax highlighting', tags=['Logs'])
-def view_logs(user, file_path):
+def view_logs(file_path):
     """
     This endpoint serves a simple UI to view log files with syntax highlighting.
     """
