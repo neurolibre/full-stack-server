@@ -260,11 +260,20 @@
             const errorLines = lines.filter(line => /error/i.test(line));
             const nonErrorLines = lines.filter(line => !/error/i.test(line));
 
-            const maxNonErrorSize = maxLogSize - errorLines.join('\n').length;
-            const third = Math.floor(maxNonErrorSize / 3);
+            // Calculate the remaining size for non-error lines
+            const errorContentSize = errorLines.join('\n').length;
+            const remainingSize = maxLogSize - errorContentSize;
 
+            if (remainingSize <= 0) {
+                return errorLines.join('\n').substring(0, maxLogSize) + '...';
+            }
+
+            const third = Math.floor(remainingSize / 3);
+
+            // Sample from start, middle, and end
             const startSample = nonErrorLines.slice(0, third);
-            const middleSample = nonErrorLines.slice(Math.floor(nonErrorLines.length / 2) - Math.floor(third / 2), Math.floor(nonErrorLines.length / 2) + Math.floor(third / 2));
+            const middleStartIndex = Math.floor(nonErrorLines.length / 2) - Math.floor(third / 2);
+            const middleSample = nonErrorLines.slice(middleStartIndex, middleStartIndex + third);
             const endSample = nonErrorLines.slice(-third);
 
             const sampledContent = [...errorLines, ...startSample, ...middleSample, ...endSample].join('\n');
