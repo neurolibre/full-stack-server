@@ -235,14 +235,16 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    const errorData = await response.json();
+                    console.error('API Error:', errorData);
+                    throw new Error(`API Error: ${errorData.error || response.statusText}`);
                 }
                 
                 const data = await response.json();
                 return data.response;
             } catch (error) {
-                console.error('Error:', error);
-                return "Sorry, I encountered an error while processing your request.";
+                console.error('Detailed Error:', error);
+                return `Sorry, I encountered an error: ${error.message}. Please try again later.`;
             }
         }
 
@@ -272,10 +274,21 @@
 
         // Initialize chat with log analysis
         async function initializeChat() {
-            const initialPrompt = "Analyze these build logs and provide a brief summary of any important information or errors:";
-            const response = await queryLLM(initialPrompt, content);
-            addMessage(response, 'bot');
-            chatHistory.push({ role: "assistant", content: response });
+            try {
+                addMessage("Analyzing logs...", 'bot');
+                const initialPrompt = "Analyze these build logs and provide a brief summary of any important information or errors:";
+                const response = await queryLLM(initialPrompt, content);
+                
+                // Remove the "Analyzing logs..." message
+                const messages = document.getElementById('chatMessages');
+                messages.removeChild(messages.lastChild);
+                
+                addMessage(response, 'bot');
+                chatHistory.push({ role: "assistant", content: response });
+            } catch (error) {
+                console.error('Initialization Error:', error);
+                addMessage("Sorry, I couldn't analyze the logs. Please try refreshing the page.", 'bot');
+            }
         }
 
         // Call initializeChat when the page loads
