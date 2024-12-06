@@ -39,7 +39,7 @@ preprint_api = NeuroLibreAPI(__name__,
 app = preprint_api.get_app()
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["https://preprint.neurolibre.org"],
+        "origins": [r"https://.*\.neurolibre\.org"],
         "supports_credentials": True
     }
 })
