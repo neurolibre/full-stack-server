@@ -742,6 +742,7 @@ docs.register(api_production_start_post)
 # Production server BinderHub deployment does not build a book.
 @app.route('/api/binder/build', methods=['POST'],endpoint='api_binder_build')
 @preprint_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description=f'Request a binderhub build on the production server for a given repo. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
 def api_binder_build(user,id,repository_url):
