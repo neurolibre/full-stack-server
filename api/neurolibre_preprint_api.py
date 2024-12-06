@@ -744,7 +744,7 @@ docs.register(api_production_start_post)
 @preprint_api.auth_required
 @doc(description=f'Request a binderhub build on the production server for a given repo. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
-def api_binder_build(user,id,repository_url,is_prod=False):
+def api_binder_build(user,id,repository_url):
     app.logger.info(f'Entered binderhub build endpoint')
     extra_payload = dict(is_prod=True)
     screening = ScreeningClient(task_name="Build Binderhub (PRODUCTION)", 
