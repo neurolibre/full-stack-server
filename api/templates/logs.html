@@ -221,13 +221,16 @@
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
+            const apiUrl = window.location.origin + '/api/chat/';  // Dynamically get the origin
+            
             try {
-                const response = await fetch('/api/chat/', {
+                const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
+                    credentials: 'same-origin',  // Changed to same-origin since we're on the same domain
                     body: JSON.stringify({
                         message: message,
                         log_content: logContent,
@@ -236,7 +239,8 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`Server error: ${response.status} - ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(`Server error: ${response.status} - ${errorText}`);
                 }
 
                 const data = await response.json();

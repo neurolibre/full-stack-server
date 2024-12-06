@@ -37,7 +37,12 @@ preprint_api = NeuroLibreAPI(__name__,
                                            'config/preprint.yaml'])
 
 app = preprint_api.get_app()
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://preprint.neurolibre.org"],
+        "supports_credentials": True
+    }
+})
 docs = preprint_api.docs
 
 # Extract configuration variables
