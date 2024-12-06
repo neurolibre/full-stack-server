@@ -849,12 +849,19 @@ def view_logs(file_path):
             content = f.read()
         
 
-        content = content.replace('{', '{{').replace('}', '}}')
+        # content = content.replace('{', '{{').replace('}', '}}')
 
-        rendered = render_template('logs.html', content=content)
+        # rendered = render_template('logs.html', content=content)
+        # response = make_response(rendered)
+        # response.headers['Content-Type'] = 'text/html'
+        # return response
+        # JSON encode the content to safely pass it to JavaScript
+        safe_content = json.dumps(content)
+        
+        rendered = render_template('logs.html', content=safe_content)
         response = make_response(rendered)
         response.headers['Content-Type'] = 'text/html'
-        return response
+        return response        
     except Exception as e:
         return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
 
