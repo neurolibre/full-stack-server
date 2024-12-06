@@ -15,6 +15,37 @@
             max-width: 1200px;
             margin: 0 auto;
         }
+        .banner {
+            background-color: #252526;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .banner-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .banner-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0078d4;
+        }
+        .banner-subtitle {
+            color: #6a9955;
+            font-size: 14px;
+        }
+        .file-info {
+            background-color: #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #d4d4d4;
+        }
         #monaco-container {
             height: 800px;
             background-color: #252526;
@@ -26,6 +57,17 @@
 </head>
 <body>
     <div class="container">
+        <div class="banner">
+            <div class="banner-left">
+                <div>
+                    <div class="banner-title">NeuroLibre Logs</div>
+                    <div class="banner-subtitle">Real-time build monitoring</div>
+                </div>
+            </div>
+            <div class="file-info">
+                {{ file_path }}
+            </div>
+        </div>
         <div id="monaco-container"></div>
     </div>
 
