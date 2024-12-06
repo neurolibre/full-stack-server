@@ -848,10 +848,14 @@ def view_logs(file_path):
         with open(os.path.join("/tmp",file_path), 'r') as f:
             content = f.read()
         
-        rendered = render_template('logs.html', content=content)
-        response = make_response(rendered)
-        response.headers['Content-Type'] = 'text/html'
-        return response
+
+        escaped_content = json.dumps(content)
+
+        # rendered = render_template('logs.html', content=content)
+        # response = make_response(rendered)
+        # response.headers['Content-Type'] = 'text/html'
+        # return response
+        return render_template('logs.html', content=escaped_content)
     except Exception as e:
         return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
 

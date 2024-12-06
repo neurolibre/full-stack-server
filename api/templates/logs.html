@@ -65,8 +65,13 @@
     <!-- Highlight.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     
-    <!-- Add specific language support for logs -->
+    <!-- Load scripts in correct order -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/accesslog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-log.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -88,12 +93,12 @@
 
         <!-- Prism Viewer -->
         <div id="prism-viewer" class="viewer active">
-            <pre><code class="language-log">{{ content | safe }}</code></pre>
+            <pre><code class="language-log"></code></pre>
         </div>
 
         <!-- Highlight.js Viewer -->
         <div id="highlight-viewer" class="viewer">
-            <pre><code class="hljs language-accesslog">{{ content | safe }}</code></pre>
+            <pre><code class="hljs language-accesslog"></code></pre>
         </div>
 
         <!-- Monaco Viewer -->
@@ -103,15 +108,8 @@
         <div id="ace-container" class="viewer"></div>
     </div>
 
-    <!-- Load all required scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-log.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
-
     <script>
-        const content = `{{ content | safe }}`;
+        const content = {{ content | safe }};
         let monacoEditor = null;
         let aceEditor = null;
 
@@ -121,25 +119,21 @@
         // Initialize Prism
         function initPrism() {
             console.log("Initializing Prism");
-            Prism.highlightAll();
             const logContent = document.querySelector('#prism-viewer code');
             if (logContent) {
-                logContent.innerHTML = logContent.innerHTML
-                    .replace(/(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})/g, '<span class="timestamp">$1</span>')
-                    .replace(/(?:error|ERROR|Error):/g, '<span class="error">$&</span>')
-                    .replace(/(?:warning|WARNING|Warning):/g, '<span class="warning">$&</span>')
-                    .replace(/(?:info|INFO|Info):/g, '<span class="info">$&</span>');
-            } else {
-                console.error("Prism viewer element not found");
+                logContent.textContent = content;
+                Prism.highlightElement(logContent);
             }
         }
 
         // Initialize Highlight.js
         function initHighlight() {
             console.log("Initializing Highlight.js");
-            document.querySelectorAll('#highlight-viewer pre code').forEach((block) => {
-                hljs.highlightBlock(block);
-            });
+            const logContent = document.querySelector('#highlight-viewer code');
+            if (logContent) {
+                logContent.textContent = content;
+                hljs.highlightElement(logContent);
+            }
         }
 
         // Initialize Monaco
