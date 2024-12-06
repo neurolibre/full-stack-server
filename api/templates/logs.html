@@ -34,10 +34,72 @@
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
+            // Register a new language
+            monaco.languages.register({ id: 'colorful-log' });
+
+            // Define custom tokenizer rules
+            monaco.languages.setMonarchTokensProvider('colorful-log', {
+                tokenizer: {
+                    root: [
+                        // Timestamps
+                        [/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'timestamp'],
+                        
+                        // Error messages
+                        [/\b(?:ERROR|Error|error|CRITICAL|Critical|critical|FAIL|Fail|fail|FAILED|Failed|failed)\b.*$/, 'error'],
+                        
+                        // Warning messages
+                        [/\b(?:WARN|Warn|warn|WARNING|Warning|warning)\b.*$/, 'warning'],
+                        
+                        // Info messages
+                        [/\b(?:INFO|Info|info|NOTICE|Notice|notice)\b.*$/, 'info'],
+                        
+                        // Debug messages
+                        [/\b(?:DEBUG|Debug|debug)\b.*$/, 'debug'],
+                        
+                        // URLs and paths
+                        [/(?:https?:\/\/|file:\/\/|\/)[^\s]+/, 'url'],
+                        
+                        // Numbers and IDs
+                        [/\b\d+\b/, 'number'],
+                        
+                        // Success messages
+                        [/\b(?:SUCCESS|Success|success|SUCCEEDED|Succeeded|succeeded|COMPLETED|Completed|completed)\b.*$/, 'success'],
+                        
+                        // JSON or dict-like structures
+                        [/{[^}]*}/, 'json'],
+                        
+                        // Square bracket content [something]
+                        [/\[[^\]]*\]/, 'bracket-content']
+                    ]
+                }
+            });
+
+            // Define custom theme rules
+            monaco.editor.defineTheme('colorful-log-theme', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'timestamp', foreground: '569cd6', fontStyle: 'bold' },
+                    { token: 'error', foreground: 'f44747' },
+                    { token: 'warning', foreground: 'dcdcaa' },
+                    { token: 'info', foreground: '6a9955' },
+                    { token: 'debug', foreground: '808080' },
+                    { token: 'url', foreground: '569cd6', fontStyle: 'underline' },
+                    { token: 'number', foreground: 'b5cea8' },
+                    { token: 'success', foreground: '6a9955', fontStyle: 'bold' },
+                    { token: 'json', foreground: 'ce9178' },
+                    { token: 'bracket-content', foreground: '569cd6' }
+                ],
+                colors: {
+                    'editor.background': '#252526'
+                }
+            });
+
+            // Create editor with custom language and theme
             monaco.editor.create(document.getElementById('monaco-container'), {
                 value: content,
-                language: 'log',
-                theme: 'vs-dark',
+                language: 'colorful-log',
+                theme: 'colorful-log-theme',
                 readOnly: true,
                 minimap: { enabled: true },
                 automaticLayout: true,
