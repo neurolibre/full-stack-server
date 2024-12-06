@@ -120,47 +120,48 @@ def api_preview_list():
     return make_response(jsonify(files),200)
 
 @common_api.route('/api/chat', methods=['POST'])
+@marshal_with(None, code=400, description="Bad request - missing required fields")
+@marshal_with(None, code=500, description="Server error - API configuration or request failed")
+@marshal_with(None, code=200, description="Successfully processed chat request")
+@doc(description='Process chat messages using Groq API to analyze build logs', tags=['Chat'])
 def chat():
+    # Validate request data
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    message = data.get('message')
+    log_content = data.get('log_content')
+    if not message or not log_content:
+        return jsonify({'error': 'Missing required fields: message and log_content'}), 400
+    
     # Get API key from environment variable
     api_key = os.getenv('GROQ_API_KEY')
     if not api_key:
-        return jsonify({'error': 'API key not configured'}), 500
+        current_app.logger.error('Groq API key not configured')
+        return jsonify({'error': 'Chat service not properly configured'}), 500
     
-    data = request.json
-    message = data.get('message')
-    log_content = data.get('log_content')
     chat_history = data.get('chat_history', [])
-
-    # Format messages for Groq API
-    messages = []
     
-    # Add system message
-    messages.append({
-        "role": "system",
-        "content": """You are a helpful assistant analyzing build logs. 
-        You have access to the full log content and can help users understand issues and provide solutions. 
-        Be concise but thorough in your responses."""
-    })
+    # Format messages for Groq API
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a helpful assistant analyzing build logs. 
+            You have access to the full log content and can help users understand issues and provide solutions. 
+            Be concise but thorough in your responses."""
+        },
+        *[{"role": msg["role"], "content": msg["content"]} for msg in chat_history],
+        {
+            "role": "user",
+            "content": f"""Context - Build Log Content:
+            {log_content}
 
-    # Add chat history
-    for msg in chat_history:
-        messages.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+            User Question: {message}
 
-    # Add current message with context
-    current_prompt = f"""Context - Build Log Content:
-    {log_content}
-
-    User Question: {message}
-
-    Please provide a helpful response based on the build log content above."""
-
-    messages.append({
-        "role": "user",
-        "content": current_prompt
-    })
+            Please provide a helpful response based on the build log content above."""
+        }
+    ]
 
     try:
         response = requests.post(
@@ -174,13 +175,21 @@ def chat():
                 "messages": messages,
                 "temperature": 0.7,
                 "max_tokens": 1024
-            }
+            },
+            timeout=30  # Add timeout
         )
         
-        if response.status_code != 200:
-            raise Exception(f"API request failed: {response.text}")
-            
+        response.raise_for_status()  # Raise exception for non-200 status codes
         response_data = response.json()
-        return jsonify({'response': response_data['choices'][0]['message']['content']})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        
+        return jsonify({
+            'response': response_data['choices'][0]['message']['content'],
+            'status': 'success'
+        })
+        
+    except requests.Timeout:
+        current_app.logger.error('Groq API request timed out')
+        return jsonify({'error': 'Request timed out'}), 500
+    except requests.RequestException as e:
+        current_app.logger.error(f'Groq API request failed: {str(e)}')
+        return jsonify({'error': 'Failed to process chat request'}), 500
