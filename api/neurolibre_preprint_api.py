@@ -740,7 +740,7 @@ docs.register(api_production_start_post)
 
 # This is named as a binder/build instead of /book/build due to its context 
 # Production server BinderHub deployment does not build a book.
-@app.route('/api/binder/build', methods=['POST'])
+@app.route('/api/binder/build', methods=['POST'],endpoint='api_binder_build')
 @preprint_api.auth_required
 @doc(description=f'Request a binderhub build on the production server for a given repo. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
 @use_kwargs(BinderSchema())
@@ -754,6 +754,7 @@ def api_binder_build(user,id,repository_url):
     response = screening.start_celery_task(binder_build_task)
     return response
 
+docs.register(api_binder_build)
 
 
 @app.route('/api/pdf/draft', methods=['POST'])
