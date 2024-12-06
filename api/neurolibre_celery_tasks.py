@@ -138,7 +138,7 @@ class BaseNeuroLibreTask:
     def fail(self, message, attachment_path=None):
         if attachment_path and os.path.exists(attachment_path):
             # Create comment with file attachment
-            self.screening.respond.STATE_WITH_ATTACHMENT(message, attachment_path, failure=True)
+            self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=True)
         else:
             # Original failure response
             self.screening.respond.FAILURE(message, collapsable=False)
@@ -152,7 +152,7 @@ class BaseNeuroLibreTask:
 
     def succeed(self, message, collapsable=True, attachment_path=None):
         if attachment_path:
-            self.screening.respond.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
+            self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
         else:
             self.screening.respond.SUCCESS(message, collapsable=collapsable)
 
