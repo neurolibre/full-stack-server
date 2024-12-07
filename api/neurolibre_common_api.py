@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 from schema import UnlockSchema, StatusSchema, BookSchema, TaskSchema
 from flask_htpasswd import HtPasswdAuth
 from neurolibre_celery_tasks import celery_app, sleep_task
-from flask_cors import cross_origin
 from werkzeug.exceptions import HTTPException
 import traceback
 

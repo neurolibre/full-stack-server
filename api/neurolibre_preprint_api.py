@@ -26,7 +26,7 @@ from github import Github
 import yaml
 from screening_client import ScreeningClient
 from neurolibre_api import NeuroLibreAPI
-from flask_cors import CORS
+
 
 """
 Configuration START
