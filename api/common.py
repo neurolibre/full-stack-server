@@ -15,7 +15,9 @@ import humanize
 import subprocess
 import logging
 import psutil
-import socket
+import pytz
+import datetime
+
 
 """
 Helper functions for the tasks 
@@ -509,3 +511,40 @@ def close_port(port):
     except Exception as e:
         logging.error(f"Error closing port {port}: {e}")
         return False
+
+# Set timezone US/Eastern (Montreal)
+def get_time():
+    """
+    To be printed on issue comment updates for
+    background tasks.
+    """
+    tz = pytz.timezone('US/Eastern')
+    now = datetime.datetime.now(tz)
+    cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
+    return cur_time
+
+def write_log(owner, repo, log_type, log_content, info_dict=None):
+    """
+    Write a log file to the logs folder.
+    """
+    now = get_time()
+    log_file_path = f"{common_config['DATA_ROOT_PATH']}/{common_config['LOGS_FOLDER']}/{log_type}/{owner}/{repo}"
+    os.makedirs(log_file_path, exist_ok=True)
+    log_file_path = f"{log_file_path}/{now}.log"
+    
+    # Prepare the info_dict content
+    if info_dict is None:
+        info_dict = {}
+
+    info_dict['created_at'] = get_time()    
+
+    info_content = "\n".join(f"{key}: {value}" for key, value in info_dict.items()) + "\n"
+    
+    with open(log_file_path, 'a') as log_file:
+        # Write the info_dict content first
+        log_file.write(info_content)
+        # Write the main log content
+        log_file.write(log_content)
+
+    # Return the path to the log file for the UI (api/logs/<path:file_path>)
+    return f"{log_type}/{owner}/{repo}/{now}.log"

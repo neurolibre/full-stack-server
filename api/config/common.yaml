@@ -63,6 +63,10 @@ JB_ROOT_FOLDER: "book-artifacts"
 # source code. This is expected to be under the DATA_ROOT_PATH
 MYST_FOLDER: "myst"
 
+# Name of the folder that will contain logs (myst, binder, etc.)
+# This is expected to be under the DATA_ROOT_PATH
+LOGS_FOLDER: "logs"
+
 # Container path where the MyST sources will be mounted
 CONTAINER_MYST_SOURCE_PATH: "/home/jovyan"
 

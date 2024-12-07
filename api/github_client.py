@@ -1,7 +1,6 @@
 import os
 import re
-import pytz
-import datetime
+from common import get_time
 import json
 import yaml
 import git
@@ -19,9 +18,7 @@ def gh_response_template(task_name,task_id,issue_id,comment_id,message="",collap
     Please see the docstring of the gh_template_response.
     Convention follows Celery task states.
     """
-    tz = pytz.timezone('US/Pacific')
-    now = datetime.datetime.now(tz)
-    cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
+    cur_time = get_time()
     
     if isNotBlank(message):
         if collapse:

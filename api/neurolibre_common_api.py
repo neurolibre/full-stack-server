@@ -1,4 +1,4 @@
-from flask import Response, Blueprint, abort, jsonify, request, current_app, make_response
+from flask import Blueprint, jsonify, request, current_app, make_response, render_template
 from common import *
 from flask_apispec import marshal_with, doc, use_kwargs
 from urllib.parse import urlparse
@@ -217,3 +217,22 @@ def chat():
             'error': 'Internal server error',
             'details': str(e)
         }), 500
+
+@common_api.route('/api/logs/<path:file_path>', methods=['GET'])
+@doc(description='View log files with syntax highlighting', tags=['Logs'])
+def view_logs(file_path):
+    """
+    This endpoint serves a simple UI to view log files with syntax highlighting.
+    """
+    try:
+        with open(os.path.join(DATA_ROOT_PATH,common_config['LOGS_FOLDER'],file_path), 'r') as f:
+            content = f.read()
+        
+        safe_content = json.dumps(content)
+        
+        rendered = render_template('logs.html', content=safe_content)
+        response = make_response(rendered)
+        response.headers['Content-Type'] = 'text/html'
+        return response        
+    except Exception as e:
+        return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)

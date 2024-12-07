@@ -1,5 +1,5 @@
 
-from flask import render_template, abort, Response, jsonify, make_response
+from flask import abort, Response, jsonify, make_response
 import os
 import json
 import requests
@@ -844,32 +844,3 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
-
-@app.route('/api/logs/<path:file_path>', methods=['GET'])
-@doc(description='View log files with syntax highlighting', tags=['Logs'])
-def view_logs(file_path):
-    """
-    This endpoint serves a simple UI to view log files with syntax highlighting.
-    """
-    try:
-        with open(os.path.join("/tmp",file_path), 'r') as f:
-            content = f.read()
-        
-
-        # content = content.replace('{', '{{').replace('}', '}}')
-
-        # rendered = render_template('logs.html', content=content)
-        # response = make_response(rendered)
-        # response.headers['Content-Type'] = 'text/html'
-        # return response
-        # JSON encode the content to safely pass it to JavaScript
-        safe_content = json.dumps(content)
-        
-        rendered = render_template('logs.html', content=safe_content)
-        response = make_response(rendered)
-        response.headers['Content-Type'] = 'text/html'
-        return response        
-    except Exception as e:
-        return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
-
-docs.register(view_logs)

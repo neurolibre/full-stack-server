@@ -4,8 +4,6 @@ import os
 import json
 import subprocess
 from celery import states
-import pytz
-import datetime
 from github_client import *
 from screening_client import ScreeningClient
 from common import *
@@ -49,6 +47,7 @@ JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
 PREVIEW_BINDERHUB = f"https://{preview_config['BINDER_NAME']}.{preview_config['BINDER_DOMAIN']}"
 PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
+PREPRINT_SERVER = f"https://{preprint_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
 
 """
 Configuration START
@@ -68,16 +67,6 @@ celery_app.conf.update(task_track_started=True)
 Configuration END
 """
 
-# Set timezone US/Eastern (Montreal)
-def get_time():
-    """
-    To be printed on issue comment updates for
-    background tasks.
-    """
-    tz = pytz.timezone('US/Eastern')
-    now = datetime.datetime.now(tz)
-    cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
-    return cur_time
 
 def fast_copytree(src, dst):
     # Create a temporary directory for the zip file
@@ -1409,7 +1398,7 @@ def preview_build_myst_task(self, screening_dict):
     
     original_owner = task.owner_name
     if is_prod:
-        task.start("⚡️ Initiating PRODUCTION MyST build.")
+        task.start("⚡️ Initiating PRODUCTION MyST build.",False)
         # Transform the target repo URL to point to the forked version.
         task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
         task.owner_name = GH_ORGANIZATION
@@ -1417,16 +1406,14 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
         # Enforce latest binder image
         task.screening.binder_hash = None
-        #base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
+        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         os.makedirs(prod_path, exist_ok=True)
     else:
-        task.start("🔎 Initiating PREVIEW MyST build.")
+        task.start("🔎 Initiating PREVIEW MyST build.",False)
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
-
-    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
 
     if noexec:
         # Base runtime.
@@ -1519,7 +1506,9 @@ def preview_build_myst_task(self, screening_dict):
 
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
 
-        builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+        logs = builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+
+        log_path = write_log(task.owner_name, task.repo_name, "myst", logs)
 
         active_ports_after = get_active_ports()
 
@@ -1566,10 +1555,11 @@ def preview_build_myst_task(self, screening_dict):
                 
             except Exception as e:
                 task.start(f"Warning: Failed to create archive/update latest: {str(e)}")
+
             if is_prod:
-                task.succeed(f"🌺 MyST build succeeded (PRODUCTION): \n\n {PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}/index.html", collapsable=False)
+                task.succeed(f"🌺 MyST build completed (PRODUCTION): \n\n {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d} \n\n [Logs]({PREVIEW_SERVER}/api/logs/{log_path})", collapsable=False)
             else:
-                task.succeed(f"🌺 MyST build succeeded (PREVIEW): \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html", collapsable=False)
+                task.succeed(f"🌺 MyST build completed (PREVIEW): \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html \n\n [Logs]({PREVIEW_SERVER}/api/logs/{log_path})", collapsable=False)
         else:
             task.fail(f"MyST build failed did not produce the expected webpage")
 
