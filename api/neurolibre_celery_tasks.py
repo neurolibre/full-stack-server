@@ -1512,7 +1512,8 @@ def preview_build_myst_task(self, screening_dict):
                 except Exception as e:
                     task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
 
-        builder.setenv('BASE_URL',base_url, 'CONTENT_CDN_PORT', 3102)
+        builder.setenv('BASE_URL',base_url)
+        builder.setenv('CONTENT_CDN_PORT', 3102)
 
         active_ports_before = get_active_ports()
 
