@@ -1479,6 +1479,9 @@ def preview_build_myst_task(self, screening_dict):
 
         # This will use exec cache both for preview and production.
         base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+        if is_prod:
+            base_prod_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+        
         latest_file = os.path.join(base_user_dir, "latest.txt")
 
         previous_commit = None
@@ -1493,7 +1496,10 @@ def preview_build_myst_task(self, screening_dict):
         # Copy previous build folder to the new build folder to take advantage of caching.
         if previous_commit and previous_commit != task.screening.commit_hash:
             previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
-            current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
+            if is_prod:
+                current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
+            else:
+                current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build","html")
             
             if os.path.exists(previous_execute_dir):
                 task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
