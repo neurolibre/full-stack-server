@@ -177,7 +177,7 @@
         <div class="banner">
             <div class="banner-left">
                 <div>
-                    <div class="banner-title">NeuroLibre Reproducible Preprints</div>
+                    <div class="banner-title">NeuroLibre Log Viewer</div>
                     <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
                     <div class="banner-details" id="bannerDetails">
                         <span>Owner: </span>
@@ -189,6 +189,9 @@
             <div class="file-info">
                 {{ file_path }}
             </div>
+            <a href="{{ file_path }}" download class="download-button" style="margin-left: 15px; padding: 8px 12px; background-color: #0078d4; color: white; border-radius: 4px; text-decoration: none;">
+                Download Log
+            </a>
         </div>
         <div id="monaco-container"></div>
     </div>
