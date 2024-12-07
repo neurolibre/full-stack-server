@@ -1417,7 +1417,7 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
         # Enforce latest binder image
         task.screening.binder_hash = None
-        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
+        #base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         os.makedirs(prod_path, exist_ok=True)
     else:
@@ -1425,6 +1425,8 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
+
+    base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
 
     if noexec:
         # Base runtime.
