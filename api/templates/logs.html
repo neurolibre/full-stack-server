@@ -21,7 +21,7 @@
             border-radius: 6px;
             padding: 20px;
             margin-bottom: 20px;
-            margin-top: 10px;
+            margin-top: 5px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -179,10 +179,11 @@
                 <div>
                     <div class="banner-title">NeuroLibre Reproducible Preprints</div>
                     <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
-                    <!-- <div class="banner-details">
-                        <span>Build ID: {{ build_id }}</span>
-                        <span>Build Started: {{ build_started }}</span>
-                    </div> -->
+                    <div class="banner-details" id="bannerDetails">
+                        <span>Owner: </span>
+                        <span>Repo: </span>
+                        <span>File: </span>
+                    </div>
                 </div>
             </div>
             <div class="file-info">
@@ -191,7 +192,7 @@
         </div>
         <div id="monaco-container"></div>
     </div>
-
+    
     <div class="chat-widget">
         <button class="chat-button" onclick="toggleChat()">
             <i class="fas fa-comments"></i>
@@ -223,10 +224,17 @@
             const subtitleElement = document.getElementById('bannerSubtitle');
             const url = window.location.href;
 
-            if (url.includes('/binder')) {
-                subtitleElement.textContent = 'BinderHub Build Logs';
-            } else if (url.includes('/myst')) {
-                subtitleElement.textContent = 'MyST Build Logs';
+            const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
+            if (pathMatch) {
+                const [parent, owner, repo, fileName] = pathMatch;
+                const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
+                subtitleElement.textContent = subtitle;
+                const bannerDetailsElement = document.getElementById('bannerDetails');
+                bannerDetailsElement.innerHTML = `
+                    <span>Owner: ${owner}</span>
+                    <span>Repo: ${repo}</span>
+                    <span>File: ${fileName}</span>
+                `;
             }
         });
 
