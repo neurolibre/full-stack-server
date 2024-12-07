@@ -1398,7 +1398,7 @@ def preview_build_myst_task(self, screening_dict):
     
     original_owner = task.owner_name
     if is_prod:
-        task.start("⚡️ Initiating PRODUCTION MyST build.",False)
+        task.start("⚡️ Initiating PRODUCTION MyST build.")
         # Transform the target repo URL to point to the forked version.
         task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
         task.owner_name = GH_ORGANIZATION
@@ -1410,7 +1410,7 @@ def preview_build_myst_task(self, screening_dict):
         prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         os.makedirs(prod_path, exist_ok=True)
     else:
-        task.start("🔎 Initiating PREVIEW MyST build.",False)
+        task.start("🔎 Initiating PREVIEW MyST build.")
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
