@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NeuroLibre Log Viewer</title>
+    <title>NeuroLibre Logs</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         body {
@@ -177,12 +177,12 @@
         <div class="banner">
             <div class="banner-left">
                 <div>
-                    <div class="banner-title">NeuroLibre Logs</div>
-                    <div class="banner-subtitle">BinderHub Build Logs</div>
-                    <div class="banner-details">
+                    <div class="banner-title">NeuroLibre Reproducible Preprints</div>
+                    <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
+                    <!-- <div class="banner-details">
                         <span>Build ID: {{ build_id }}</span>
                         <span>Build Started: {{ build_started }}</span>
-                    </div>
+                    </div> -->
                 </div>
             </div>
             <div class="file-info">
@@ -218,6 +218,17 @@
     <script>
         const content = {{ content | safe }};
         let chatHistory = [];  // Store chat history
+
+        window.addEventListener('load', function() {
+            const subtitleElement = document.getElementById('bannerSubtitle');
+            const url = window.location.href;
+
+            if (url.includes('/binder')) {
+                subtitleElement.textContent = 'BinderHub Build Logs';
+            } else if (url.includes('/myst')) {
+                subtitleElement.textContent = 'MyST Build Logs';
+            }
+        });
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
