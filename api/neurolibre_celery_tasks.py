@@ -1494,9 +1494,10 @@ def preview_build_myst_task(self, screening_dict):
                 task.start(f"✔️ Found previous build at commit {previous_commit}")
         
         logging.info(f"💾 Cache will be loaded from commit: {previous_commit}")
-
+        logging.info(f" -- Current commit: {task.screening.commit_hash}")
         # Copy previous build folder to the new build folder to take advantage of caching.
-        if previous_commit and previous_commit != task.screening.commit_hash:
+        if previous_commit and (previous_commit != task.screening.commit_hash):
+            logging.info(f" -- HERE")
             previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
             if is_prod:
                 current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
@@ -1511,7 +1512,7 @@ def preview_build_myst_task(self, screening_dict):
                 except Exception as e:
                     task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
 
-        builder.setenv('BASE_URL',base_url)
+        builder.setenv('BASE_URL',base_url, 'CONTENT_CDN_PORT', 3102)
 
         active_ports_before = get_active_ports()
 
