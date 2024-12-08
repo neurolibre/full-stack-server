@@ -513,7 +513,7 @@ def close_port(port):
         return False
 
 # Set timezone US/Eastern (Montreal)
-def get_time():
+def get_time(is_file_name=False):
     """
     To be printed on issue comment updates for
     background tasks.
@@ -521,13 +521,15 @@ def get_time():
     tz = pytz.timezone('US/Eastern')
     now = datetime.datetime.now(tz)
     cur_time = now.strftime('%Y-%m-%d %H:%M:%S %Z')
+    if is_file_name:
+        cur_time = now.strftime('%Y-%m-%d_%H-%M-%S')
     return cur_time
 
 def write_log(owner, repo, log_type, log_content, info_dict=None):
     """
     Write a log file to the logs folder.
     """
-    now = get_time()
+    now = get_time(is_file_name=True)
     log_file_path = f"{common_config['DATA_ROOT_PATH']}/{common_config['LOGS_FOLDER']}/{log_type}/{owner}/{repo}"
     os.makedirs(log_file_path, exist_ok=True)
     log_file_path = f"{log_file_path}/{now}.log"
@@ -544,7 +546,8 @@ def write_log(owner, repo, log_type, log_content, info_dict=None):
         # Write the info_dict content first
         log_file.write(info_content)
         # Write the main log content
-        log_file.write(log_content)
+        if log_content is not None:
+            log_file.write(log_content)
 
     # Return the path to the log file for the UI (api/logs/<path:file_path>)
     return f"{log_type}/{owner}/{repo}/{now}.log"

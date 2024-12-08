@@ -1393,7 +1393,7 @@ def preview_build_myst_task(self, screening_dict):
     docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
     if docker_archive_value == "N/A":
         noexec = True
-    
+
     noexec = True if task.screening.binder_hash in ["noexec"] else False
     
     original_owner = task.owner_name
@@ -1468,10 +1468,19 @@ def preview_build_myst_task(self, screening_dict):
 
         # This will use exec cache both for preview and production.
         base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+        
+        latest_file_prod = None
+        base_prod_dir = None
         if is_prod:
             base_prod_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+            latest_file_prod = os.path.join(base_prod_dir, "latest.txt")
         
-        latest_file = os.path.join(base_user_dir, "latest.txt")
+        latest_file_user = os.path.join(base_user_dir, "latest.txt")
+
+        if is_prod and os.path.exists(latest_file_prod):
+            latest_file = latest_file_prod
+        else:
+            latest_file = latest_file_user
 
         previous_commit = None
         if os.path.exists(latest_file):
@@ -1479,7 +1488,7 @@ def preview_build_myst_task(self, screening_dict):
             with open(latest_file, 'r') as f:
                 previous_commit = f.read().strip()
                 task.start(f"✔️ Found previous build at commit {previous_commit}")
-        
+
         logging.info(f"💾 Cache will be loaded from commit: {previous_commit}")
         logging.info(f" -- Current commit: {task.screening.commit_hash}")
         # Copy previous build folder to the new build folder to take advantage of caching.
@@ -1490,7 +1499,7 @@ def preview_build_myst_task(self, screening_dict):
                 current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
             else:
                 current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build","html")
-            
+
             if os.path.exists(previous_execute_dir):
                 task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
                 try:
@@ -1500,7 +1509,7 @@ def preview_build_myst_task(self, screening_dict):
                     task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
 
         builder.setenv('BASE_URL',base_url)
-        builder.setenv('CONTENT_CDN_PORT', "3102")
+        # builder.setenv('CONTENT_CDN_PORT', "3102")
 
         active_ports_before = get_active_ports()
 
@@ -1514,24 +1523,29 @@ def preview_build_myst_task(self, screening_dict):
 
         new_active_ports = set(active_ports_after) - set(active_ports_before)
         logging.info(f"New active ports: {new_active_ports}")
-        # Flush.
+
         for port in new_active_ports:
             close_port(port)
 
         expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
         if os.path.exists(expected_webpage_path):
-            
+
             source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
             archive_path = f"{source_dir}.tar.gz"
-                    
+    
             try:
                 source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
                 archive_path = f"{source_dir}.tar.gz"
                 with tarfile.open(archive_path, "w:gz") as tar:
                     tar.add(source_dir, arcname=os.path.basename(source_dir))
                 task.start(f"Created archive at {archive_path}")
-                
-                with open(latest_file, 'w') as f:
+
+                if is_prod:
+                    latest_file_write = os.path.join(base_prod_dir, "latest.txt")
+                else:
+                    latest_file_write = os.path.join(base_user_dir, "latest.txt")
+
+                with open(latest_file_write, 'w') as f:
                     f.write(task.screening.commit_hash)
                 task.start(f"Updated latest.txt to {task.screening.commit_hash}")
 
@@ -1542,11 +1556,11 @@ def preview_build_myst_task(self, screening_dict):
                         # Create tar archive
                         with tarfile.open(temp_archive, "w:gz") as tar:
                             tar.add(html_source, arcname=".")
-                        
+
                         # Extract archive
                         with tarfile.open(temp_archive, "r:gz") as tar:
                             tar.extractall(prod_path)
-                            
+
                         task.start(f"Copied HTML contents to production path at {prod_path}")
                     finally:
                         # Clean up temp archive
