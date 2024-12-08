@@ -1571,7 +1571,7 @@ def preview_build_myst_task(self, screening_dict):
                 task.start(f"Warning: Failed to create archive/update latest: {str(e)}")
 
             if is_prod:
-                task.succeed(f"🌺 MyST build completed (PRODUCTION): \n\n {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d} \n\n [Logs]({PREVIEW_SERVER}/api/logs/{log_path})", collapsable=False)
+                task.succeed(f"🌺 MyST build completed (PRODUCTION): \n\n {PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d} \n\n [Logs]({PREVIEW_SERVER}/api/logs/{log_path})", collapsable=False)
             else:
                 task.succeed(f"🌺 MyST build completed (PREVIEW): \n\n {PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html \n\n [Logs]({PREVIEW_SERVER}/api/logs/{log_path})", collapsable=False)
         else:
