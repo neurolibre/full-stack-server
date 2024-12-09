@@ -1393,7 +1393,6 @@ def preview_build_myst_task(self, screening_dict):
     noexec = False
 
     all_logs_dict["task_id"] = task.task_id
-    all_logs_dict["task_title"] = task.screening.task_title
     all_logs_dict["github_issue_id"] = task.screening.issue_id
     all_logs_dict["owner_name"] = task.owner_name
     all_logs_dict["repo_name"] = task.repo_name
