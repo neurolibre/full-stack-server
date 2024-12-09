@@ -764,15 +764,19 @@ def zenodo_create_buckets_task(self, payload):
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
 
 @celery_app.task(bind=True)
-def zenodo_flush_task(self,payload):
+def zenodo_flush_task(self,screening_dict):
 
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    task_id = self.request.id
+    task = BaseNeuroLibreTask(self, screening_dict)
 
-    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
+    # GH_BOT=os.getenv('GH_BOT')
+    # github_client = Github(GH_BOT)
+    # task_id = self.request.id
+    task.start("Zenodo flush task started")
+    
+    # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
 
-    zenodo_record = get_zenodo_deposit(payload['issue_id'])
+    zenodo_record = get_zenodo_deposit(task.screening.issue_id)
+    
     msg = []
     prog = {}
     items = zenodo_record.keys()
@@ -784,14 +788,14 @@ def zenodo_flush_task(self,payload):
             msg.append(f"\n Deleted {item} deposit successfully.")
             prog[item] = True
             # Flush ALL the upload records (json) associated with the item
-            tmp_record = glob.glob(os.path.join(get_deposit_dir(payload['issue_id']),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{payload['issue_id']:05d}_*.json"))
+            tmp_record = glob.glob(os.path.join(get_deposit_dir(task.screening.issue_id),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.json"))
             if tmp_record:
                 os.remove(tmp_record)
                 msg.append(f"\n Deleted {tmp_record} record from the server.")
             else:
                 msg.append(f"\n {tmp_record} did not exist.")
             # Flush ALL the uploaded files associated with the item
-            tmp_file = glob.glob(os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_*.zip"))
+            tmp_file = glob.glob(os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.zip"))
             if tmp_file:
                 os.remove(tmp_file)
                 msg.append(f"\n Deleted {tmp_file} record from the server.")
@@ -800,25 +804,30 @@ def zenodo_flush_task(self,payload):
         elif delete_response.status_code == 403:
             prog[item] = False
             msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+            task.fail(f"The {item} archive has already been published, cannot be deleted. \n {"".join(msg)}")
+            # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
         elif delete_response.status_code == 410:
             prog[item] = False
             msg.append(f"\n The {item} deposit does not exist.")
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+            task.fail(f"The {item} deposit does not exist. \n {"".join(msg)}")
+            #gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
     # Update the issue comment
-    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+    task.start(f"Zenodo flush in progress: \n {"".join(msg)}")
+    # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
     check_deposits = prog.values()
     if all(check_deposits):
-        fname = f"zenodo_deposit_{JOURNAL_NAME}_{payload['issue_id']:05d}.json"
-        local_file = os.path.join(get_deposit_dir(payload['issue_id']), fname)
+        fname = f"zenodo_deposit_{JOURNAL_NAME}_{task.screening.issue_id:05d}.json"
+        local_file = os.path.join(get_deposit_dir(task.screening.issue_id), fname)
         os.remove(local_file)
         msg.append(f"\n Deleted old deposit records from the server: {local_file}")
-        gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+        task.success(f"Zenodo flush completed successfully. \n {"".join(msg)}")
+        # gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
     else:
         msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
-        gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
+        task.fail(f"ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted. \n {"".join(msg)}")
+        # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
 @celery_app.task(bind=True)
 def zenodo_upload_book_task(self, payload):
