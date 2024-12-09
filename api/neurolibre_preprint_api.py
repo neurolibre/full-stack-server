@@ -675,7 +675,7 @@ def api_data_sync_post(user,id,repository_url):
 # Register endpoint to the documentation
 docs.register(api_data_sync_post)
 
-@app.route('/api/sync/myst', methods=['POST'],endpoint='api_myst_sync')
+@app.route('/api/sync/myst', methods=['POST'],endpoint='api_myst_sync_post')
 @preprint_api.auth_required
 @doc(description='Transfer a built MyST build from the preview to the production server based on the project name.', tags=['MyST'])
 @use_kwargs(IdUrlSchema())
