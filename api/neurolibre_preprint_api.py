@@ -678,7 +678,7 @@ docs.register(api_data_sync_post)
 @app.route('/api/sync/myst', methods=['POST'],endpoint='api_myst_sync')
 @preprint_api.auth_required
 @doc(description='Transfer a built MyST build from the preview to the production server based on the project name.', tags=['MyST'])
-@use_kwargs(BooksyncSchema())
+@use_kwargs(IdUrlSchema())
 def api_myst_sync_post(user,id,repository_url):
     screening = ScreeningClient(task_name="Sync MyST build to production server", issue_id=id, target_repo_url=repository_url)
     response = screening.start_celery_task(rsync_myst_prod_task)
