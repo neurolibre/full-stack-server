@@ -813,7 +813,7 @@ def zenodo_flush_task(self,screening_dict):
             #gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
     # Update the issue comment
-    task.start(f"Zenodo flush in progress: \n {"".join(msg)}")
+    task.start(f'Zenodo flush in progress: \n {"".join(msg)}')
     # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
     check_deposits = prog.values()
