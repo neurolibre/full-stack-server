@@ -1397,7 +1397,7 @@ def rsync_myst_prod_task(self, screening_dict):
         output = process.communicate()[0]
         ret = process.wait()
         if ret == 0:
-            task.succeed(f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}/ \n {output}", False)
+            task.succeed(f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}",False)
         else:
             task.fail(f"⛔️ Failed to sync MyST build to production server: {output}")
     else:
