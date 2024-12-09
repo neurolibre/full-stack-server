@@ -425,6 +425,29 @@ def fork_configure_repository_task(self, payload):
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
         return
+
+    assets_to_upload = {
+        'favicon.ico': '../assets/favicon.ico',
+        'logo.png': '../assets/logo.png'
+    }
+
+    for target_path, source_path in assets_to_upload.items():
+        try:
+            with open(source_path, 'rb') as f:
+                image_content = f.read()
+                result = gh_create_file(
+                    github_client, 
+                    forked_name, 
+                    target_path, 
+                    image_content, 
+                    encoding=None
+                )
+            if result["status"]:
+                logging.info(f"{target_path} created successfully")
+            else:
+                logging.info(f"Error creating {target_path}: {result['message']}")
+        except Exception as e:
+            logging.info(f"Error reading {source_path}: {str(e)}")
     
     if myst_config:
 

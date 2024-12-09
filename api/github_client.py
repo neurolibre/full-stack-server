@@ -172,6 +172,42 @@ def gh_fork_repository(github_client,source_repo):
     forked_repo = target_org.create_fork(repo_to_fork)
     return forked_repo
 
+def gh_create_file(github_client, repo, file_path, content, commit_message=None, encoding='utf-8'):
+    """
+    Create a new file in a GitHub repository.
+
+    Parameters:
+    - github_client: GitHub client instance
+    - repo: Repository name/path
+    - file_path: Path where the new file should be created
+    - content: Content to write to the file (can be string or bytes)
+    - commit_message: Optional custom commit message
+    - encoding: Encoding to use for text content (default: 'utf-8')
+                Set to None for binary files
+
+    Returns:
+    - dict: Status and message indicating success or failure
+    """
+    if commit_message is None:
+        file_name = file_path.split('/')[-1]
+        commit_message = f":robot: [Automated] Create {file_name}"
+
+    repo = github_client.get_repo(gh_filter(repo))
+    try:
+        # Handle binary content (like images)
+        if encoding is None and isinstance(content, bytes):
+            import base64
+            content = base64.b64encode(content).decode()
+        # Handle text content
+        elif isinstance(content, str):
+            content = content.encode(encoding)
+            content = base64.b64encode(content).decode()
+            
+        repo.create_file(file_path, commit_message, content)
+        return {"status": True, "message": "Success"}
+    except Exception as e:
+        return {"status": False, "message": str(e)}
+
 def gh_get_file_content(github_client,repo,file_path):
     """
     Generic helper function to read (raw) file content from
