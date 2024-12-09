@@ -195,13 +195,13 @@ def gh_create_file(github_client, repo, file_path, content, commit_message=None,
     repo = github_client.get_repo(gh_filter(repo))
     try:
         # Handle binary content (like images)
-        if encoding is None and isinstance(content, bytes):
-            import base64
-            content = base64.b64encode(content).decode()
-        # Handle text content
-        elif isinstance(content, str):
-            content = content.encode(encoding)
-            content = base64.b64encode(content).decode()
+        # if encoding is None and isinstance(content, bytes):
+        #     import base64
+        #     content = base64.b64encode(content).decode()
+        # # Handle text content
+        # elif isinstance(content, str):
+        #     content = content.encode(encoding)
+        #     content = base64.b64encode(content).decode()
             
         repo.create_file(file_path, commit_message, content)
         return {"status": True, "message": "Success"}
