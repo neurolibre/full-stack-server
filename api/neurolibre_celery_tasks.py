@@ -1402,14 +1402,13 @@ def preview_build_myst_task(self, screening_dict):
 
         # This will use exec cache both for preview and production.
         base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
-        
+        latest_file_user = os.path.join(base_user_dir, "latest.txt")
+
         latest_file_prod = None
         base_prod_dir = None
         if is_prod:
-            base_prod_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+            base_prod_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,task.owner_name,task.repo_name)
             latest_file_prod = os.path.join(base_prod_dir, "latest.txt")
-        
-        latest_file_user = os.path.join(base_user_dir, "latest.txt")
 
         if is_prod and os.path.exists(latest_file_prod):
             latest_file = latest_file_prod
@@ -1422,7 +1421,7 @@ def preview_build_myst_task(self, screening_dict):
             all_logs += f"\n ✔️ Found latest.txt at {base_user_dir}"
             with open(latest_file, 'r') as f:
                 previous_commit = f.read().strip()
-                task.start(f"✔️ Found previous build at commit {previous_commit}")
+            all_logs += f"\n ✔️ Found previous build at commit {previous_commit}"
 
         logging.info(f"💾 Cache will be loaded from commit: {previous_commit}")
         all_logs += f"\n 💾 Cache will be loaded from commit: {previous_commit}"
@@ -1430,13 +1429,14 @@ def preview_build_myst_task(self, screening_dict):
         all_logs += f"\n -- Current commit: {task.screening.commit_hash}"
         # Copy previous build folder to the new build folder to take advantage of caching.
         if previous_commit and (previous_commit != task.screening.commit_hash):
+            
             previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
             if is_prod:
                 current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
             else:
                 current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build","html")
 
-            if os.path.exists(previous_execute_dir):
+            if os.path.isdir(previous_execute_dir):
                 task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
                 all_logs += f"\n ♻️ Copying _build folder from previous build {previous_commit}"
                 try:
