@@ -387,7 +387,7 @@ def fork_configure_repository_task(self, payload):
 
         forked_repo = None
         retry_count = 0
-        max_retries = 5
+        max_retries = 10
 
         while retry_count < max_retries and not forked_repo:
             time.sleep(15)
