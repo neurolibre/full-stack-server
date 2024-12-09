@@ -394,8 +394,9 @@ def fork_configure_repository_task(self, payload):
             retry_count += 1
             try:
                 forked_repo = github_client.get_repo(forked_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Attempt {retry_count}/{max_retries} failed: {str(e)}")
+                continue
 
         if not forked_repo and retry_count == max_retries:
             msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under {GH_ORGANIZATION} organization, then try again."
