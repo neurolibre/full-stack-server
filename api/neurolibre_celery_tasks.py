@@ -835,12 +835,20 @@ def zenodo_upload_book_task(self, payload):
     commit_fork = format_commit_hash(fork_url,"HEAD")
     record_name = item_to_record_name("book")
 
-    results = book_get_by_params(commit_hash=commit_fork)
-    # Need to manage for single or multipage location.
-    book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
-    local_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, f"{GH_ORGANIZATION}", provider, repo, commit_fork, book_target_tail)
-    # Descriptive file name
+    try:
+        results = book_get_by_params(commit_hash=commit_fork)
+        # Need to manage for single or multipage location.
+        book_target_tail = get_book_target_tail(results[0]['book_url'],commit_fork)
+        local_path = os.path.join(DATA_ROOT_PATH, JB_ROOT_FOLDER, f"{GH_ORGANIZATION}", provider, repo, commit_fork, book_target_tail)
+    except:
+        local_path = os.path.join(DATA_ROOT_PATH, DOI_PREFIX, f"{DOI_SUFFIX}.{payload['issue_id']:05d}")
+        if not os.path.exists(os.path.join(local_path,"index.html")):
+            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Cannot find book at {local_path}")
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Cannot find book at {local_path}"})
+            return
+
     zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
+    
     # Zip it!
     shutil.make_archive(zenodo_file, 'zip', local_path)
     zpath = zenodo_file + ".zip"
