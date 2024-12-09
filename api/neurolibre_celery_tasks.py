@@ -39,20 +39,28 @@ common_config  = load_yaml('config/common.yaml')
 # Global variables from the common config.
 DOI_PREFIX = common_config['DOI_PREFIX']
 DOI_SUFFIX = common_config['DOI_SUFFIX'] 
+
 JOURNAL_NAME = common_config['JOURNAL_NAME']
 JOURNAL_SUBJECT = common_config['JOURNAL_SUBJECT']
+JOURNAL_LOGO = common_config['JOURNAL_LOGO']
+JOURNAL_FAVICON = common_config['JOURNAL_FAVICON']
+JOURNAL_TWITTER = common_config['JOURNAL_TWITTER']
+
 BINDER_REGISTRY = common_config['BINDER_REGISTRY']
+GH_ORGANIZATION = common_config['GH_ORGANIZATION']
+
 DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
 JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
-GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 MYST_FOLDER = common_config['MYST_FOLDER']
-CONTAINER_MYST_SOURCE_PATH = common_config['CONTAINER_MYST_SOURCE_PATH']
-CONTAINER_MYST_DATA_PATH = common_config['CONTAINER_MYST_DATA_PATH']
 DATA_NFS_PATH = common_config['DATA_NFS_PATH']
 PAPERS_PATH = common_config['PAPERS_PATH']
-NOEXEC_CONTAINER_COMMIT_HASH = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
-PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
+
+CONTAINER_MYST_SOURCE_PATH = common_config['CONTAINER_MYST_SOURCE_PATH']
+CONTAINER_MYST_DATA_PATH = common_config['CONTAINER_MYST_DATA_PATH']
 NOEXEC_CONTAINER_REPOSITORY = common_config['NOEXEC_CONTAINER_REPOSITORY']
+NOEXEC_CONTAINER_COMMIT_HASH = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
+
+PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 # Global variables from the mix of common, preprint and preview configs
@@ -436,6 +444,10 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['project']['venue'] = JOURNAL_NAME
         myst_config_new['project']['subject'] = JOURNAL_SUBJECT
         myst_config_new['project']['doi'] = f"{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
+        myst_config_new['site']['options'] = {}
+        myst_config_new['site']['options']['favicon'] = JOURNAL_FAVICON
+        myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
+        myst_config_new['site']['options']['logo'] = JOURNAL_LOGO
 
         if not myst_config_new != myst_config:
             response = gh_update_myst_config(github_client,forked_name,myst_config_new)
