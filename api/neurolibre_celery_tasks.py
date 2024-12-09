@@ -804,12 +804,12 @@ def zenodo_flush_task(self,screening_dict):
         elif delete_response.status_code == 403:
             prog[item] = False
             msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
-            task.fail(f"The {item} archive has already been published, cannot be deleted. \n {"".join(msg)}")
+            task.fail(f'The {item} archive has already been published, cannot be deleted. \n {"".join(msg)}')
             # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
         elif delete_response.status_code == 410:
             prog[item] = False
             msg.append(f"\n The {item} deposit does not exist.")
-            task.fail(f"The {item} deposit does not exist. \n {"".join(msg)}")
+            task.fail(f'The {item} deposit does not exist. \n {"".join(msg)}')
             #gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
     # Update the issue comment
@@ -822,11 +822,11 @@ def zenodo_flush_task(self,screening_dict):
         local_file = os.path.join(get_deposit_dir(task.screening.issue_id), fname)
         os.remove(local_file)
         msg.append(f"\n Deleted old deposit records from the server: {local_file}")
-        task.success(f"Zenodo flush completed successfully. \n {"".join(msg)}")
+        task.success(f'Zenodo flush completed successfully. \n {"".join(msg)}')
         # gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
     else:
         msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
-        task.fail(f"ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted. \n {"".join(msg)}")
+        task.fail(f'ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted. \n {"".join(msg)}')
         # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
 @celery_app.task(bind=True)
