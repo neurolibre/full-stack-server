@@ -788,19 +788,20 @@ def zenodo_flush_task(self,screening_dict):
             msg.append(f"\n Deleted {item} deposit successfully.")
             prog[item] = True
             # Flush ALL the upload records (json) associated with the item
-            tmp_record = glob.glob(os.path.join(get_deposit_dir(task.screening.issue_id),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.json"))
-            if tmp_record:
+            tmp_records = glob.glob(os.path.join(get_deposit_dir(task.screening.issue_id),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.json"))
+            for tmp_record in tmp_records:
                 os.remove(tmp_record)
                 msg.append(f"\n Deleted {tmp_record} record from the server.")
-            else:
-                msg.append(f"\n {tmp_record} did not exist.")
+            if not tmp_records:
+                msg.append(f"\n No upload records found to delete.")
+                
             # Flush ALL the uploaded files associated with the item
-            tmp_file = glob.glob(os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.zip"))
-            if tmp_file:
+            tmp_files = glob.glob(os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.zip"))
+            for tmp_file in tmp_files:
                 os.remove(tmp_file)
                 msg.append(f"\n Deleted {tmp_file} record from the server.")
-            else:
-                msg.append(f"{tmp_file} did not exist.")
+            if not tmp_files:
+                msg.append(f"\n No archive files found to delete.")
         elif delete_response.status_code == 403:
             prog[item] = False
             msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
