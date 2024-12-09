@@ -1382,6 +1382,27 @@ def binder_build_task(self, screening_dict):
     else:
         task.fail("⛔️ BinderHub build failed.", tmp_log_path)
 
+@celery_app.task(bind=True)
+def rsync_myst_prod_task(self, screening_dict):
+    """
+    DOI-formatted myst html files are synced to the production server.
+    """
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("🔄 Syncing MyST build to production server.")
+    path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
+    if os.path.exists(path) and os.path.isfile(os.path.join(path, "index.html")):
+        remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], DOI_PREFIX, f"{DOI_SUFFIX}.{task.screening.issue_id:05d}" + "*")
+        process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        output = process.communicate()[0]
+        ret = process.wait()
+        if ret == 0:
+            task.succeed(f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}/ \n {output}", collapsable=False)
+        else:
+            task.fail(f"⛔️ Failed to sync MyST build to production server: {output}", collapsable=False)
+    else:
+        task.fail("⛔️ Production MyST build not found on the preview server.", collapsable=False)
+
+
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def preview_build_myst_task(self, screening_dict):
 

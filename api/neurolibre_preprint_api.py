@@ -10,8 +10,7 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import BinderSchema, BucketsSchema, UploadSchema, ListSchema, DatasyncSchema, BooksyncSchema, \
-     ProdStartSchema, IDSchema
+from schema import UploadSchema, ListSchema, IdUrlSchema, BooksyncSchema, IDSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -21,7 +20,7 @@ from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
-     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task
+     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task
 from github import Github
 import yaml
 from screening_client import ScreeningClient
@@ -125,7 +124,7 @@ docs.register(summary_pdf_sync_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the repository to the respective zenodo deposit.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def zenodo_upload_repository_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -170,7 +169,7 @@ docs.register(zenodo_upload_repository_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the built book to the respective zenodo deposit.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def zenodo_upload_book_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -210,7 +209,7 @@ docs.register(zenodo_upload_book_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the docker image to the respective zenodo deposit.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def zenodo_upload_docker_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -251,7 +250,7 @@ docs.register(zenodo_upload_docker_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Upload the submission data for zenodo deposit.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def zenodo_upload_data_post(user,id,repository_url):
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
@@ -309,7 +308,7 @@ def api_zenodo_status(user,id):
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Publish uploaded zenodo records for archival for a given submission ID.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def api_zenodo_publish(user,id,repository_url):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -345,7 +344,7 @@ docs.register(api_zenodo_status)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Create zenodo buckets (i.e., records) for a submission.', tags=['Zenodo'])
-@use_kwargs(BucketsSchema())
+@use_kwargs(IdUrlSchema())
 def api_zenodo_post(user,id,repository_url):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -632,7 +631,7 @@ docs.register(api_zenodo_list_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Flush records and remove respective uploads from Zenodo, if available for a submission ID.', tags=['Zenodo'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def api_zenodo_flush_post(user,id,repository_url):
     """
     Delete buckets and uploaded files from zenodo.
@@ -647,7 +646,7 @@ docs.register(api_zenodo_flush_post)
 @app.route('/api/data/sync', methods=['POST'])
 @preprint_api.auth_required
 @doc(description='Transfer data from the preview to the production server based on the project name.', tags=['Data'])
-@use_kwargs(DatasyncSchema())
+@use_kwargs(IdUrlSchema())
 def api_data_sync_post(user,id,repository_url):
     # Create a comment in the review issue. 
     # The worker will update that depending on the  state of the task.
@@ -675,6 +674,17 @@ def api_data_sync_post(user,id,repository_url):
 
 # Register endpoint to the documentation
 docs.register(api_data_sync_post)
+
+@app.route('/api/myst/sync', methods=['POST'],endpoint='api_myst_sync')
+@preprint_api.auth_required
+@doc(description='Transfer a built MyST build from the preview to the production server based on the project name.', tags=['MyST'])
+@use_kwargs(BooksyncSchema())
+def api_myst_sync_post(user,id,repository_url):
+    screening = ScreeningClient(task_name="Sync MyST build to production server", issue_id=id, target_repo_url=repository_url)
+    response = screening.start_celery_task(rsync_myst_prod_task)
+    return response
+
+docs.register(api_myst_sync_post)
 
 @app.route('/api/book/sync', methods=['POST'])
 @preprint_api.auth_required
@@ -717,7 +727,7 @@ docs.register(api_books_sync_post)
 @app.route('/api/production/start', methods=['POST'])
 @preprint_api.auth_required
 @doc(description=f'Fork user repository into {GH_ORGANIZATION} and update _config and _toc.', tags=['Production'])
-@use_kwargs(ProdStartSchema())
+@use_kwargs(IdUrlSchema())
 def api_production_start_post(user,id,repository_url,commit_hash="HEAD"):
 
     issue_id = id
@@ -752,9 +762,8 @@ docs.register(api_production_start_post)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description=f'Request a binderhub build on the production server for a given repo. Repository must belong to the {GH_ORGANIZATION} organization.', tags=['Binder'])
-@use_kwargs(BinderSchema())
+@use_kwargs(IdUrlSchema())
 def api_binder_build(user,id,repository_url):
-    app.logger.info(f'Entered binderhub build endpoint')
     extra_payload = dict(is_prod=True)
     screening = ScreeningClient(task_name="Build Binderhub (PRODUCTION)", 
                                 issue_id=id, 
@@ -770,7 +779,7 @@ docs.register(api_binder_build)
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description='Build extended PDF for a submission.', tags=['Extended PDF'])
-@use_kwargs(BucketsSchema())
+@use_kwargs(IdUrlSchema())
 def api_pdf_draft(user,id,repository_url):
 
     GH_BOT=os.getenv('GH_BOT')

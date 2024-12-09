@@ -56,22 +56,6 @@ class BuildTestSchema(Schema):
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
     email = fields.Str(required=True,description="Email address to send the response.")
 
-# Preprint server
-
-class BinderSchema(Schema):
-    """
-    Defines payload types and requirements for binderhub build request.
-    """
-    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
-    repository_url = fields.Str(required=True,description="Full URL of a roboneurolibre repository.")
-
-class BucketsSchema(Schema):
-    """
-    Defines payload types and requirements for creating zenodo records.
-    """
-    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
-    repository_url = fields.String(required=True,description="Full URL of the target repository")
-
 class IDSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
 
@@ -86,11 +70,7 @@ class UploadSchema(Schema):
 class ListSchema(Schema):
     issue_id = fields.Int(required=True,description="Issue number of the technical screening of this preprint.")
 
-class DatasyncSchema(Schema):
-    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
-    repository_url = fields.String(required=True,description="Full URL of the target repository")
-
-class ProdStartSchema(Schema):
+class IdUrlSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
