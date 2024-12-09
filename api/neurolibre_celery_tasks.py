@@ -387,7 +387,7 @@ def fork_configure_repository_task(self, payload):
 
         forked_repo = None
         retry_count = 0
-        max_retries = 10
+        max_retries = 5
 
         while retry_count < max_retries and not forked_repo:
             time.sleep(15)
@@ -395,7 +395,7 @@ def fork_configure_repository_task(self, payload):
             try:
                 forked_repo = github_client.get_repo(forked_name)
             except Exception as e:
-                logging.error(f"Attempt {retry_count}/{max_retries} failed: {str(e)}")
+                logging.error(f"Attempt {retry_count}/{max_retries} {forked_name} failed: {str(e)}")
                 continue
 
         if not forked_repo and retry_count == max_retries:
