@@ -88,10 +88,4 @@ NOEXEC_CONTAINER_COMMIT_HASH: "66bba73ee1b8093e2eac2818ecd69f695ff085d6"
 # License for the published articles
 PUBLISH_LICENSE: "CC-BY-4.0"
 
-# Journal logo
-JOURNAL_LOGO: "/home/ubuntu/full-stack-server/assets/logo.png"
-
-# Journal icon
-JOURNAL_FAVICON: "/home/ubuntu/full-stack-server/assets/favicon.ico"
-
 JOURNAL_TWITTER: "neurolibre"

@@ -42,8 +42,6 @@ DOI_SUFFIX = common_config['DOI_SUFFIX']
 
 JOURNAL_NAME = common_config['JOURNAL_NAME']
 JOURNAL_SUBJECT = common_config['JOURNAL_SUBJECT']
-JOURNAL_LOGO = common_config['JOURNAL_LOGO']
-JOURNAL_FAVICON = common_config['JOURNAL_FAVICON']
 JOURNAL_TWITTER = common_config['JOURNAL_TWITTER']
 
 BINDER_REGISTRY = common_config['BINDER_REGISTRY']
@@ -468,9 +466,9 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['project']['subject'] = JOURNAL_SUBJECT
         myst_config_new['project']['doi'] = f"{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
         myst_config_new['site']['options'] = {}
-        myst_config_new['site']['options']['favicon'] = JOURNAL_FAVICON
+        myst_config_new['site']['options']['favicon'] = 'favicon.ico'
         myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
-        myst_config_new['site']['options']['logo'] = JOURNAL_LOGO
+        myst_config_new['site']['options']['logo'] = 'logo.png'
 
         if not myst_config_new != myst_config:
             response = gh_update_myst_config(github_client,forked_name,myst_config_new)
