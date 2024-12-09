@@ -422,13 +422,13 @@ def api_upload_post(user,issue_id,repository_address,item,item_arg,fork_url,comm
            # We will archive the book created through the forked repository.
            local_path = os.path.join(app.config['DATA_ROOT_PATH'], app.config['JB_ROOT_FOLDER'], fork_repo, fork_provider, repofork, commit_fork, "_build", "html")
            # Descriptive file name
-           zenodo_file = os.path.join(get_archive_dir(issue_id),f"JupyterBook_{DOI_PREFIX}_{JOURNAL_NAME}_{'%05d'%issue_id}_{commit_fork[0:6]}")
+           zenodo_file = os.path.join(get_archive_dir(issue_id),f"LivingPreprint_{DOI_PREFIX}_{JOURNAL_NAME}_{'%05d'%issue_id}_{commit_fork[0:6]}")
            # Zip it!
            shutil.make_archive(zenodo_file, 'zip', local_path)
            zpath = zenodo_file + ".zip"
         
            with open(zpath, "rb") as fp:
-            r = requests.put(f"{bucket_url}/JupyterBook_{DOI_PREFIX}_{JOURNAL_NAME}_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
+            r = requests.put(f"{bucket_url}/LivingPreprint_{DOI_PREFIX}_{JOURNAL_NAME}_{'%05d'%issue_id}_{commit_fork[0:6]}.zip",
                                     params=params,
                                     data=fp)
            if not r:

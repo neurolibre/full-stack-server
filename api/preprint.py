@@ -82,7 +82,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     if (archive_type == 'book'):
         data["metadata"]["upload_type"] = "other"
-        data["metadata"]["description"] = f"{JOURNAL_NAME} JupyterBook built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
+        data["metadata"]["description"] = f"{JOURNAL_NAME} Living Preprint built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = "dataset"
         # TODO: USE OpenAI API here to explain data.
@@ -285,7 +285,7 @@ def item_to_record_name(item):
     dict_map = {"data":"Dataset",
                 "repository":"GitHubRepo",
                 "docker":"DockerImage",
-                "book":"JupyterBook"}
+                "book":"LivingPreprint"}
     if item in dict_map.keys():
         return dict_map[item]
     else:
