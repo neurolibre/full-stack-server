@@ -1434,7 +1434,7 @@ def preview_build_myst_task(self, screening_dict):
             if is_prod:
                 current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
             else:
-                current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build","html")
+                current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
 
             if os.path.isdir(previous_execute_dir):
                 task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
