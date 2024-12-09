@@ -823,7 +823,7 @@ def zenodo_flush_task(self,screening_dict):
         local_file = os.path.join(get_deposit_dir(task.screening.issue_id), fname)
         os.remove(local_file)
         msg.append(f"\n Deleted old deposit records from the server: {local_file}")
-        task.success(f'Zenodo flush completed successfully. \n {"".join(msg)}')
+        task.succeed(f'Zenodo flush completed successfully. \n {"".join(msg)}')
         # gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
     else:
         msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
