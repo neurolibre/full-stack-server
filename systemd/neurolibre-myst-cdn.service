@@ -6,10 +6,10 @@ After=network.target
 User=ubuntu
 Group=www-data
 WorkingDirectory=/DATA/myst
-EnvironmentFile=/etc/default/celery
+EnvironmentFile=/etc/default/myst
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${VENV_PATH}/bin:${NODE_PATH}"
 Environment=GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
-ExecStart=/bin/sh -c '${CUSTOM_START} myst start --execute --headless'
+ExecStart=/bin/sh -c '${CUSTOM_START} myst start --execute --headless --server-port 3111'
 Restart=always
 
 [Install]

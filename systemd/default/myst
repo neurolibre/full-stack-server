@@ -1,0 +1,9 @@
+WORKING_DIRECTORY="/home/ubuntu/full-stack-server/api"
+CUSTOM_START="${WORKING_DIRECTORY}/start_celery.sh"
+VENV_PATH="/home/ubuntu/venv/neurolibre38"
+NODE_PATH="/home/ubuntu/.nvm/versions/node/v22.6.0/bin"
+NVM_INC="/home/ubuntu/.nvm/versions/node/v22.6.0/include/node"
+NVM_BIN="/home/ubuntu/.nvm/versions/node/v22.6.0/bin"
+NVM_DIR="/home/ubuntu/.nvm"
+CONTENT_CDN="https://cdn.neurolibre.org"
+
