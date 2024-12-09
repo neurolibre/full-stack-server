@@ -367,7 +367,7 @@ def fork_configure_repository_task(self, payload):
         rec_info['source_repository']['commit_hash'] = payload['commit_hash']
         rec_info['source_repository']['book_url'] = book_tested_check['book_url']
 
-    forked_name = gh_forkify_it(payload['repository_url'])
+    forked_name = gh_forkify_it(gh_filter(payload['repository_url']))
     # First check if a fork already exists.
     fork_exists  = False
     try:
