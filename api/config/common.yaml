@@ -38,6 +38,9 @@ DOI_SUFFIX: "neurolibre"
 # in the filenames of the artifacts, such as DockerImage_10.55458_NeuroLibre_ac6b5hd.tar.gz
 JOURNAL_NAME: "NeuroLibre"
 
+# This is the subject of the article in the MyST config.
+JOURNAL_SUBJECT: "Living Preprint"
+
 # This follow OpenJournals convention.
 PAPERS_PATH: "https://neurolibre.org/papers"
 
@@ -81,3 +84,6 @@ NOEXEC_CONTAINER_REPOSITORY: "neurolibre/mystical-article"
 
 # Noexec container repository commit hash
 NOEXEC_CONTAINER_COMMIT_HASH: "66bba73ee1b8093e2eac2818ecd69f695ff085d6"
+
+# License for the published articles
+PUBLISH_LICENSE: "CC-BY-4.0"

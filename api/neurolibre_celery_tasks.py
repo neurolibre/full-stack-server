@@ -36,14 +36,26 @@ preview_config = load_yaml('config/preview.yaml')
 preprint_config = load_yaml('config/preprint.yaml')
 common_config  = load_yaml('config/common.yaml')
 
-config_keys = [
-    'DOI_PREFIX', 'DOI_SUFFIX', 'JOURNAL_NAME', 'PAPERS_PATH', 'BINDER_REGISTRY',
-    'DATA_ROOT_PATH', 'JB_ROOT_FOLDER', 'GH_ORGANIZATION', 'MYST_FOLDER',
-    'CONTAINER_MYST_SOURCE_PATH', 'CONTAINER_MYST_DATA_PATH','DATA_NFS_PATH']
-globals().update({key: common_config[key] for key in config_keys})
-
+# Global variables from the common config.
+DOI_PREFIX = common_config['DOI_PREFIX']
+DOI_SUFFIX = common_config['DOI_SUFFIX'] 
+JOURNAL_NAME = common_config['JOURNAL_NAME']
+JOURNAL_SUBJECT = common_config['JOURNAL_SUBJECT']
+BINDER_REGISTRY = common_config['BINDER_REGISTRY']
+DATA_ROOT_PATH = common_config['DATA_ROOT_PATH']
+JB_ROOT_FOLDER = common_config['JB_ROOT_FOLDER']
+GH_ORGANIZATION = common_config['GH_ORGANIZATION']
+MYST_FOLDER = common_config['MYST_FOLDER']
+CONTAINER_MYST_SOURCE_PATH = common_config['CONTAINER_MYST_SOURCE_PATH']
+CONTAINER_MYST_DATA_PATH = common_config['CONTAINER_MYST_DATA_PATH']
+DATA_NFS_PATH = common_config['DATA_NFS_PATH']
+PAPERS_PATH = common_config['PAPERS_PATH']
+NOEXEC_CONTAINER_COMMIT_HASH = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
+PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
+NOEXEC_CONTAINER_REPOSITORY = common_config['NOEXEC_CONTAINER_REPOSITORY']
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
+# Global variables from the mix of common, preprint and preview configs
 PRODUCTION_BINDERHUB = f"https://{preprint_config['BINDER_NAME']}.{preprint_config['BINDER_DOMAIN']}"
 PREVIEW_BINDERHUB = f"https://{preview_config['BINDER_NAME']}.{preview_config['BINDER_DOMAIN']}"
 PREVIEW_SERVER = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
@@ -198,85 +210,6 @@ def sleep_task(self, seconds):
         time.sleep(1)
         self.update_state(state='PROGRESS', meta={'remaining': seconds - i - 1})
     return 'done sleeping for {} seconds'.format(seconds)
-
-@celery_app.task(bind=True)
-def preview_download_data(self, screening_dict):
-    """
-    Downloading data to the preview server.
-    """
-    task = BaseNeuroLibreTask(self, screening_dict)
-    task.start("Started downloading the data.")
-    try:
-        contents = task.screening.repo_object.get_contents("binder/data_requirement.json")
-        # logging.debug(contents.decoded_content)
-        data_manifest = json.loads(contents.decoded_content)
-        # Create a temporary directory to store the data manifest
-        os.makedirs(task.join_data_root_path("tmp_repo2data",task.owner_name,task.repo_name),exist_ok=True)
-        # Write the data manifest to the temporary directory
-        json_path = task.join_data_root_path("tmp_repo2data",task.owner_name,task.repo_name,"data_requirement.json")
-        with open(json_path,"w") as f: 
-            json.dump(data_manifest,f)
-        if not data_manifest:
-            task.fail("binder/data_requirement.json not found.")
-            raise
-        valid_pattern = re.compile(r'^[a-z0-9_-]+$')
-        project_name = data_manifest['projectName']
-        if not valid_pattern.match(project_name):
-            task.fail(github_alert(
-                f"👀 Project name {project_name} is not valid, only `alphanumerical lowercase characters`, `-`, and `_` are allowed "
-                f"(e.g., `havuc-dilim-baklava`, `iskender_kebap`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
-                f"with a valid `project_name`.",
-                alert_type='caution'
-            ))
-            raise
-    except Exception as e:
-        message = f"Data download has failed: {str(e)}"
-        if task.screening.email:
-            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
-        else:
-            task.fail(message)
-
-    data_path = task.join_data_root_path(project_name)
-    not_again_message = f"😩 I already have data for `{project_name}` downloaded to `{data_path}`. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set `overwrite=True` if you really know what you are doing."
-    if os.path.exists(data_path) and not task.screening.is_overwrite:
-        if task.screening.email:
-            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
-        else:
-            task.fail(github_alert(not_again_message,"caution"))
-            return
-
-    # Download data with repo2data
-    repo2data = Repo2Data(json_path, server=True)
-    repo2data.set_server_dst_folder(DATA_ROOT_PATH)
-    try:
-        downloaded_data_path = repo2data.install()[0]
-        content, total_size = get_directory_content_summary(downloaded_data_path)
-        message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
-        for file_path, size in content:
-            message += f"\n- {file_path} ({size})"
-        # Sync data between the preview server and binderhub cluster.
-        task.start(f"🍰 Sharing data with the BinderHub cluster.")
-        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, DATA_NFS_PATH])
-        if return_code != 0:
-            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {output}.","caution"))
-        else:
-            task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
-    except Exception as e:
-        task.fail(f"Data download has failed: {str(e)}")
-        return
-
-    # Update status
-    if task.screening.email:
-        send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
-        task.update_state(state=states.SUCCESS, meta={'message': message})
-    else:
-        if 'doi' in data_manifest and data_manifest['doi']:
-            task.screening.book_archive = data_manifest['doi']
-            doi_message = (f"A DOI has been provided for this dataset; therefore, it will NOT be archived on Zenodo."
-                       "**Before proceeding with the remaining steps**, please run the following command (by screener/editor only) to set the data DOI for this preprint:\n"
-                       f"`@roboneuro set {data_manifest['doi']} as data archive`")
-            task.screening.gh_create_comment(github_alert(doi_message, alert_type='warning'),override_assign=True)
-        task.succeed(message)
 
 @celery_app.task(bind=True)
 def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
@@ -471,7 +404,14 @@ def fork_configure_repository_task(self, payload):
     jb_config = gh_get_jb_config(github_client,forked_name)
     jb_toc = gh_get_jb_toc(github_client,forked_name)
     myst_config = gh_get_myst_config(github_client,forked_name)
+
+    code_license_info = get_repository_license(github_client, payload['repository_url'])
     
+    if code_license_info['status']:
+        code_license_info = code_license_info['license']
+    else:
+        code_license_info = None
+
     if (not jb_config or not jb_toc) and (not myst_config):
         msg = f"Could not load [_config.yml and _toc.yml] under the content or myst.yml at the base of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
@@ -487,11 +427,15 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
         myst_config_new['project']['thebe']['binder']['repo'] = f"https://github.com/{forked_name}"
         myst_config_new['project']['thebe']['binder']['ref'] = "main"
+        myst_config_new['project']['github'] = f"https://github.com/{forked_name}"
         myst_config_new['project']['open_access'] = True
-        myst_config_new['project']['license'] = "CC-BY-4.0"
+        myst_config_new['project']['license'] = {}
+        myst_config_new['project']['license']['content'] = PUBLISH_LICENSE
+        if code_license_info:
+            myst_config_new['project']['license']['code'] = code_license_info
         myst_config_new['project']['venue'] = JOURNAL_NAME
-        myst_config_new['project']['subject'] = "Living Preprint"
-        myst_config_new['project']['doi'] = f"10.55458/neurolibre.{payload['issue_id']:05d}"
+        myst_config_new['project']['subject'] = JOURNAL_SUBJECT
+        myst_config_new['project']['doi'] = f"{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
 
         if not myst_config_new != myst_config:
             response = gh_update_myst_config(github_client,forked_name,myst_config_new)
@@ -762,73 +706,6 @@ def zenodo_create_buckets_task(self, payload):
         with open(local_file, 'w') as outfile:
             json.dump(collect, outfile)
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
-
-@celery_app.task(bind=True)
-def zenodo_flush_task(self,screening_dict):
-
-    task = BaseNeuroLibreTask(self, screening_dict)
-
-    # GH_BOT=os.getenv('GH_BOT')
-    # github_client = Github(GH_BOT)
-    # task_id = self.request.id
-    task.start("Zenodo flush task started")
-    
-    # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
-
-    zenodo_record = get_zenodo_deposit(task.screening.issue_id)
-    
-    msg = []
-    prog = {}
-    items = zenodo_record.keys()
-    for item in items:
-        # Delete the bucket first.
-        record_name = item_to_record_name(item)
-        delete_response = zenodo_delete_bucket(zenodo_record[item]['links']['self'])
-        if delete_response.status_code == 204:
-            msg.append(f"\n Deleted {item} deposit successfully.")
-            prog[item] = True
-            # Flush ALL the upload records (json) associated with the item
-            tmp_records = glob.glob(os.path.join(get_deposit_dir(task.screening.issue_id),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.json"))
-            for tmp_record in tmp_records:
-                os.remove(tmp_record)
-                msg.append(f"\n Deleted {tmp_record} record from the server.")
-            if not tmp_records:
-                msg.append(f"\n No upload records found to delete.")
-                
-            # Flush ALL the uploaded files associated with the item
-            tmp_files = glob.glob(os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.zip"))
-            for tmp_file in tmp_files:
-                os.remove(tmp_file)
-                msg.append(f"\n Deleted {tmp_file} record from the server.")
-            if not tmp_files:
-                msg.append(f"\n No archive files found to delete.")
-        elif delete_response.status_code == 403:
-            prog[item] = False
-            msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
-            task.fail(f'The {item} archive has already been published, cannot be deleted. \n {"".join(msg)}')
-            # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
-        elif delete_response.status_code == 410:
-            prog[item] = False
-            msg.append(f"\n The {item} deposit does not exist.")
-            task.fail(f'The {item} deposit does not exist. \n {"".join(msg)}')
-            #gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
-
-    # Update the issue comment
-    task.start(f'Zenodo flush in progress: \n {"".join(msg)}')
-    # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
-
-    check_deposits = prog.values()
-    if all(check_deposits):
-        fname = f"zenodo_deposit_{JOURNAL_NAME}_{task.screening.issue_id:05d}.json"
-        local_file = os.path.join(get_deposit_dir(task.screening.issue_id), fname)
-        os.remove(local_file)
-        msg.append(f"\n Deleted old deposit records from the server: {local_file}")
-        task.succeed(f'Zenodo flush completed successfully. \n {"".join(msg)}')
-        # gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
-    else:
-        msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
-        task.fail(f'ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted. \n {"".join(msg)}')
-        # gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"".join(msg))
 
 @celery_app.task(bind=True)
 def zenodo_upload_book_task(self, payload):
@@ -1366,6 +1243,9 @@ def preprint_build_pdf_draft(self, payload):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
 
+# REFACTORED TASKS ----------------------------------------------------------------
+# ---------------------------------------------------------------------------------
+
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def binder_build_task(self, screening_dict):
 
@@ -1421,7 +1301,6 @@ def rsync_myst_prod_task(self, screening_dict):
     else:
         task.fail(f"⛔️ Production MyST build not found on the preview server {expected_myst_url} \n {response.text}")
 
-
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def preview_build_myst_task(self, screening_dict):
 
@@ -1466,14 +1345,14 @@ def preview_build_myst_task(self, screening_dict):
 
     if noexec:
         # Base runtime.
-        task.screening.binder_hash = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
+        task.screening.binder_hash = NOEXEC_CONTAINER_COMMIT_HASH
     else:
         # User defined runtime.
         task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
 
     if noexec:
         # Overrides build image to the base
-        binder_image_name = common_config['NOEXEC_CONTAINER_REPOSITORY']
+        binder_image_name = NOEXEC_CONTAINER_REPOSITORY
     else:
         # Falls back to the repo name to look for the image. 
         binder_image_name = None
@@ -1645,6 +1524,144 @@ def preview_build_myst_task(self, screening_dict):
     finally:
         cleanup_hub(hub)
 
+@celery_app.task(bind=True)
+def zenodo_flush_task(self,screening_dict):
+
+    task = BaseNeuroLibreTask(self, screening_dict)
+
+    task.start("Zenodo flush task started")
+
+    zenodo_record = get_zenodo_deposit(task.screening.issue_id)
+
+    msg = []
+    prog = {}
+    items = zenodo_record.keys()
+    for item in items:
+        # Delete the bucket first.
+        record_name = item_to_record_name(item)
+        delete_response = zenodo_delete_bucket(zenodo_record[item]['links']['self'])
+        if delete_response.status_code == 204:
+            msg.append(f"\n Deleted {item} deposit successfully.")
+            prog[item] = True
+            # Flush ALL the upload records (json) associated with the item
+            tmp_records = glob.glob(os.path.join(get_deposit_dir(task.screening.issue_id),f"zenodo_uploaded_{item}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.json"))
+            for tmp_record in tmp_records:
+                os.remove(tmp_record)
+                msg.append(f"\n Deleted {tmp_record} record from the server.")
+            if not tmp_records:
+                msg.append(f"\n No upload records found to delete.")
+                
+            # Flush ALL the uploaded files associated with the item
+            tmp_files = glob.glob(os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_*.zip"))
+            for tmp_file in tmp_files:
+                os.remove(tmp_file)
+                msg.append(f"\n Deleted {tmp_file} record from the server.")
+            if not tmp_files:
+                msg.append(f"\n No archive files found to delete.")
+        elif delete_response.status_code == 403:
+            prog[item] = False
+            msg.append(f"\n The {item} archive has already been published, cannot be deleted.")
+            task.fail(f'The {item} archive has already been published, cannot be deleted. \n {"".join(msg)}')
+        elif delete_response.status_code == 410:
+            prog[item] = False
+            msg.append(f"\n The {item} deposit does not exist.")
+            task.fail(f'The {item} deposit does not exist. \n {"".join(msg)}')
+
+    # Update the issue comment
+    task.start(f'Zenodo flush in progress: \n {"".join(msg)}')
+
+    check_deposits = prog.values()
+    if all(check_deposits):
+        fname = f"zenodo_deposit_{JOURNAL_NAME}_{task.screening.issue_id:05d}.json"
+        local_file = os.path.join(get_deposit_dir(task.screening.issue_id), fname)
+        os.remove(local_file)
+        msg.append(f"\n Deleted old deposit records from the server: {local_file}")
+        task.succeed(f'Zenodo flush completed successfully. \n {"".join(msg)}')
+    else:
+        msg.append(f"\n ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted.")
+        task.fail(f'ERROR: At least one of the records could NOT have been deleted from Zenodo. Existing deposit file will NOT be deleted. \n {"".join(msg)}')
+
+
+@celery_app.task(bind=True)
+def preview_download_data(self, screening_dict):
+    """
+    Downloading data to the preview server.
+    """
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("Started downloading the data.")
+    try:
+        contents = task.screening.repo_object.get_contents("binder/data_requirement.json")
+        # logging.debug(contents.decoded_content)
+        data_manifest = json.loads(contents.decoded_content)
+        # Create a temporary directory to store the data manifest
+        os.makedirs(task.join_data_root_path("tmp_repo2data",task.owner_name,task.repo_name),exist_ok=True)
+        # Write the data manifest to the temporary directory
+        json_path = task.join_data_root_path("tmp_repo2data",task.owner_name,task.repo_name,"data_requirement.json")
+        with open(json_path,"w") as f: 
+            json.dump(data_manifest,f)
+        if not data_manifest:
+            task.fail("binder/data_requirement.json not found.")
+            raise
+        valid_pattern = re.compile(r'^[a-z0-9_-]+$')
+        project_name = data_manifest['projectName']
+        if not valid_pattern.match(project_name):
+            task.fail(github_alert(
+                f"👀 Project name {project_name} is not valid, only `alphanumerical lowercase characters`, `-`, and `_` are allowed "
+                f"(e.g., `havuc-dilim-baklava`, `iskender_kebap`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
+                f"with a valid `project_name`.",
+                alert_type='caution'
+            ))
+            raise
+    except Exception as e:
+        message = f"Data download has failed: {str(e)}"
+        if task.screening.email:
+            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
+        else:
+            task.fail(message)
+
+    data_path = task.join_data_root_path(project_name)
+    not_again_message = f"😩 I already have data for `{project_name}` downloaded to `{data_path}`. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set `overwrite=True` if you really know what you are doing."
+    if os.path.exists(data_path) and not task.screening.is_overwrite:
+        if task.screening.email:
+            send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
+        else:
+            task.fail(github_alert(not_again_message,"caution"))
+            return
+
+    # Download data with repo2data
+    repo2data = Repo2Data(json_path, server=True)
+    repo2data.set_server_dst_folder(DATA_ROOT_PATH)
+    try:
+        downloaded_data_path = repo2data.install()[0]
+        content, total_size = get_directory_content_summary(downloaded_data_path)
+        message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
+        for file_path, size in content:
+            message += f"\n- {file_path} ({size})"
+        # Sync data between the preview server and binderhub cluster.
+        task.start(f"🍰 Sharing data with the BinderHub cluster.")
+        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, DATA_NFS_PATH])
+        if return_code != 0:
+            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {output}.","caution"))
+        else:
+            task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
+    except Exception as e:
+        task.fail(f"Data download has failed: {str(e)}")
+        return
+
+    # Update status
+    if task.screening.email:
+        send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
+        task.update_state(state=states.SUCCESS, meta={'message': message})
+    else:
+        if 'doi' in data_manifest and data_manifest['doi']:
+            task.screening.book_archive = data_manifest['doi']
+            doi_message = (f"A DOI has been provided for this dataset; therefore, it will NOT be archived on Zenodo."
+                       "**Before proceeding with the remaining steps**, please run the following command (by screener/editor only) to set the data DOI for this preprint:\n"
+                       f"`@roboneuro set {data_manifest['doi']} as data archive`")
+            task.screening.gh_create_comment(github_alert(doi_message, alert_type='warning'),override_assign=True)
+        task.succeed(message)
+
+
 # -------------------------------------------------------------------------------------------------
 # Static helper functions
 # Consider moving elsewhere conviniently.
@@ -1714,3 +1731,42 @@ def stream_binderhub_build(binderhub_request, lock_filename):
     
     logs = "\n".join(collected_messages)
     return logs, not build_failed
+
+def get_repository_license(github_client, repo_url):
+    """
+    Get the license of a GitHub repository.
+    
+    Args:
+        github_client: Authenticated GitHub client
+        repo_url: URL of the repository
+        
+    Returns:
+        dict: Status and license info with keys:
+            - status (bool): Whether license was found
+            - message (str): Description of result
+            - license (str): License key/name if found
+    """
+    try:
+        owner, repo, _ = get_owner_repo_provider(repo_url)
+        repository = github_client.get_repo(f"{owner}/{repo}")
+        license_info = repository.get_license()
+        
+        if license_info:
+            return {
+                "status": True,
+                "message": "License found",
+                "license": license_info.license.spdx_id
+            }
+        else:
+            return {
+                "status": False, 
+                "message": "No license found in repository",
+                "license": None
+            }
+            
+    except Exception as e:
+        return {
+            "status": False,
+            "message": f"Error getting repository license: {str(e)}",
+            "license": None
+        }
