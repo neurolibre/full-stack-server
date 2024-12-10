@@ -1,11 +1,11 @@
 <h2>About</h2>
 
-<p>GitHub archive of the {libre_text}, based on the {user_text}.</p>
+<p>Dataset provided for {journal_name} preprint.</p>
 
 <p>❤️ Living preprint: <a href="{preprint_server}/{doi_prefix}/{doi_suffix}.{issue_id:05d}">{preprint_server}/{doi_prefix}/{doi_suffix}.{issue_id:05d}</a></p>
 
 <p>Author repo: <a href="{repository_url}">{repository_url}</a><br>
-{journal_name} fork: <a href="{fork_url}">{fork_url}</a> (archived)</p>
+{journal_name} fork: <a href="{fork_url}">{fork_url}</a></p>
 
 <p>{review_text}<br>
 {sign_text}</p>

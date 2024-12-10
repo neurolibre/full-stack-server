@@ -84,7 +84,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     if (archive_type == 'book'):
         data["metadata"]["upload_type"] = "other"
-        template = load_txt_file('templates/zenodo_book_description.md')
+        template = load_txt_file('templates/zenodo_book_description.html.template')
         data["metadata"]["description"] = template.format(
             journal_name=JOURNAL_NAME,
             libre_text=libre_text,
@@ -100,7 +100,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
             commit_fork=commit_fork[:6])
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = "dataset"
-        template = load_txt_file('templates/zenodo_data_description.md')
+        template = load_txt_file('templates/zenodo_data_description.html.template')
         data["metadata"]["description"] = template.format(
             journal_name=JOURNAL_NAME,
             repository_url=repository_url,
@@ -113,7 +113,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
             issue_id=int(issue_id))
     elif (archive_type == 'repository'):
         data["metadata"]["upload_type"] = "software"
-        template = load_txt_file('templates/zenodo_repository_description.md')
+        template = load_txt_file('templates/zenodo_repository_description.html.template')
         data["metadata"]["description"] = template.format(
             journal_name=JOURNAL_NAME,
             libre_text=libre_text,
@@ -129,7 +129,7 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
             commit_fork=commit_fork[:6])
     elif (archive_type == 'docker'):
         data["metadata"]["upload_type"] = "software"
-        template = load_txt_file('templates/zenodo_docker_description.md')
+        template = load_txt_file('templates/zenodo_docker_description.html.template')
         data["metadata"]["description"] = template.format(
             journal_name=JOURNAL_NAME,
             libre_text=libre_text,
