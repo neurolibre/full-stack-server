@@ -2,7 +2,7 @@
 
 <p>{journal_name} Living Preprint built at this {libre_text}, based on the {user_text}.</p>
 
-<p>❤️ Living preprint: {preprint_server}/{doi_prefix}/{doi_suffix}.{issue_id:05d}</p>
+<p>❤️ Living preprint: <a href="{preprint_server}/{doi_prefix}/{doi_suffix}.{issue_id:05d}">{preprint_server}/{doi_prefix}/{doi_suffix}.{issue_id:05d}</a></p>
 
 <h2>For the living preprints in JupyterBook format</h2>
 
@@ -13,51 +13,54 @@
 <p>If you see the following folders after extracting the zip file, it means that the preprint is in MyST format:</p>
 
 <ul>
-    <li>site</li>
-    <li>execute</li>
-    <li>html</li>
-    <li>templates</li>
+    <li><code>site</code></li>
+    <li><code>execute</code></li>
+    <li><code>html</code></li>
+    <li><code>templates</code></li>
 </ul>
 
 <p>When you open the <code>html/index.html</code> file, you will be able to see the preprint content, however the static webpage components will not be properly loaded.</p>
 
 <p>This is because the static HTML assets were built with a base URL following the DOI format. As a workaround, you can simply modify the following python script and save it as <code>serve_preprint.py</code>:</p>
 
-<pre class="language-python" contenteditable="false" data-mce-highlighted="true" data-mce-selected="1"> <span class="token keyword">import</span> http<span class="token punctuation">.</span>server
-<span class="token keyword">import</span> socketserver
-<span class="token keyword">import</span> os
+---
+<pre class="language-python" contenteditable="false" data-mce-highlighted="true" data-mce-selected="1">
+import http.server
+import socketserver
+import os
 
-DIRECTORY<span class="token operator">=</span> <span class="token string">"&lt;location-of-the-extracted-zip-file&gt;/LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}/html"</span>
-BASE_URL <span class="token operator">=</span> <span class="token string">"/{doi_prefix}/{doi_suffix}.{issue_id:05d}"</span>
+DIRECTORY= "&lt;location-of-the-extracted-zip-file&gt;/LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}/html"
+BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
 
-<span class="token keyword">class</span> <span class="token class-name">CustomHandler</span><span class="token punctuation">(</span>http<span class="token punctuation">.</span>server<span class="token punctuation">.</span>SimpleHTTPRequestHandler<span class="token punctuation">)</span><span class="token punctuation">:</span>
-    <span class="token keyword">def</span> <span class="token function">translate_path</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> path<span class="token punctuation">)</span><span class="token punctuation">:</span>
-        <span class="token comment"># Remove the base URL prefix from the path</span>
-        <span class="token keyword">if</span> path<span class="token punctuation">.</span>startswith<span class="token punctuation">(</span>BASE_URL<span class="token punctuation">)</span><span class="token punctuation">:</span>
-            path <span class="token operator">=</span> path<span class="token punctuation">[</span><span class="token builtin">len</span><span class="token punctuation">(</span>BASE_URL<span class="token punctuation">)</span><span class="token punctuation">:</span><span class="token punctuation">]</span>
-        <span class="token comment"># Serve files from the specified directory</span>
-        path <span class="token operator">=</span> os<span class="token punctuation">.</span>path<span class="token punctuation">.</span>join<span class="token punctuation">(</span>DIRECTORY<span class="token punctuation">,</span> path<span class="token punctuation">.</span>lstrip<span class="token punctuation">(</span><span class="token string">"/"</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
-        <span class="token keyword">return</span> path
+class CustomHandler(http.server.SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        # Remove the base URL prefix from the path
+        if path.startswith(BASE_URL):
+            path = path[len(BASE_URL):]
+        # Serve files from the specified directory
+        path = os.path.join(DIRECTORY, path.lstrip("/"))
+        return path
 
-    <span class="token keyword">def</span> <span class="token function">do_GET</span><span class="token punctuation">(</span>self<span class="token punctuation">)</span><span class="token punctuation">:</span>
-        <span class="token comment"># Check if the requested file exists</span>
-        file_path <span class="token operator">=</span> self<span class="token punctuation">.</span>translate_path<span class="token punctuation">(</span>self<span class="token punctuation">.</span>path<span class="token punctuation">)</span>
-        <span class="token keyword">if</span> <span class="token keyword">not</span> os<span class="token punctuation">.</span>path<span class="token punctuation">.</span>exists<span class="token punctuation">(</span>file_path<span class="token punctuation">)</span><span class="token punctuation">:</span>
-            <span class="token comment"># If file doesn't exist, try appending `.html`</span>
-            file_path <span class="token operator">+=</span> <span class="token string">".html"</span>
-            <span class="token keyword">if</span> os<span class="token punctuation">.</span>path<span class="token punctuation">.</span>exists<span class="token punctuation">(</span>file_path<span class="token punctuation">)</span><span class="token punctuation">:</span>
-                <span class="token comment"># Update the path to point to the .html file</span>
-                self<span class="token punctuation">.</span>path <span class="token operator">+=</span> <span class="token string">".html"</span>
-        <span class="token comment"># Call the parent class's GET handler</span>
-        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>do_GET<span class="token punctuation">(</span><span class="token punctuation">)</span>
+    def do_GET(self):
+        # Check if the requested file exists
+        file_path = self.translate_path(self.path)
+        if not os.path.exists(file_path):
+            # If file doesn't exist, try appending `.html`
+            file_path += ".html"
+            if os.path.exists(file_path):
+                # Update the path to point to the .html file
+                self.path += ".html"
+        # Call the parent class's GET handler
+        super().do_GET()
 
-<span class="token comment"># Set the port for the server</span>
-PORT <span class="token operator">=</span> <span class="token number">8000</span>
+# Set the port for the server
+PORT = 8000
 
-<span class="token keyword">with</span> socketserver<span class="token punctuation">.</span>TCPServer<span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token string">""</span><span class="token punctuation">,</span> PORT<span class="token punctuation">)</span><span class="token punctuation">,</span> CustomHandler<span class="token punctuation">)</span> <span class="token keyword">as</span> httpd<span class="token punctuation">:</span>
-    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f"Serving at http://localhost:</span><span class="token interpolation"><span class="token punctuation">{{</span>PORT<span class="token punctuation">}}</span></span><span class="token interpolation"><span class="token punctuation">{{</span>BASE_URL<span class="token punctuation">}}</span></span><span class="token string">"</span></span><span class="token punctuation">)</span>
-    httpd<span class="token punctuation">.</span>serve_forever<span class="token punctuation">(</span><span class="token punctuation">)</span>
- </pre>
+with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
+    print(f"Serving at http://localhost:{{PORT}}{{BASE_URL}}")
+    httpd.serve_forever()
+</pre>
+---
 
 <p>Then you can run the script (<code>python serve_preprint.py</code>) and open the given URL in your browser.</p>
 
