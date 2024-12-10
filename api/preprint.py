@@ -39,6 +39,8 @@ ZENODO_RECORDS_FOLDER = preprint_config['ZENODO_RECORDS_FOLDER']
 ZENODO_ARCHIVES_FOLDER = preprint_config['ZENODO_ARCHIVES_FOLDER']
 SERVER_SLUG = preprint_config['SERVER_SLUG']
 
+PREPRINT_SERVER = f"https://{preprint_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}"
+
 """
 Helper functions for the tasks
 performed by the preprint (production server).
@@ -82,17 +84,63 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
 
     if (archive_type == 'book'):
         data["metadata"]["upload_type"] = "other"
-        data["metadata"]["description"] = f"{JOURNAL_NAME} Living Preprint built at this {libre_text}, based on the {user_text}. {review_text} {sign_text}"
+        template = load_txt_file('templates/zenodo_book_description.md')
+        data["metadata"]["description"] = template.format(
+            journal_name=JOURNAL_NAME,
+            libre_text=libre_text,
+            preprint_server=PREPRINT_SERVER,
+            user_text=user_text,
+            repository_url=repository_url,
+            fork_url=fork_url,
+            review_text=review_text,
+            sign_text=sign_text,
+            doi_prefix=DOI_PREFIX,
+            doi_suffix=DOI_SUFFIX,
+            issue_id=int(issue_id),
+            commit_fork=commit_fork[:6])
     elif (archive_type == 'data'):
         data["metadata"]["upload_type"] = "dataset"
-        # TODO: USE OpenAI API here to explain data.
-        data["metadata"]["description"] = f"Dataset provided for {JOURNAL_NAME} preprint.\n Author repo: {repository_url} \n{JOURNAL_NAME} fork:{fork_url} {review_text}  {sign_text}"
+        template = load_txt_file('templates/zenodo_data_description.md')
+        data["metadata"]["description"] = template.format(
+            journal_name=JOURNAL_NAME,
+            repository_url=repository_url,
+            fork_url=fork_url,
+            review_text=review_text,
+            sign_text=sign_text,
+            preprint_server=PREPRINT_SERVER,
+            doi_prefix=DOI_PREFIX,
+            doi_suffix=DOI_SUFFIX,
+            issue_id=int(issue_id))
     elif (archive_type == 'repository'):
         data["metadata"]["upload_type"] = "software"
-        data["metadata"]["description"] = f"GitHub archive of the {libre_text}, based on the {user_text}. {review_text} {sign_text}"
+        template = load_txt_file('templates/zenodo_repository_description.md')
+        data["metadata"]["description"] = template.format(
+            journal_name=JOURNAL_NAME,
+            libre_text=libre_text,
+            preprint_server=PREPRINT_SERVER,
+            repository_url=repository_url,
+            fork_url=fork_url,
+            user_text=user_text,
+            review_text=review_text,
+            sign_text=sign_text,
+            doi_prefix=DOI_PREFIX,
+            doi_suffix=DOI_SUFFIX,
+            issue_id=int(issue_id),
+            commit_fork=commit_fork[:6])
     elif (archive_type == 'docker'):
         data["metadata"]["upload_type"] = "software"
-        data["metadata"]["description"] = f"Docker image built from the {libre_text}, based on the {user_text}, using repo2docker (through BinderHub). <br> To run locally: <ol> <li><pre><code class=\"language-bash\">docker load < DockerImage_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz</code><pre></li><li><pre><code class=\"language-bash\">docker run -it --rm -p 8888:8888 DOCKER_IMAGE_ID jupyter lab --ip 0.0.0.0</code></pre> </li></ol> <p><strong>by replacing <code>DOCKER_IMAGE_ID</code> above with the respective ID of the Docker image loaded from the zip file.</strong></p> {review_text} {sign_text}"
+        template = load_txt_file('templates/zenodo_docker_description.md')
+        data["metadata"]["description"] = template.format(
+            journal_name=JOURNAL_NAME,
+            libre_text=libre_text,
+            preprint_server=PREPRINT_SERVER,
+            user_text=user_text,
+            review_text=review_text,
+            sign_text=sign_text,
+            doi_prefix=DOI_PREFIX,
+            doi_suffix=DOI_SUFFIX,
+            issue_id=int(issue_id),
+            commit_fork=commit_fork[:6])
 
     # Make an empty deposit to create the bucket
     r = requests.post("https://zenodo.org/api/deposit/depositions",

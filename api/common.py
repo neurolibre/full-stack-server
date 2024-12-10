@@ -551,3 +551,7 @@ def write_log(owner, repo, log_type, log_content, info_dict=None):
 
     # Return the path to the log file for the UI (api/logs/<path:file_path>)
     return f"{log_type}/{owner}/{repo}/{now}.log"
+
+def load_txt_file(file_path):
+    with open(file_path, 'r') as file:
+        return file.read()
