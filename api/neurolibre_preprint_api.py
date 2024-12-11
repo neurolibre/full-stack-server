@@ -351,12 +351,21 @@ def api_zenodo_post(user,id,repository_url):
     github_client = Github(GH_BOT)
     issue_id = id
 
-    data_archive_exists = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"data-archive")
+    # data_archive_exists = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"data-archive")
+    data_archive_value = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"data-archive")
+    docker_archive_value = gh_read_from_issue_body(github_client,REVIEW_REPOSITORY,issue_id,"docker-archive")
 
-    if data_archive_exists:
-        archive_assets = ["book","repository","docker"]
-    else:
-        archive_assets = ["book","repository","data","docker"]
+    archive_assets = ['repository', 'book']
+
+    if docker_archive_value is None:
+        # The value is None only when the value on the issue body is Pending.
+        # If anything else, it will not be considered for archival.
+        archive_assets.append('docker')
+
+    if data_archive_value is None:
+        # The value is None only when the value on the issue body is Pending.
+        # If anything else, it will not be considered for archival.
+        archive_assets.append('data')
 
     # We need the list of authors and their ORCID, this will 
     # be fetched from the paper.md in the tarhet repository
