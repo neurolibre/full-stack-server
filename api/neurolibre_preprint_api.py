@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
-     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task
+     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task, myst_upload_task
 from github import Github
 import yaml
 from screening_client import ScreeningClient
@@ -782,6 +782,26 @@ def api_binder_build(user,id,repository_url):
     return response
 
 docs.register(api_binder_build)
+
+
+@app.route('/api/zenodo/upload/myst', methods=['POST'],endpoint='zenodo_upload_myst')
+@preprint_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description=f'Upload MyST build to Zenodo for a given repo.', tags=['Zenodo'])
+@use_kwargs(IdUrlSchema())
+def api_zenodo_upload_myst(user,id,repository_url):
+    fname = f"zenodo_deposit_{JOURNAL_NAME}_{id:05d}.json"
+    local_file = os.path.join(get_deposit_dir(id), fname)
+    with open(local_file, 'r') as f:
+        zenodo_record = json.load(f)
+    # Fetch bucket url of the requested type of item
+    extra_payload = dict(bucket_url=zenodo_record['book']['links']['bucket'])
+    screening = ScreeningClient(task_name="Upload MyST build assets to Zenodo", 
+                                issue_id=id, 
+                                target_repo_url=repository_url,
+                                **extra_payload)
+    response = screening.start_celery_task(myst_upload_task)
+    return response
 
 
 @app.route('/api/pdf/draft', methods=['POST'])

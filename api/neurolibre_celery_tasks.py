@@ -1281,6 +1281,51 @@ def preprint_build_pdf_draft(self, payload):
 # ---------------------------------------------------------------------------------
 
 @celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
+def myst_upload_task(self, screening_dict):
+    task = BaseNeuroLibreTask(self, screening_dict)
+    # Check if there is a latest.txt file in the myst build folder of the forked repo on the preview server.
+    response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/latest.txt")
+    latest_commit = None
+    record_name = item_to_record_name("book")
+
+    if response.status_code == 200:
+        # If there is, double check that there's a myst website.
+        # Here response.text is the commit hash.
+        latest_commit = response.text
+        response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/{latest_commit}/_build/html/index.html")
+        
+        if response.status_code == 200:
+            remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], MYST_FOLDER,GH_ORGANIZATION, task.repo_name,latest_commit,"_build" + "*")
+            # Sync all the myst build files to the production server.
+            process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+            output = process.communicate()[0]
+            ret = process.wait()
+            if ret == 0:
+                local_path = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,GH_ORGANIZATION,task.repo_name,latest_commit,"_build")
+                zenodo_file = os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{latest_commit[0:6]}")
+                shutil.make_archive(zenodo_file, 'zip', local_path)
+                zpath = zenodo_file + ".zip"
+                # Upload to zenodo
+                response = zenodo_upload_item(zpath,task.screening.bucket_url,task.screening.issue_id,latest_commit,"book")
+                if (isinstance(response, requests.Response)):
+                    if (response.status_code > 300):
+                        task.fail(f"⛔️ Failed to upload book to Zenodo: {response.text}")
+                    elif (response.status_code < 300):
+                        tmp = f"zenodo_uploaded_book_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{latest_commit[0:6]}.json"
+                        log_file = os.path.join(get_deposit_dir(task.screening.issue_id), tmp)
+                        with open(log_file, 'w') as outfile:
+                            json.dump(response.json(), outfile)
+                        task.succeed(f"🌺 Book upload for {task.owner_name}/{task.repo_name} at {latest_commit[0:6]} has succeeded.")
+                elif (isinstance(response, str)):
+                    task.fail(f"⛔️ Failed to upload book to Zenodo: {response}")
+                elif response is None:
+                    task.fail(f"⛔️ Failed to upload book to Zenodo: {response}")
+            else:
+                task.fail(f"⛔️ Failed to sync production html/site/execute/template assets to production server: {output}")
+    else:
+        task.fail(f"⛔️ Failed to upload MyST build assets to zenodo as none found for {GH_ORGANIZATION}/{task.repo_name} {response.text}")
+
+@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
 def binder_build_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
