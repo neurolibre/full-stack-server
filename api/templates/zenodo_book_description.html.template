@@ -23,22 +23,18 @@
 
 <p>This is because the static HTML assets were built with a base URL following the DOI format. 
 
-As a workaround (assuming you have python installed), you can simply modify the <code>serve_preprint.py</code> python script that is included in the zip file:</p>
+To render your preprint properly, you can simply run the <code>serve_preprint.py</code> python script that is included in the archive:</p>
 
 ---
 <pre class="language-python" contenteditable="false" data-mce-highlighted="true" data-mce-selected="1">
-import http.server
-import socketserver
-import os
 
-DIRECTORY= "&lt;location-of-the-extracted-zip-file&gt;/LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}/html"
-BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
+cd &lt;location-of-the-extracted-zip-file&gt;/LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}
+python serve_preprint.py
 
-# ... rest of the script
 </pre>
 ---
 
-<p>Then you can run the script (<code>python serve_preprint.py</code>) and open the given URL in your browser.</p>
+<p>Then you can open the given URL in your browser. The preprint should look like its published version!</p>
 
 <p>Note: The <code>site</code> folder contains the living preprint as structured data (in <code>json</code> format), which is being used by {journal_name} to serve your publication as a dynamic webpage. For more details, please visit the corresponding <a href="https://mystmd.org/guide/deployment">myst documentation</a>.</p>
 

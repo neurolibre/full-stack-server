@@ -2,9 +2,7 @@ import http.server
 import socketserver
 import os
 
-# Please replace <location-of-the-extracted-zip-file> with the actual location of the extracted zip file.
-# You can use / or \ as the separator depending on your OS. 
-DIRECTORY= "<location-of-the-extracted-zip-file>{{os.sep}}LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}{{os.sep}}html"
+DIRECTORY= f"./html"
 BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
 
 class CustomHandler(http.server.SimpleHTTPRequestHandler):
