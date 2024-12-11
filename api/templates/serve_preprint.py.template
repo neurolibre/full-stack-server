@@ -32,5 +32,5 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
 PORT = 8000
 
 with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
-    print(f"Serving at http://localhost:{PORT}{BASE_URL}")
+    print(f"Serving at http://localhost:{{PORT}}{{BASE_URL}}")
     httpd.serve_forever()
