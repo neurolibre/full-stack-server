@@ -1,0 +1,36 @@
+import http.server
+import socketserver
+import os
+
+# Please replace <location-of-the-extracted-zip-file> with the actual location of the extracted zip file.
+# You can use / or \ as the separator depending on your OS. 
+DIRECTORY= "<location-of-the-extracted-zip-file>{{os.sep}}LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}{{os.sep}}html"
+BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
+
+class CustomHandler(http.server.SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        # Remove the base URL prefix from the path
+        if path.startswith(BASE_URL):
+            path = path[len(BASE_URL):]
+        # Serve files from the specified directory
+        path = os.path.join(DIRECTORY, path.lstrip("/"))
+        return path
+
+    def do_GET(self):
+        # Check if the requested file exists
+        file_path = self.translate_path(self.path)
+        if not os.path.exists(file_path):
+            # If file doesn't exist, try appending `.html`
+            file_path += ".html"
+            if os.path.exists(file_path):
+                # Update the path to point to the .html file
+                self.path += ".html"
+        # Call the parent class's GET handler
+        super().do_GET()
+
+# Set the port for the server
+PORT = 8000
+
+with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
+    print(f"Serving at http://localhost:{PORT}{BASE_URL}")
+    httpd.serve_forever()

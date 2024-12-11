@@ -21,7 +21,9 @@
 
 <p>When you open the <code>html/index.html</code> file, you will be able to see the preprint content, however the static webpage components will not be properly loaded.</p>
 
-<p>This is because the static HTML assets were built with a base URL following the DOI format. As a workaround, you can simply modify the following python script and save it as <code>serve_preprint.py</code>:</p>
+<p>This is because the static HTML assets were built with a base URL following the DOI format. 
+
+As a workaround (assuming you have python installed), you can simply modify the <code>serve_preprint.py</code> python script that is included in the zip file:</p>
 
 ---
 <pre class="language-python" contenteditable="false" data-mce-highlighted="true" data-mce-selected="1">
@@ -32,33 +34,7 @@ import os
 DIRECTORY= "&lt;location-of-the-extracted-zip-file&gt;/LivingPreprint_{doi_prefix}_{doi_suffix}_{journal_name}_{issue_id:05d}_{commit_fork}/html"
 BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
 
-class CustomHandler(http.server.SimpleHTTPRequestHandler):
-    def translate_path(self, path):
-        # Remove the base URL prefix from the path
-        if path.startswith(BASE_URL):
-            path = path[len(BASE_URL):]
-        # Serve files from the specified directory
-        path = os.path.join(DIRECTORY, path.lstrip("/"))
-        return path
-
-    def do_GET(self):
-        # Check if the requested file exists
-        file_path = self.translate_path(self.path)
-        if not os.path.exists(file_path):
-            # If file doesn't exist, try appending `.html`
-            file_path += ".html"
-            if os.path.exists(file_path):
-                # Update the path to point to the .html file
-                self.path += ".html"
-        # Call the parent class's GET handler
-        super().do_GET()
-
-# Set the port for the server
-PORT = 8000
-
-with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
-    print(f"Serving at http://localhost:{{PORT}}{{BASE_URL}}")
-    httpd.serve_forever()
+# ... rest of the script
 </pre>
 ---
 

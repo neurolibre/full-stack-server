@@ -1288,6 +1288,8 @@ def myst_upload_task(self, screening_dict):
     latest_commit = None
     record_name = item_to_record_name("book")
 
+    task.start("🔄 Checking if there's a myst build on the preview server.")
+
     if response.status_code == 200:
         # If there is, double check that there's a myst website.
         # Here response.text is the commit hash.
@@ -1295,6 +1297,7 @@ def myst_upload_task(self, screening_dict):
         response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/{latest_commit}/_build/html/index.html")
         
         if response.status_code == 200:
+            task.start("🔄 Syncing MyST build to production server.")
             remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], MYST_FOLDER,GH_ORGANIZATION, task.repo_name,latest_commit,"_build" + "*")
             # Sync all the myst build files to the production server.
             process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -1302,6 +1305,17 @@ def myst_upload_task(self, screening_dict):
             ret = process.wait()
             if ret == 0:
                 local_path = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,GH_ORGANIZATION,task.repo_name,latest_commit,"_build")
+                template = load_txt_file('templates/serve_preprint.py.template')
+                py_content = template.format(
+                    journal_name=JOURNAL_NAME,
+                    doi_prefix=DOI_PREFIX,
+                    doi_suffix=DOI_SUFFIX,
+                    issue_id=int(task.screening.issue_id),
+                    commit_fork=latest_commit[:6])
+
+                with open(os.path.join(local_path, 'serve_preprint.py'), 'w') as f:
+                    f.write(py_content)
+
                 zenodo_file = os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{latest_commit[0:6]}")
                 shutil.make_archive(zenodo_file, 'zip', local_path)
                 zpath = zenodo_file + ".zip"
