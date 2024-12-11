@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #4CAF50;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .content {
+            padding: 20px;
+            color: #333333;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            font-size: 20px;
+            margin-top: 0;
+        }
+
+        .content p {
+            margin: 10px 0;
+        }
+
+        .content a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .footer {
+            background-color: #f4f4f4;
+            text-align: center;
+            padding: 10px 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        @media (max-width: 600px) {
+            .content h2 {
+                font-size: 18px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>Task Submission Notification</h1>
+        </div>
+
+        <div class="content">
+            <h2>Hello [Recipient's Name],</h2>
+            <p>We are excited to inform you that a task has been successfully submitted to the server.</p>
+
+            <p><strong>Task Details:</strong></p>
+            <ul>
+                <li><strong>Task Name:</strong> [Task Name]</li>
+                <li><strong>Submitted By:</strong> [Submitter's Name]</li>
+                <li><strong>Submission Time:</strong> [Submission Time]</li>
+            </ul>
+
+            <p>You can view the task details or track its progress by clicking the button below:</p>
+
+            <p style="text-align: center;">
+                <a href="[Task URL]" style="background-color: #4CAF50; color: #ffffff; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-size: 16px;">View Task</a>
+            </p>
+
+            <p>If you have any questions or need assistance, please do not hesitate to <a href="[Support URL]">contact support</a>.</p>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for using our service. <a href="[Website URL]">Visit our website</a></p>
+        </div>
+    </div>
+</body>
+</html>

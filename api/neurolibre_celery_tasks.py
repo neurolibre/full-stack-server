@@ -139,29 +139,36 @@ class BaseNeuroLibreTask:
             raise ValueError("Either screening or payload must be provided.")
 
     def start(self, message=""):
-        self.screening.respond.STARTED(message)
-        self.update_state(states.STARTED, {'message': message})
+        if self.screening.issue_id is not None:
+            self.screening.respond.STARTED(message)
+            self.update_state(states.STARTED, {'message': message})
 
     def fail(self, message, attachment_path=None):
-        if attachment_path and os.path.exists(attachment_path):
-            # Create comment with file attachment
-            self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=True)
-        else:
-            # Original failure response
-            self.screening.respond.FAILURE(message, collapsable=False)
-            
-        self.update_state(state=states.FAILURE, meta={
-            'exc_type': f"{JOURNAL_NAME} celery exception",
-            'exc_message': "Custom", 
-            'message': message
-        })
-        raise Ignore()
+        if self.screening.issue_id is not None:
+            if attachment_path and os.path.exists(attachment_path):
+                # Create comment with file attachment
+                self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=True)
+            else:
+                # Original failure response
+                self.screening.respond.FAILURE(message, collapsable=False)
+                
+            self.update_state(state=states.FAILURE, meta={
+                'exc_type': f"{JOURNAL_NAME} celery exception",
+                'exc_message': "Custom", 
+                'message': message
+            })
+            raise Ignore()
+
+    def email_user(self, message):
+        if self.screening.email_address is not None:
+            self.screening.send_user_email(message)
 
     def succeed(self, message, collapsable=True, attachment_path=None):
-        if attachment_path:
-            self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
-        else:
-            self.screening.respond.SUCCESS(message, collapsable=collapsable)
+        if self.screening.issue_id is not None:
+            if attachment_path:
+                self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
+            else:
+                self.screening.respond.SUCCESS(message, collapsable=collapsable)
 
     def update_state(self, state, meta):
         self.celery_task.update_state(state=state, meta=meta)
@@ -1432,6 +1439,7 @@ def preview_build_myst_task(self, screening_dict):
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
+        task.email_user(f"PREVIEW MyST build for {task.owner_name}/{task.repo_name} has been started. \n Task ID: {task.task_id}")
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
@@ -1471,7 +1479,8 @@ def preview_build_myst_task(self, screening_dict):
         else:
             if (not noexec) and is_prod:
                 task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
-                logging.error(f"⛔️ NOT FOUND {rees_resources.found_image_name}")
+                task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. \n See more at {PREVIEW_BINDERHUB}")
+                logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
         
         hub = JupyterHubLocalSpawner(rees_resources,
                                 host_build_source_parent_dir = task.join_myst_path(),
@@ -1488,7 +1497,7 @@ def preview_build_myst_task(self, screening_dict):
             task.start("🎉 Successfully cloned the repository.")
         else:
             task.fail(f"⛔️ Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
-        
+            task.email_user(f"⛔️ Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
         # Initialize the builder
         task.start("Warming up the myst builder...")   
         builder = MystBuilder(hub=hub)
@@ -1611,10 +1620,11 @@ def preview_build_myst_task(self, screening_dict):
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
                 task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
+                task.email_user(f"🚀 PREVIEW 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n Remember to take a look at the <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>build logs</a> to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.")
         else:
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
-            task.fail(f"MyST build failed did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to locate the error.")
-
+            task.fail(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to locate the error.")
+            task.email_user(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>build logs</a> to locate the error.")
     finally:
         cleanup_hub(hub)
 

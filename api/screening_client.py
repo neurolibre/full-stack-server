@@ -6,7 +6,7 @@ import json
 import yaml
 import git
 from github import Github, InputFileContent
-from common  import load_yaml
+from common  import load_yaml, send_email
 from dotenv import load_dotenv
 from flask import jsonify, make_response
 
@@ -15,12 +15,14 @@ load_dotenv()
 common_config = load_yaml("config/common.yaml")
 GH_ORGANIZATION = common_config['GH_ORGANIZATION']
 REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
+JOURNAL_NAME = common_config['JOURNAL_NAME']
 
 class ScreeningClient:
-    def __init__(self, task_name, issue_id, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, **extra_payload):
+    def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
+        self.email_address = email_address
         self.review_repository = REVIEW_REPOSITORY
         self.target_repo_url = target_repo_url
         self.commit_hash = commit_hash
@@ -39,9 +41,11 @@ class ScreeningClient:
         else:
             self.repo_object = None
 
-        # If no comment ID is provided, create a new comment with a pending status
-        if self.comment_id is None:
+        if self.issue_id is not None and self.comment_id is None:
             self.comment_id = self.respond.PENDING("Awaiting task assignment...")
+
+        if (self.email_address is not None) and (self.target_repo_url is not None):
+            self.send_user_email(f"We have received a request for {self.target_repo_url}. \n Your task has been queued and we will inform you shortly when the process starts.")
 
     def _init_responder(self):
         class PhaseResponder:
@@ -78,6 +82,7 @@ class ScreeningClient:
         result = {
             'task_name': self.task_name,
             'issue_id': self.issue_id,
+            'email_address': self.email_address,
             'target_repo_url': self.target_repo_url,
             'task_id': self.task_id,
             'comment_id': self.comment_id,
@@ -96,7 +101,7 @@ class ScreeningClient:
 
         if not isinstance(data, dict):
             raise TypeError("Input must be a dictionary or a JSON string")
-        standard_attrs = ['task_name', 'issue_id', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
+        standard_attrs = ['task_name', 'issue_id', 'email_address', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
         standard_dict = {key: data.get(key) for key in standard_attrs}
         extra_payload = {key: value for key, value in data.items() if key not in standard_attrs}
         return cls(**standard_dict, **extra_payload)
@@ -283,3 +288,6 @@ class ScreeningClient:
             self.respond.FAILURE(message, False)
         else:
             self.respond.SUCCESS(message, False)
+    
+    def send_user_email(self, body):
+        send_email(self.email_address, self.task_name, body)
