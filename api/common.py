@@ -339,9 +339,9 @@ def send_email(to_email, subject, body):
         sg = SendGridAPIClient(sg_api_key)
         response = sg.send(message)
         print("Email sent successfully!")
-        print(response.status_code)
-        print(response.body)
-        print(response.headers)
+        # print(response.status_code)
+        # print(response.body)
+        # print(response.headers)
     except Exception as e:
         print("Error sending email:", str(e))
 
@@ -374,9 +374,9 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
         sg = SendGridAPIClient(sg_api_key)
         response = sg.send(message)
         print("Email sent successfully!")
-        print(response.status_code)
-        print(response.body)
-        print(response.headers)
+        # print(response.status_code)
+        # print(response.body)
+        # print(response.headers)
     except Exception as e:
         print("Error sending email:", str(e))
 

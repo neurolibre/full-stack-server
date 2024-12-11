@@ -1418,9 +1418,10 @@ def preview_build_myst_task(self, screening_dict):
     all_logs_dict["is_prod"] = is_prod
 
     # No docker archive signals no user-defined runtime.
-    docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
-    if docker_archive_value == "N/A":
-        noexec = True
+    if task.screening.issue_id is not None:
+        docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
+        if docker_archive_value == "N/A":
+            noexec = True
 
     noexec = True if task.screening.binder_hash in ["noexec"] else False
     
