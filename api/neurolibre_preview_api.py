@@ -238,6 +238,7 @@ def api_myst_build_robo(user, repo_url, commit_hash, email):
     """
     This endpoint is used by robo.neurolibre.org.
     """
+    repo_url = gh_filter(repo_url,return_url=True)
     [owner, repo, _] =  get_owner_repo_provider(repo_url)
     extra_payload = dict(is_prod=False, commit_hash="latest", binder_hash=commit_hash)
     screening = ScreeningClient(task_name=f"{JOURNAL_NAME} build request for {owner}/{repo}", 

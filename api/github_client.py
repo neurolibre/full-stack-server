@@ -37,7 +37,7 @@ def gh_response_template(task_name,task_id,issue_id,comment_id,message="",collap
                 exists = f"&#128995; **{task_name}** \n ---------------------------- \n  **Status:** Already exists `{task_id[0:8]}` \n **Last updated:** {cur_time} \n {message}")
     return response_template
 
-def gh_filter(input_str):
+def gh_filter(input_str,return_url=False):
     """
     Returns repository name in owner/repository_name format
     """
@@ -46,9 +46,12 @@ def gh_filter(input_str):
     if match:
         owner = match.group(1)
         repo_name = match.group(2)
-        return f"{owner}/{repo_name}"
+        repo_id = f"{owner}/{repo_name}"
     else:
-        return input_str
+        repo_id = input_str
+    if return_url:
+        return f"https://github.com/{repo_id}"
+    return repo_id
 
 def gh_forkify_it(input_str):
     """
