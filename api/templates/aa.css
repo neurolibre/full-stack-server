@@ -1,0 +1,13 @@
+.env-var { color: #c45c3c; }
+.hash { color: #9cdcfe; }
+.pushing { color: #4EC9B0; font-weight: bold; }
+.timestamp { color: #569cd6; font-weight: bold; }
+.error { color: #f44747; }
+.warning { color: #dcdcaa; }
+.info { color: #6a9955; }
+.debug { color: #808080; }
+.url { color: #569cd6; text-decoration: underline; }
+.number { color: #b5cea8; }
+.success { color: #6a9955; font-weight: bold; }
+.json { color: #ce9178; }
+.bracket-content { color: #569cd6; }

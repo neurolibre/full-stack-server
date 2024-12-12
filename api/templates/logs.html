@@ -386,8 +386,9 @@
                     root: [
                         // Pushing image messages
                         [/\b(?:Pushing image)\b.*$/, 'pushing'],
-                        [/\b[A-Z][A-Z0-9_]+\b/, 'env-var'],
-                        
+                        [/\b[A-Z]{3,}(?:_[A-Z0-9]+)*\b/, 'env-var'],
+                        [/\b[A-Z]{3,}(?![a-z_])\b/, 'caps-word'], 
+                        [/\b[a-f0-9]{7,40}\b/i, 'hash'],
                         // Timestamps
                         [/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'timestamp'],
                         
@@ -427,17 +428,19 @@
                 inherit: true,
                 rules: [
                     { token: 'env-var', foreground: 'c45c3c' },
+                    { token: 'caps-word', foreground: '49cef3' },
+                    { token: 'hash', foreground: 'cfec4d' },
                     { token: 'pushing', foreground: '4EC9B0', fontStyle: 'bold' },
-                    { token: 'timestamp', foreground: '569cd6', fontStyle: 'bold' },
+                    { token: 'timestamp', foreground: 'dbea0d', fontStyle: 'bold' },
                     { token: 'error', foreground: 'f44747' },
                     { token: 'warning', foreground: 'dcdcaa' },
                     { token: 'info', foreground: '6a9955' },
-                    { token: 'debug', foreground: '808080' },
+                    { token: 'debug', foreground: 'aaf8e8' },
                     { token: 'url', foreground: '569cd6', fontStyle: 'underline' },
                     { token: 'number', foreground: 'b5cea8' },
                     { token: 'success', foreground: '6a9955', fontStyle: 'bold' },
                     { token: 'json', foreground: 'ce9178' },
-                    { token: 'bracket-content', foreground: '569cd6' }
+                    { token: 'bracket-content', foreground: 'd656c7' }
                 ],
                 colors: {
                     'editor.background': '#252526'
