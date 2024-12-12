@@ -180,7 +180,7 @@
                     <div class="banner-title">NeuroLibre Log Viewer</div>
                     <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
                     <div class="banner-details" id="bannerDetails">
-                        <i class="fas fa-info-circle"></i> Right click or F1 to see the command palette
+                        <i class="fas fa-lightbulb"></i> Right click or F1 to see the command palette
                     </div>
                 </div>
             </div>
@@ -237,8 +237,8 @@
             const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
             if (pathMatch) {
                 const [parent, owner, repo, fileName] = pathMatch;
-                const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
-                subtitleElement.textContent = subtitle;
+                const subtitle = parent.includes('binder') ? '<i class="fas fa-info-circle"></i> BinderHub Build Logs' : '<i class="fas fa-info-circle"></i> MyST Build Logs';
+                subtitleElement.innerHTML = subtitle;
             }
         });
 
