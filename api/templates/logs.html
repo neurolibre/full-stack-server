@@ -373,6 +373,14 @@
             }
         }
 
+        const converter = new showdown.Converter({
+            tables: true,
+            strikethrough: true,
+            tasklists: true,
+            code: true,
+            emoji: true
+        });
+
         // Initialize chat with log analysis
         async function initializeChat() {
             try {
@@ -389,7 +397,13 @@
                 // Update the message instead of removing/adding
                 const firstMessage = messages.querySelector('.chat-message.bot');
                 if (firstMessage) {
-                    firstMessage.textContent = response;
+                    try {
+                        const htmlContent = converter.makeHtml(response);
+                        firstMessage.innerHTML = htmlContent;
+                    } catch (error) {
+                        console.error('Markdown parsing error:', error);
+                        firstMessage.textContent = response;  // Fallback to plain text
+                    }
                 } else {
                     messages.innerHTML = `<div class="chat-message bot">${response}</div>`;
                 }
@@ -511,15 +525,6 @@
                 sendMessage();
             }
         }
-
-
-        const converter = new showdown.Converter({
-            tables: true,
-            strikethrough: true,
-            tasklists: true,
-            code: true,
-            emoji: true
-        });
 
         function addMessage(text, type) {
             const messages = document.getElementById('chatMessages');
