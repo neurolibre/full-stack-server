@@ -194,6 +194,35 @@
             margin: 0 0 8px 0;
             padding-left: 20px;
         }
+
+        .tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            bottom: 80px;
+            right: 70px;
+            width: 200px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            right: 20px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
 </head>
@@ -228,12 +257,15 @@
     </div>
     
     <div class="chat-widget">
+        <div class="tooltip" id="chatTooltip">
+            👋 Hi! I'm Theo, your AI log assistant. Click me if you need help understanding the logs!
+        </div>
         <button class="chat-button" onclick="toggleChat()">
             <i class="fas fa-paw"></i>
         </button>
         <div class="chat-panel" id="chatPanel">
             <div class="chat-header">
-                <div class="chat-title">Theo the LogCat</div>
+                <div class="chat-title">Theo the purrfect LogCat</div>
                 <div class="chat-close" onclick="toggleChat()">
                     <i class="fas fa-times"></i>
                 </div>
@@ -265,6 +297,17 @@
                 const subtitle = parent.includes('binder') ? '<i class="fas fa-info-circle"></i> BinderHub Build Logs' : '<i class="fas fa-info-circle"></i> MyST Build Logs';
                 subtitleElement.innerHTML = subtitle;
             }
+
+            // Show tooltip
+            const tooltip = document.getElementById('chatTooltip');
+            setTimeout(() => {
+                tooltip.classList.add('show');
+            }, 1000);
+
+            // Hide tooltip after 5 seconds
+            setTimeout(() => {
+                tooltip.classList.remove('show');
+            }, 12000);
         });
 
         function downloadLog() {
