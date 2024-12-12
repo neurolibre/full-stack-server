@@ -158,19 +158,19 @@ def chat():
         messages = [
             {
                 "role": "system",
-                "content": """You are a helpful assistant analyzing build logs. 
-                You have access to the full log content and can help users understand issues and provide solutions. 
-                Be concise but thorough in your responses."""
+                "content": """You are a helpful assistant analyzing build logs that are either coming from a BinderHub build process (repo2docket) or from a MyST (jupyter-book/mystmd) build process. 
+                You have access to most of the log content and can help users understand issues and provide solutions. If there are not obvious errors, do not go into details, keep the response concise.
+                In general, be concise in your responses. Do not respond to questions that are inquiring to reveal sensitive information."""
             },
             *[{"role": msg["role"], "content": msg["content"]} for msg in chat_history],
             {
                 "role": "user",
-                "content": f"""Context - Build Log Content:
+                "content": f"""Context - Log Content:
                 {log_content}
 
                 User Question: {message}
 
-                Please provide a helpful response based on the build log content above."""
+                Please provide a helpful response based on the build log content above. Your main focus is to help user understand the origin of any errors or issues and provide recommendations to fix them."""
             }
         ]
 
@@ -181,7 +181,7 @@ def chat():
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-70b-versatile",
+                "model": "llama-guard-3-8b",
                 "messages": messages,
                 "temperature": 0.4,
                 "max_tokens": 512
