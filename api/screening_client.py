@@ -18,7 +18,7 @@ REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 JOURNAL_NAME = common_config['JOURNAL_NAME']
 
 class ScreeningClient:
-    def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, **extra_payload):
+    def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, notify_target=False, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
@@ -27,6 +27,7 @@ class ScreeningClient:
         self.target_repo_url = target_repo_url
         self.commit_hash = commit_hash
         self.comment_id = comment_id
+        self.notify_target = notify_target
         self.__extra_payload = extra_payload
         self._init_responder()
 
@@ -41,10 +42,10 @@ class ScreeningClient:
         else:
             self.repo_object = None
 
-        if self.issue_id is not None and self.comment_id is None:
+        if (self.issue_id is not None) and (self.comment_id is None) and (self.notify_target):
             self.comment_id = self.respond.PENDING("Awaiting task assignment...")
 
-        if (self.email_address is not None) and (self.target_repo_url is not None):
+        if (self.email_address is not None) and (self.target_repo_url is not None) and (self.notify_target):
             self.send_user_email(f"We have received a request for {self.target_repo_url}. \n Your task has been queued and we will inform you shortly when the process starts.")
 
     def _init_responder(self):

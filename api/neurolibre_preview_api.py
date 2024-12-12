@@ -237,11 +237,15 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None,
 def api_myst_build_robo(user, repo_url, commit_hash, email):
     """
     This endpoint is used by robo.neurolibre.org.
+    repo_url can be a full URL or just the owner/repo.
+    commit_hash is actually the binder_hash (TODO: Change this)
+    email is the email address of the user who requested the build.
     """
     repo_url = gh_filter(repo_url,return_url=True)
     [owner, repo, _] =  get_owner_repo_provider(repo_url)
-    extra_payload = dict(is_prod=False, commit_hash="latest", binder_hash=commit_hash)
-    screening = ScreeningClient(task_name=f"{JOURNAL_NAME} build request for {owner}/{repo}", 
+    commit_hash_source = format_commit_hash(repo_url,"HEAD")
+    extra_payload = dict(is_prod=False, commit_hash=commit_hash_source, binder_hash=commit_hash)
+    screening = ScreeningClient(task_name=f"{JOURNAL_NAME} build request for {owner}/{repo} {commit_hash_source[0:6]}", 
                                 email_address=email,
                                 target_repo_url=repo_url,
                                 **extra_payload)

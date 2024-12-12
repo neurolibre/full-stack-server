@@ -123,6 +123,7 @@ class BaseNeuroLibreTask:
         if screening:
             # If passed here, must be JSON serialization of ScreeningClient object.
             # We need to unpack these to pass to ScreeningClient to initialize it as an object.
+            screening['notify_target'] = True
             self.screening = ScreeningClient.from_dict(screening)
             self.screening.task_id = self.task_id
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(self.screening.target_repo_url, provider_full_name=True)
@@ -1440,7 +1441,10 @@ def preview_build_myst_task(self, screening_dict):
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
-        task.email_user(f"PREVIEW MyST build for {task.owner_name}/{task.repo_name} has been started. \n Task ID: {task.task_id}")
+        task.email_user(f"""PREVIEW MyST build for {task.owner_name}/{task.repo_name} has been started. <br>
+                            Task ID: {task.task_id} <br>
+                            Commit hash: {task.screening.commit_hash} <br>
+                            Binder hash: {task.screening.binder_hash}""")
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
@@ -1480,7 +1484,7 @@ def preview_build_myst_task(self, screening_dict):
         else:
             if (not noexec) and is_prod:
                 task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
-                task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. \n See more at {PREVIEW_BINDERHUB}")
+                task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. See more at {PREVIEW_BINDERHUB}")
                 logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
         
         hub = JupyterHubLocalSpawner(rees_resources,
@@ -1621,7 +1625,10 @@ def preview_build_myst_task(self, screening_dict):
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
                 task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
-                task.email_user(f"🚀 PREVIEW 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n Remember to take a look at the <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>build logs</a> to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.")
+                task.email_user(
+                    f"""🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! 🌺<br><br>
+                    🌱 Click <a href="{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html">here</a> to view the latest version of your living preprint.<br><br>
+                    👋 Remember to take a look at the <a href="{PREVIEW_SERVER}/api/logs/{log_path}">build logs</a> to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.""")
         else:
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to locate the error.")
