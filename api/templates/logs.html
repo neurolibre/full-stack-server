@@ -400,7 +400,7 @@
                         [/\b(?:DEBUG|Debug|debug)\b.*$/, 'debug'],
                         
                         // URLs and paths
-                        [/(?:https?:\/\/|file:\/\/|\b[\w-]+\.[\w-]+\.[\w-]+)\/[^\s]+/, 'url'], 
+                        [/(?:https?:\/\/)?(?:localhost|\b[\w-]+\.[\w-]+\.[\w-]+|\b[\w-]+\.[\w-]+)\b(?::\d+)?(?:\/[^\s]*)?/, 'url'], 
                         
                         // Numbers and IDs
                         [/\b\d+\b/, 'number'],
