@@ -2,6 +2,9 @@
 <html>
 <head>
     <title>NeuroLibre Logs</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
+            integrity="sha256-m2Wh1DYJx7sUbH5c3QzKV8WK9YY1nQ/5YhPOYJJ6Ug=" 
+            crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         body {
@@ -194,7 +197,6 @@
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -540,6 +542,18 @@
             messages.appendChild(messageDiv);
             messages.scrollTop = messages.scrollHeight;
         }
+
+        window.addEventListener('load', function() {
+            if (typeof marked === 'undefined') {
+                console.error('Marked library failed to load! Loading it dynamically...');
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js';
+                script.onload = () => console.log('Marked library loaded successfully');
+                document.head.appendChild(script);
+            } else {
+                console.log('Marked library loaded successfully');
+            }
+        });
     </script>
 </body>
 </html>
