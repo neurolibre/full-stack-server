@@ -249,7 +249,8 @@
             
             // Extract filename from file_path or use default
             // const filename = '{{ file_path }}'.split('/').pop() || 'log.txt';
-            const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
+            const url_that = window.location.href;
+            const pathMatch = url_that.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
             const [parent, owner, repo, fileName] = pathMatch;
             a.download = fileName;
             
@@ -407,7 +408,7 @@
                         [/\b(?:DEBUG|Debug|debug)\b.*$/, 'debug'],
                         
                         // URLs and paths
-                        [/(?:https?:\/\/|file:\/\/|\/)[^\s]+/, 'url'],
+                        [/(?:https?:\/\/|file:\/\/|\b[\w-]+\.[\w-]+\.[\w-]+)\/[^\s]+/, 'url'], 
                         
                         // Numbers and IDs
                         [/\b\d+\b/, 'number'],
