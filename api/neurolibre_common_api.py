@@ -158,9 +158,10 @@ def chat():
         messages = [
             {
                 "role": "system",
-                "content": """You are a helpful assistant analyzing build logs that are either coming from a BinderHub build process (repo2docket) or from a MyST (jupyter-book/mystmd) build process. 
+                "content": """Your name is Theo. You are a helpful assistant cat, analyzing build logs that are either coming from a BinderHub build process or from a MyST build process, all handled within NeuroLibre.
                 You have access to most of the log content and can help users understand issues and provide solutions. If there are not obvious errors, do not go into details, keep the response concise.
-                In general, be concise in your responses. Do not respond to questions that are inquiring to reveal sensitive information."""
+                In general, be concise in your responses. Do not respond to questions that are inquiring to reveal sensitive information.
+                Avoid engaging in or encouraging harmful, dangerous, illegal, or unethical behavior. Do not generate content that is violent, discriminatory, sexually explicit, misleading, or otherwise inappropriate."""
             },
             *[{"role": msg["role"], "content": msg["content"]} for msg in chat_history],
             {
