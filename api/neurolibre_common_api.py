@@ -181,10 +181,10 @@ def chat():
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-guard-3-8b",
+                "model": "llama-3.3-70b-versatile",
                 "messages": messages,
                 "temperature": 0.4,
-                "max_tokens": 512
+                "max_tokens": 256
             },
             timeout=30  # Add timeout
         )
