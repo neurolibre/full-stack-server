@@ -184,6 +184,14 @@
                     </div>
                 </div>
             </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <input type="checkbox" id="syntaxToggle" checked 
+                           style="cursor: pointer;" 
+                           onchange="toggleSyntaxHighlighting(this.checked)">
+                    <span style="color: #d4d4d4;">Syntax Highlighting</span>
+                </label>
+            </div>
             <div class="file-info">
                 {{ file_path }}
             </div>
@@ -220,6 +228,7 @@
     <script>
         const content = {{ content | safe }};
         let chatHistory = [];  // Store chat history
+        let editor;
 
         window.addEventListener('load', function() {
             const subtitleElement = document.getElementById('bannerSubtitle');
@@ -443,7 +452,7 @@
             });
 
             // Create editor with custom language and theme
-            monaco.editor.create(document.getElementById('monaco-container'), {
+            editor = monaco.editor.create(document.getElementById('monaco-container'), {
                 value: content,
                 language: 'colorful-log',
                 theme: 'colorful-log-theme',
@@ -462,6 +471,14 @@
         function toggleChat() {
             const panel = document.getElementById('chatPanel');
             panel.classList.toggle('active');
+        }
+
+        function toggleSyntaxHighlighting(enabled) {
+        if (editor) {
+            editor.updateOptions({
+                language: enabled ? 'colorful-log' : 'plaintext'
+            });
+            }
         }
 
         function handleKeyPress(event) {
