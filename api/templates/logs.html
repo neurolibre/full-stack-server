@@ -180,18 +180,18 @@
                     <div class="banner-title">NeuroLibre Log Viewer</div>
                     <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
                     <div class="banner-details" id="bannerDetails">
-                        <span>Owner: </span>
-                        <span>Repo: </span>
-                        <span>File: </span>
+                        <span><b>Owner:</b></span>
+                        <span><b>Repo:</b></span>
+                        <span><b>File:</b></span>
                     </div>
                 </div>
             </div>
             <div class="file-info">
                 {{ file_path }}
             </div>
-            <a href="{{ file_path }}" download class="download-button" style="margin-left: 15px; padding: 8px 12px; background-color: #0078d4; color: white; border-radius: 4px; text-decoration: none;">
+            <button onclick="downloadLog()" class="download-button" style="margin-left: 15px; padding: 8px 12px; background-color: #0078d4; color: white; border-radius: 4px; text-decoration: none; border: none; cursor: pointer;">
                 Download Log
-            </a>
+            </button>
         </div>
         <div id="monaco-container"></div>
     </div>
@@ -234,12 +234,28 @@
                 subtitleElement.textContent = subtitle;
                 const bannerDetailsElement = document.getElementById('bannerDetails');
                 bannerDetailsElement.innerHTML = `
-                    <span>Owner: ${owner}</span>
-                    <span>Repo: ${repo}</span>
-                    <span>File: ${fileName}</span>
+                    <span><b>Owner:</b> ${owner}</span>
+                    <span><b>Repo:</b> ${repo}</span>
+                    <span><b>File:</b> ${fileName}</span>
                 `;
             }
         });
+
+        function downloadLog() {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Extract filename from file_path or use default
+            const filename = '{{ file_path }}'.split('/').pop() || 'log.txt';
+            a.download = filename;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
 
         // Add this near the top of your script
         async function queryLLM(message, logContent) {
@@ -370,6 +386,7 @@
                     root: [
                         // Pushing image messages
                         [/\b(?:Pushing image)\b.*$/, 'pushing'],
+                        [/\b[A-Z][A-Z0-9_]+\b/, 'env-var'],
                         
                         // Timestamps
                         [/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'timestamp'],
@@ -409,6 +426,7 @@
                 base: 'vs-dark',
                 inherit: true,
                 rules: [
+                    { token: 'env-var', foreground: 'c45c3c' },
                     { token: 'pushing', foreground: '4EC9B0', fontStyle: 'bold' },
                     { token: 'timestamp', foreground: '569cd6', fontStyle: 'bold' },
                     { token: 'error', foreground: 'f44747' },

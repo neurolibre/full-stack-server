@@ -1372,14 +1372,16 @@ def binder_build_task(self, screening_dict):
     task.start("▶️ Started BinderHub build.")
     binder_logs, build_succeeded = stream_binderhub_build(binderhub_request, lock_filename)
 
-    tmp_log_path = f"/tmp/binder_build_{task.task_id}.log"
-    with open(tmp_log_path, "w") as f:
-        f.write(binder_logs)
+    # tmp_log_path = f"/tmp/binder_build_{task.task_id}.log"
+    # with open(tmp_log_path, "w") as f:
+    #     f.write(binder_logs)
+
+    log_path = write_log(task.owner_name, task.repo_name, "binder", binder_logs)
 
     if build_succeeded:
-        task.succeed("🌺 BinderHub build succeeded.",collapsable=False, attachment_path=tmp_log_path)
+        task.succeed(f"🌺 BinderHub build succeeded. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})",collapsable=False)
     else:
-        task.fail("⛔️ BinderHub build failed.", tmp_log_path)
+        task.fail(f"⛔️ BinderHub build failed. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
 
 @celery_app.task(bind=True)
 def rsync_myst_prod_task(self, screening_dict):
