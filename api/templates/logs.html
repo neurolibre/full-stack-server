@@ -225,19 +225,13 @@
             const subtitleElement = document.getElementById('bannerSubtitle');
             const url = window.location.href;
 
-        //     const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
-        //     if (pathMatch) {
-        //         const [parent, owner, repo, fileName] = pathMatch;
-        //         const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
-        //         subtitleElement.textContent = subtitle;
-        //         const bannerDetailsElement = document.getElementById('bannerDetails');
-        //         bannerDetailsElement.innerHTML = `
-        //             <b>Owner:</b><span> ${owner}</span>
-        //             <b>Repo:</b><span> ${repo}</span>
-        //             <b>File:</b><span> ${fileName}</span>
-        //         `;
-        //     }
-        // });
+            const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
+            if (pathMatch) {
+                const [parent, owner, repo, fileName] = pathMatch;
+                const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
+                subtitleElement.textContent = subtitle;
+            }
+        });
 
         function downloadLog() {
             const blob = new Blob([content], { type: 'text/plain' });
