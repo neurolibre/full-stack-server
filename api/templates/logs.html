@@ -258,7 +258,7 @@
     
     <div class="chat-widget">
         <div class="tooltip" id="chatTooltip">
-            👋 Hi! I'm Theo, your AI log assistant. Click me if you need help understanding the logs!
+            <i class="fa-solid fa-cat"></i> Hi! I'm Theo the LogCat. Click me if you need help understanding the logs!
         </div>
         <button class="chat-button" onclick="toggleChat()">
             <i class="fas fa-paw"></i>
@@ -307,7 +307,7 @@
             // Hide tooltip after 5 seconds
             setTimeout(() => {
                 tooltip.classList.remove('show');
-            }, 12000);
+            }, 10000);
         });
 
         function downloadLog() {
