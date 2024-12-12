@@ -2,9 +2,7 @@
 <html>
 <head>
     <title>NeuroLibre Logs</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
-            integrity="sha256-f33A2640FvjP8y3skHzILZPcWPTg0OhcGYDBeEnNJkQ=" 
-            crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         body {
@@ -514,46 +512,38 @@
             }
         }
 
-        // First, verify marked is loaded by adding this near the top of your script
-        console.log('Marked library loaded:', typeof marked !== 'undefined');
+
+        const converter = new showdown.Converter({
+            tables: true,
+            strikethrough: true,
+            tasklists: true,
+            code: true,
+            emoji: true
+        });
 
         function addMessage(text, type) {
             const messages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-message ${type}`;
             
-            // Debug log
-            console.log('Adding message:', text, 'Type:', type);
-            
-            // Only parse markdown for bot messages
-            if (type.includes('bot')) {
-                try {
-                    // Use marked.parse() and set HTML directly
-                    messageDiv.innerHTML = marked.parse(text);
-                    console.log('Parsed markdown:', messageDiv.innerHTML);
-                } catch (error) {
-                    console.error('Markdown parsing error:', error);
-                    messageDiv.textContent = text;  // Fallback to plain text
-                }
-            } else {
-                messageDiv.textContent = text;
+        // Only parse markdown for bot messages
+        if (type.includes('bot')) {
+            try {
+                // Use showdown to convert markdown to HTML
+                const htmlContent = converter.makeHtml(text);
+                messageDiv.innerHTML = htmlContent;
+            } catch (error) {
+                console.error('Markdown parsing error:', error);
+                messageDiv.textContent = text;  // Fallback to plain text
             }
-            
+        } else {
+            messageDiv.textContent = text;
+        }
+
             messages.appendChild(messageDiv);
             messages.scrollTop = messages.scrollHeight;
         }
 
-        window.addEventListener('load', function() {
-            if (typeof marked === 'undefined') {
-                console.error('Marked library failed to load! Loading it dynamically...');
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js';
-                script.onload = () => console.log('Marked library loaded successfully');
-                document.head.appendChild(script);
-            } else {
-                console.log('Marked library loaded successfully');
-            }
-        });
     </script>
 </body>
 </html>
