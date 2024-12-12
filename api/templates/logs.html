@@ -180,9 +180,7 @@
                     <div class="banner-title">NeuroLibre Log Viewer</div>
                     <div class="banner-subtitle" id="bannerSubtitle">Logs</div>
                     <div class="banner-details" id="bannerDetails">
-                        <span><b>Owner:</b></span>
-                        <span><b>Repo:</b></span>
-                        <span><b>File:</b></span>
+                        Right click or F1 to see the command palette
                     </div>
                 </div>
             </div>
@@ -227,19 +225,19 @@
             const subtitleElement = document.getElementById('bannerSubtitle');
             const url = window.location.href;
 
-            const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
-            if (pathMatch) {
-                const [parent, owner, repo, fileName] = pathMatch;
-                const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
-                subtitleElement.textContent = subtitle;
-                const bannerDetailsElement = document.getElementById('bannerDetails');
-                bannerDetailsElement.innerHTML = `
-                    <b>Owner:</b><span> ${owner}</span>
-                    <b>Repo:</b><span> ${repo}</span>
-                    <b>File:</b><span> ${fileName}</span>
-                `;
-            }
-        });
+        //     const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
+        //     if (pathMatch) {
+        //         const [parent, owner, repo, fileName] = pathMatch;
+        //         const subtitle = parent.includes('binder') ? 'BinderHub Build Logs' : 'MyST Build Logs';
+        //         subtitleElement.textContent = subtitle;
+        //         const bannerDetailsElement = document.getElementById('bannerDetails');
+        //         bannerDetailsElement.innerHTML = `
+        //             <b>Owner:</b><span> ${owner}</span>
+        //             <b>Repo:</b><span> ${repo}</span>
+        //             <b>File:</b><span> ${fileName}</span>
+        //         `;
+        //     }
+        // });
 
         function downloadLog() {
             const blob = new Blob([content], { type: 'text/plain' });
@@ -389,8 +387,8 @@
                     root: [
                         // Pushing image messages
                         [/\b(?:Pushing image)\b.*$/, 'pushing'],
+                        [/\b[a-z]+(?:_[a-z]+)+\b/, 'snake-case'], 
                         [/\b[A-Z]{3,}(?:_[A-Z0-9]+)*\b/, 'env-var'],
-                        [/\b[A-Z]{3,}(?![a-z_])\b/, 'caps-word'], 
                         [/\b[a-f0-9]{7,40}\b/i, 'hash'],
                         // Timestamps
                         [/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, 'timestamp'],
@@ -431,10 +429,10 @@
                 inherit: true,
                 rules: [
                     { token: 'env-var', foreground: 'c45c3c' },
-                    { token: 'caps-word', foreground: '49cef3' },
+                    { token: 'snake-case', foreground: 'ce9178' },
                     { token: 'hash', foreground: 'b5cea8' },
                     { token: 'pushing', foreground: '4EC9B0', fontStyle: 'bold' },
-                    { token: 'timestamp', foreground: 'dbea0d', fontStyle: 'bold' },
+                    { token: 'timestamp', foreground: 'bbe19c', fontStyle: 'bold' },
                     { token: 'error', foreground: 'f44747' },
                     { token: 'warning', foreground: 'dcdcaa' },
                     { token: 'info', foreground: '6a9955' },
