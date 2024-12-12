@@ -475,6 +475,7 @@
 
         function toggleSyntaxHighlighting(enabled) {
         if (editor) {
+            console.log('Toggling syntax highlighting:', enabled);
             editor.updateOptions({
                 language: enabled ? 'colorful-log' : 'plaintext'
             });
