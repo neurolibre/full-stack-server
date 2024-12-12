@@ -1354,6 +1354,7 @@ def binder_build_task(self, screening_dict):
     is_prod = task.screening.is_prod
 
     cur_config = preprint_config if is_prod else preview_config
+    cur_server = PREPRINT_SERVER if is_prod else PREVIEW_SERVER
 
     if is_prod:
         task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
@@ -1379,9 +1380,9 @@ def binder_build_task(self, screening_dict):
     log_path = write_log(task.owner_name, task.repo_name, "binder", binder_logs)
 
     if build_succeeded:
-        task.succeed(f"🌺 BinderHub build succeeded. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})",collapsable=False)
+        task.succeed(f"🌺 BinderHub build succeeded. See logs [here]({cur_server}/api/logs/{log_path})",collapsable=False)
     else:
-        task.fail(f"⛔️ BinderHub build failed. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
+        task.fail(f"⛔️ BinderHub build failed. See logs [here]({cur_server}/api/logs/{log_path})")
 
 @celery_app.task(bind=True)
 def rsync_myst_prod_task(self, screening_dict):
