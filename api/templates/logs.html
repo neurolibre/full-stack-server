@@ -234,9 +234,9 @@
                 subtitleElement.textContent = subtitle;
                 const bannerDetailsElement = document.getElementById('bannerDetails');
                 bannerDetailsElement.innerHTML = `
-                    <span><b>Owner:</b> ${owner}</span>
-                    <span><b>Repo:</b> ${repo}</span>
-                    <span><b>File:</b> ${fileName}</span>
+                    <b>Owner:</b><span> ${owner}</span>
+                    <b>Repo:</b><span> ${repo}</span>
+                    <b>File:</b><span> ${fileName}</span>
                 `;
             }
         });
@@ -248,8 +248,10 @@
             a.href = url;
             
             // Extract filename from file_path or use default
-            const filename = '{{ file_path }}'.split('/').pop() || 'log.txt';
-            a.download = filename;
+            // const filename = '{{ file_path }}'.split('/').pop() || 'log.txt';
+            const pathMatch = url.match(/api\/logs\/(?:binder|myst)\/([^\/]+)\/([^\/]+)\/([^\/]+\.log)/);
+            const [parent, owner, repo, fileName] = pathMatch;
+            a.download = fileName;
             
             document.body.appendChild(a);
             a.click();
@@ -429,7 +431,7 @@
                 rules: [
                     { token: 'env-var', foreground: 'c45c3c' },
                     { token: 'caps-word', foreground: '49cef3' },
-                    { token: 'hash', foreground: 'cfec4d' },
+                    { token: 'hash', foreground: 'b5cea8' },
                     { token: 'pushing', foreground: '4EC9B0', fontStyle: 'bold' },
                     { token: 'timestamp', foreground: 'dbea0d', fontStyle: 'bold' },
                     { token: 'error', foreground: 'f44747' },
