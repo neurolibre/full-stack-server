@@ -512,14 +512,27 @@
             }
         }
 
+        // First, verify marked is loaded by adding this near the top of your script
+        console.log('Marked library loaded:', typeof marked !== 'undefined');
+
         function addMessage(text, type) {
             const messages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-message ${type}`;
             
+            // Debug log
+            console.log('Adding message:', text, 'Type:', type);
+            
             // Only parse markdown for bot messages
             if (type.includes('bot')) {
-                messageDiv.innerHTML = marked.parse(text);
+                try {
+                    // Use marked.parse() and set HTML directly
+                    messageDiv.innerHTML = marked.parse(text);
+                    console.log('Parsed markdown:', messageDiv.innerHTML);
+                } catch (error) {
+                    console.error('Markdown parsing error:', error);
+                    messageDiv.textContent = text;  // Fallback to plain text
+                }
             } else {
                 messageDiv.textContent = text;
             }
