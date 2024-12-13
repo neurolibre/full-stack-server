@@ -161,14 +161,33 @@ class ScreeningClient:
             "EXISTS": f"&#128995; **{self.task_name}**\n----------------------------\n**Status:** Already exists `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
         }
 
+    # @staticmethod
+    # def gh_filter(input_str):
+    #     github_url_pattern = r'^https?://(?:www\.)?github\.com/([^/]+)/([^/]+)'
+    #     match = re.match(github_url_pattern, input_str)
+    #     if match:
+    #         owner = match.group(1)
+    #         repo_name = match.group(2)
+    #         return f"{owner}/{repo_name}"
+    #     return input_str
+
     @staticmethod
     def gh_filter(input_str):
+        if not input_str:
+            raise ValueError("Repository URL/path cannot be None or empty")
+        
+        # If it's already in owner/repo format, return as is
+        if re.match(r'^[^/]+/[^/]+$', input_str):
+            return input_str
+            
+        # Otherwise, try to extract from URL
         github_url_pattern = r'^https?://(?:www\.)?github\.com/([^/]+)/([^/]+)'
         match = re.match(github_url_pattern, input_str)
         if match:
             owner = match.group(1)
             repo_name = match.group(2)
             return f"{owner}/{repo_name}"
+        
         return input_str
 
     def gh_create_comment(self, comment_body, override_assign=False):
