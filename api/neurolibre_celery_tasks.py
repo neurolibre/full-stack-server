@@ -121,10 +121,9 @@ class BaseNeuroLibreTask:
         self.payload = payload
         self.task_id = celery_task.request.id
         if screening:
-            # If passed here, must be JSON serialization of ScreeningClient object.
-            # We need to unpack these to pass to ScreeningClient to initialize it as an object.
-            screening['notify_target'] = True
-            self.screening = ScreeningClient.from_dict(screening)
+            screening_copy = screening.copy()
+            screening_copy['notify_target'] = True
+            self.screening = ScreeningClient.from_dict(screening_copy)
             print('From obj')
             print(self.screening.review_repository)
             self.screening.task_id = self.task_id
