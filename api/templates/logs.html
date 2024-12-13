@@ -470,14 +470,6 @@
             monaco.languages.setMonarchTokensProvider('colorful-log', {
                 tokenizer: {
                     root: [
-                        [/^(\[.*?\])(\s+)((?:ERROR|WARNING|INFO|DEBUG)\/\w+)(.*)$/, 
-                            ['timestamp', 'white', 'log-level', 'message']],
-                        [/^(\[.*?\])?(\s*)((?:Traceback|Error|Exception|Warning):?)(.*)$/, 
-                            ['timestamp', 'white', 'error-type', 'message']],
-                        [/^(\[.*?\])?(\s*)(->|\-{4}>)(\s*\d+)(.*)$/, 
-                            ['timestamp', 'white', 'arrow', 'line-number', 'message']],
-                        [/^(\[.*?\])?(\s*)(File\s+"[^"]+"|File\s+[^,]+)(.*)$/, 
-                            ['timestamp', 'white', 'file-path', 'message']],
                         [/\b(?:Pushing image)\b.*$/, 'pushing'],
                         [/\b[a-z]+(?:_[a-z]+)+\b/, 'snake-case'], 
                         [/\b[A-Z]{3,}(?:_[A-Z0-9]+)*\b/, 'env-var'],
@@ -520,11 +512,6 @@
                 base: 'vs-dark',
                 inherit: true,
                 rules: [
-                    { token: 'error-type', foreground: 'f44747', fontStyle: 'bold' },
-                    { token: 'arrow', foreground: 'f44747', fontStyle: 'bold' },
-                    { token: 'line-number', foreground: 'b5cea8' },
-                    { token: 'file-path', foreground: '569cd6' },
-                    { token: 'log-level', foreground: 'dcdcaa', fontStyle: 'bold' },
                     { token: 'env-var', foreground: 'c45c3c' },
                     { token: 'snake-case', foreground: 'ce9178' },
                     { token: 'hash', foreground: 'b5cea8' },
@@ -545,9 +532,52 @@
                 }
             });
 
+    // Add this before editor creation
+    function convertAnsiToHtml(str) {
+        // Create a temporary div to hold the content
+        const pre = document.createElement('pre');
+        const content = str
+            // Replace ANSI escape sequences with span elements
+            .replace(/\u001b\[([0-9;]*)m/g, (match, p1) => {
+                const codes = p1.split(';');
+                let style = '';
+                
+                codes.forEach(code => {
+                    code = parseInt(code, 10);
+                    switch(code) {
+                        case 0: // Reset
+                            style = '';
+                            break;
+                        case 1: // Bold
+                            style += 'font-weight:bold;';
+                            break;
+                        case 31: // Red
+                            style += 'color:#f44747;';
+                            break;
+                        case 32: // Green
+                            style += 'color:#6a9955;';
+                            break;
+                        case 34: // Blue
+                            style += 'color:#569cd6;';
+                            break;
+                        case 36: // Cyan
+                            style += 'color:#4ec9b0;';
+                            break;
+                        // Add more color codes as needed
+                    }
+                });
+                
+                return style ? `<span style="${style}">` : '</span>';
+            });
+    
+    pre.innerHTML = content;
+    return pre.textContent;  // Convert back to plain text with proper formatting
+}
+
+
             // Create editor with custom language and theme
             editor = monaco.editor.create(document.getElementById('monaco-container'), {
-                value: content,
+                value: convertAnsiToHtml(content),
                 language: 'colorful-log',
                 theme: 'colorful-log-theme',
                 readOnly: true,
