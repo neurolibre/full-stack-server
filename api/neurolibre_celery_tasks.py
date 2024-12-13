@@ -124,7 +124,11 @@ class BaseNeuroLibreTask:
             # If passed here, must be JSON serialization of ScreeningClient object.
             # We need to unpack these to pass to ScreeningClient to initialize it as an object.
             screening['notify_target'] = True
+            print('Raw dict')
+            print(screening)
             self.screening = ScreeningClient.from_dict(screening)
+            print('From obj')
+            print(self.screening.review_repository)
             self.screening.task_id = self.task_id
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(self.screening.target_repo_url, provider_full_name=True)
         elif payload:

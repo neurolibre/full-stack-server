@@ -68,13 +68,14 @@ API Endpoints START
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(DownloadSchema())
 @doc(description='Endpoint for downloading data through repo2data.', tags=['Data'])
-def api_download_data(user, repository_url=None, id=None, email=None, is_overwrite=None, external_repo=None):
+def api_download_data(user, repository_url, id=None, email=None, is_overwrite=None, external_repo=None):
     """
     This endpoint is to download data from GitHub (technical screening) requests.
     """
     extra_payload = dict(email=email, is_overwrite=is_overwrite, external_repo=external_repo)
-    
+    app.logger.info(f'Extra payload at endpoint: {extra_payload}')
     cur_rev_repo = external_repo if external_repo else REVIEW_REPOSITORY
+    app.logger.info(f'External repo at endpoint: {cur_rev_repo}')
     screening = ScreeningClient(task_name="DOWNLOAD (CACHE) DATA", 
                                 issue_id=id, 
                                 target_repo_url=repository_url,
