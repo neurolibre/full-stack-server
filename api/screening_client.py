@@ -102,7 +102,7 @@ class ScreeningClient:
 
         if not isinstance(data, dict):
             raise TypeError("Input must be a dictionary or a JSON string")
-        standard_attrs = ['task_name', 'issue_id', 'email_address', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash']
+        standard_attrs = ['task_name', 'issue_id', 'email_address', 'target_repo_url', 'task_id', 'comment_id', 'commit_hash','review_repository']
         standard_dict = {key: data.get(key) for key in standard_attrs}
         extra_payload = {key: value for key, value in data.items() if key not in standard_attrs}
         return cls(**standard_dict, **extra_payload)
