@@ -470,7 +470,14 @@
             monaco.languages.setMonarchTokensProvider('colorful-log', {
                 tokenizer: {
                     root: [
-                        // Pushing image messages
+                        [/^(\[.*?\])(\s+)((?:ERROR|WARNING|INFO|DEBUG)\/\w+)(.*)$/, 
+                            ['timestamp', 'white', 'log-level', 'message']],
+                        [/^(\[.*?\])?(\s*)((?:Traceback|Error|Exception|Warning):?)(.*)$/, 
+                            ['timestamp', 'white', 'error-type', 'message']],
+                        [/^(\[.*?\])?(\s*)(->|\-{4}>)(\s*\d+)(.*)$/, 
+                            ['timestamp', 'white', 'arrow', 'line-number', 'message']],
+                        [/^(\[.*?\])?(\s*)(File\s+"[^"]+"|File\s+[^,]+)(.*)$/, 
+                            ['timestamp', 'white', 'file-path', 'message']],
                         [/\b(?:Pushing image)\b.*$/, 'pushing'],
                         [/\b[a-z]+(?:_[a-z]+)+\b/, 'snake-case'], 
                         [/\b[A-Z]{3,}(?:_[A-Z0-9]+)*\b/, 'env-var'],
@@ -513,6 +520,11 @@
                 base: 'vs-dark',
                 inherit: true,
                 rules: [
+                    { token: 'error-type', foreground: 'f44747', fontStyle: 'bold' },
+                    { token: 'arrow', foreground: 'f44747', fontStyle: 'bold' },
+                    { token: 'line-number', foreground: 'b5cea8' },
+                    { token: 'file-path', foreground: '569cd6' },
+                    { token: 'log-level', foreground: 'dcdcaa', fontStyle: 'bold' },
                     { token: 'env-var', foreground: 'c45c3c' },
                     { token: 'snake-case', foreground: 'ce9178' },
                     { token: 'hash', foreground: 'b5cea8' },
