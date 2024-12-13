@@ -19,6 +19,7 @@ JOURNAL_NAME = common_config['JOURNAL_NAME']
 
 class ScreeningClient:
     def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, notify_target=False, review_repository=REVIEW_REPOSITORY, **extra_payload):
+        print(f"Debug - review_repository at init: {review_repository}")  # Debug line
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
