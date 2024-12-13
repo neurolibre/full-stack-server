@@ -121,13 +121,8 @@ class BaseNeuroLibreTask:
         self.payload = payload
         self.task_id = celery_task.request.id
         if screening:
-            screening_copy = screening.copy()
-            screening_copy['notify_target'] = True
-            print('from raw')
-            print(screening_copy)
-            self.screening = ScreeningClient.from_dict(screening_copy)
-            print('From obj')
-            print(self.screening.review_repository)
+            screening['notify_target'] = True
+            self.screening = ScreeningClient.from_dict(screening)
             self.screening.task_id = self.task_id
             self.owner_name, self.repo_name, self.provider_name = get_owner_repo_provider(self.screening.target_repo_url, provider_full_name=True)
         elif payload:

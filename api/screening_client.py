@@ -89,6 +89,7 @@ class ScreeningClient:
             'task_id': self.task_id,
             'comment_id': self.comment_id,
             'commit_hash': self.commit_hash,
+            'review_repository': self.review_repository
         }
         result.update(self.__extra_payload)
         return result
