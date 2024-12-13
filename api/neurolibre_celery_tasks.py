@@ -1703,6 +1703,7 @@ def preview_download_data(self, screening_dict):
     Downloading data to the preview server.
     """
     task = BaseNeuroLibreTask(self, screening_dict)
+
     task.start("Started downloading the data.")
     try:
         contents = task.screening.repo_object.get_contents("binder/data_requirement.json")
@@ -1717,12 +1718,13 @@ def preview_download_data(self, screening_dict):
         if not data_manifest:
             task.fail("binder/data_requirement.json not found.")
             raise
-        valid_pattern = re.compile(r'^[a-z0-9_-]+$')
+        #valid_pattern = re.compile(r'^[a-z0-9_-]+$')
+        valid_pattern = re.compile(r'^[a-z0-9/_-]+$')
         project_name = data_manifest['projectName']
         if not valid_pattern.match(project_name):
             task.fail(github_alert(
-                f"👀 Project name {project_name} is not valid, only `alphanumerical lowercase characters`, `-`, and `_` are allowed "
-                f"(e.g., `havuc-dilim-baklava`, `iskender_kebap`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
+                f"👀 Project name {project_name} is not valid, only `alphanumerical lowercase characters`, `-`, `_`, and `/` are allowed "
+                f"(e.g., `havuc-dilim-baklava`, `iskender_kebap`, `iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
                 f"with a valid `project_name`.",
                 alert_type='caution'
             ))

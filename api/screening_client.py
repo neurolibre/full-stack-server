@@ -18,12 +18,12 @@ REVIEW_REPOSITORY = common_config['REVIEW_REPOSITORY']
 JOURNAL_NAME = common_config['JOURNAL_NAME']
 
 class ScreeningClient:
-    def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, notify_target=False, **extra_payload):
+    def __init__(self, task_name, issue_id=None, email_address=None, target_repo_url = None, task_id=None, comment_id=None, commit_hash=None, notify_target=False, review_repository=REVIEW_REPOSITORY, **extra_payload):
         self.task_name = task_name
         self.task_id = task_id
         self.issue_id = issue_id
         self.email_address = email_address
-        self.review_repository = REVIEW_REPOSITORY
+        self.review_repository = review_repository
         self.target_repo_url = target_repo_url
         self.commit_hash = commit_hash
         self.comment_id = comment_id

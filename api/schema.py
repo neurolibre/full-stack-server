@@ -25,10 +25,11 @@ class DownloadSchema(Schema):
     """
     Defines schema to be used for repo2data download. 
     """
-    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint. If this used, the response will be returned to the respective github issue.")
-    repository_url = fields.Str(required=False,dump_default="",description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
+    repository_url = fields.Str(required=True,dump_default="",description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
+    id = fields.Integer(required=False,description="Issue number of the technical screening of this preprint. If this used, the response will be returned to the respective github issue.")
     email = fields.Str(required=False,dump_default="",description="Email address, to which the result will be returned.")
     is_overwrite = fields.Boolean(required=False,dump_default="",description="Whether or not the downloaded data will overwrite, if already exists.")
+    external_repo = fields.Str(required=False,dump_default="",description="A non-review repo.")
 
 class BuildSchema(Schema):
     """
