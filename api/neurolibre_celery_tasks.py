@@ -123,6 +123,8 @@ class BaseNeuroLibreTask:
         if screening:
             screening_copy = screening.copy()
             screening_copy['notify_target'] = True
+            print('from raw')
+            print(screening_copy)
             self.screening = ScreeningClient.from_dict(screening_copy)
             print('From obj')
             print(self.screening.review_repository)
