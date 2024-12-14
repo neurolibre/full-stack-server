@@ -901,6 +901,8 @@ def zenodo_upload_repository_task(self, payload):
 @celery_app.task(bind=True)
 def zenodo_upload_docker_task(self, payload):
 
+    payload['request_id'] = self.request.id
+    payload['task_name'] = payload['task_title']
     task  = BaseNeuroLibreTask(payload)
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
