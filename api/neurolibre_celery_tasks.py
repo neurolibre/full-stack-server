@@ -948,7 +948,9 @@ def zenodo_upload_docker_task(self, payload):
                 gh_user_repo_name = f"{GH_ORGANIZATION}/{repo}",
                 gh_repo_commit_hash = commit_fork,
                 binder_image_tag = commit_fork,
-                dotenv = os.path.join(os.environ.get('HOME'),'full-stack-server','api')))      
+                dotenv = os.path.join(os.environ.get('HOME'),'full-stack-server','api')))
+
+            r = docker_login()      
 
             if rees_resources.search_img_by_repo_name():
                 logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
@@ -959,7 +961,7 @@ def zenodo_upload_docker_task(self, payload):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
                 self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             
-        except ex:
+        except:
 
             lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
 
