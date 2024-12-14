@@ -901,6 +901,7 @@ def zenodo_upload_repository_task(self, payload):
 @celery_app.task(bind=True)
 def zenodo_upload_docker_task(self, payload):
 
+    task  = BaseNeuroLibreTask(payload)
     GH_BOT=os.getenv('GH_BOT')
     github_client = Github(GH_BOT)
     task_id = self.request.id
@@ -948,9 +949,7 @@ def zenodo_upload_docker_task(self, payload):
                 gh_user_repo_name = f"{GH_ORGANIZATION}/{repo}",
                 gh_repo_commit_hash = commit_fork,
                 binder_image_tag = commit_fork,
-                dotenv = os.path.join(os.environ.get('HOME'),'full-stack-server','api')))
-
-            r = docker_login()      
+                dotenv = task.get_dotenv_path()))
 
             if rees_resources.search_img_by_repo_name():
                 logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
