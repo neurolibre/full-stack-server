@@ -982,8 +982,12 @@ def zenodo_upload_docker_task(self, screening_dict):
 
         task.start(f"Exporting docker image: \n {rees_resources.found_image_name}:{commit_fork}")
 
-        r = docker_save(rees_resources.found_image_name,task.screening.issue_id,commit_fork)
-        print(r)
+        # WARNING: Here we include the registry url in the image name, for historical reasons.
+        # First binder deployment was done with the registry url entered twice...
+        # In the config['common.yaml'] file the registry address includes https://, so we need to remove it.
+        image_name = f"{BINDER_REGISTRY.split('https://')[-1]}/{rees_resources.found_image_name}:{commit_fork}"
+        r = docker_save(image_name,task.screening.issue_id,commit_fork)
+        
         if not r[0]['status']:
             task.fail(f"Cannot save the docker image \n {r[0]['message']}")
             return
