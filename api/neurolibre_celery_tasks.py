@@ -1055,10 +1055,13 @@ def zenodo_publish_task(self, payload):
             gpt_response = get_gpt_response(prompt)
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Congrats! Reproducibility assets have been successfully archived and published :rocket: \n\n {gpt_response}", False)
             dois = zenodo_collect_dois(payload['issue_id'])
+            msgs = ["🥳 Reproducibility assets have been successfully archived and published!"]
+            msgs.append("\n>[!NOTE]\n>It may take a few minutes for Zenodo DOIs to be set. You can test it by appending DOI suffixes below to https://doi.org/ to test. This is a prerequisite for finalizing DOI assignment. \n When the DOIs become available, you can set them as reproducibility assets by running the following commands per object:")
             for key in dois.keys():
-                command = f"@roboneuro set {dois[key]} as {key} archive"
-                gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],command)
-                time.sleep(1)
+                msgs.append(f"\n* `@roboneuro set {dois[key]} as {key} archive`")
+            
+            gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],"".join(msgs))
+
         else:
             # Some one None
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
