@@ -937,6 +937,7 @@ def zenodo_upload_docker_task(self, screening_dict):
             gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
             gh_repo_commit_hash = commit_fork,
             binder_image_tag = commit_fork,
+            binder_image_name = None,
             dotenv = task.get_dotenv_path()))
 
         if rees_resources.search_img_by_repo_name():
