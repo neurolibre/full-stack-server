@@ -224,7 +224,7 @@ def docker_save(image,issue_id,commit_fork):
     record_name = item_to_record_name("docker")
     save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
     try:
-        save_process = subprocess.Popen(['docker', 'save', image], stdout=subprocess.PIPE)
+        save_process = subprocess.Popen(['docker', 'save', '-o', save_name, image], stdout=subprocess.PIPE)
         gzip_process = subprocess.Popen(['gzip', '-c'], stdin=save_process.stdout, stdout=open(save_name, 'wb'))
         # Wait for the gzip process to complete
         ret = gzip_process.wait()
