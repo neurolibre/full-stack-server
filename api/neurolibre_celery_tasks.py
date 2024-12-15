@@ -942,7 +942,6 @@ def zenodo_upload_docker_task(self, screening_dict):
 
         if rees_resources.search_img_by_repo_name():
             logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-            all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
             rees_resources.pull_image()
         else:
             task.fail(f"Failes REES docker image pull for {fork_url}")
