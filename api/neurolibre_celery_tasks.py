@@ -1716,8 +1716,8 @@ def preview_download_data(self, screening_dict):
         project_name = data_manifest['projectName']
         if not valid_pattern.match(project_name):
             task.fail(github_alert(
-                f"👀 Project name {project_name} is not valid, only `alphanumerical lowercase characters`, `-`, `_`, and `/` are allowed "
-                f"(e.g., `havuc-dilim-baklava`, `iskender_kebap`, `iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
+                f"👀 Project name {project_name} is not valid. Only `alphanumerical lowercase characters` in kebab-case (using `-` or `_`) and `/` are allowed."
+                f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
                 f"with a valid `project_name`.",
                 alert_type='caution'
             ))

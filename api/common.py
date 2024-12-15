@@ -148,8 +148,9 @@ def get_owner_repo_provider(repo_url,provider_full_name=False):
             provider = "gh"
         elif (provider == "gitlab.com"):
             provider = "gl"
-
-    return [owner,repo,provider]
+    # Ensure repo and owner are lowercase
+    # camelCase or PascalCase are problematic.
+    return [owner.lower(),repo.lower(),provider]
 
 def format_commit_hash(repo_url, commit_hash):
     """
