@@ -192,8 +192,8 @@ def execute_subprocess(command):
     return {"status": status, "message": output}
 
 def docker_login():
-    uname = os.getenv('DOCKER_USERNAME')
-    pswd = os.getenv('DOCKER_PASSWORD')
+    uname = os.getenv('DOCKER_PRIVATE_REGISTRY_USERNAME')
+    pswd = os.getenv('DOCKER_PRIVATE_REGISTRY_PASSWORD')
     command = ["docker", "login", BINDER_REGISTRY, "--username", uname, "--password-stdin"]
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
