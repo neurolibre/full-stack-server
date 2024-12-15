@@ -980,9 +980,9 @@ def zenodo_upload_docker_task(self, screening_dict):
             #     self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             #     return
 
-        task.start(f"Exporting docker image: \n {rees_resources.found_image_name}")
+        task.start(f"Exporting docker image: \n {rees_resources.found_image_name}:{commit_fork}")
 
-        r = docker_save(rees_resources.found_image_name,task.screening.issue_id,commit_fork)
+        r = docker_save(f"{rees_resources.found_image_name}:{commit_fork}",task.screening.issue_id,commit_fork)
         if not r[0]['status']:
             task.fail(f"Cannot save the docker image \n {r[0]['message']}")
             return
