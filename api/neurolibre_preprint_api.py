@@ -205,47 +205,6 @@ def zenodo_upload_book_post(user,id,repository_url):
 
 docs.register(zenodo_upload_book_post)
 
-@app.route('/api/zenodo/upload/docker', methods=['POST'])
-@preprint_api.auth_required
-@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description='Upload the docker image to the respective zenodo deposit.', tags=['Zenodo'])
-@use_kwargs(IdUrlSchema())
-def zenodo_upload_docker_post(user,id,repository_url):
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    issue_id = id
-
-    fname = f"zenodo_deposit_{JOURNAL_NAME}_{issue_id:05d}.json"
-    local_file = os.path.join(get_deposit_dir(issue_id), fname)
-    with open(local_file, 'r') as f:
-        zenodo_record = json.load(f)
-    # Fetch bucket url of the requested type of item
-    bucket_url = zenodo_record['docker']['links']['bucket']
-    
-    task_title = "Reproducibility Assets - Archive Docker Image"
-    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
-
-    celery_payload = dict(issue_id = id,
-                          bucket_url = bucket_url,
-                          comment_id = comment_id,
-                          review_repository = REVIEW_REPOSITORY,
-                          repository_url = repository_url,
-                          task_title=task_title)
-
-    task_result = zenodo_upload_docker_task.apply_async(args=[celery_payload])
-
-    if task_result.task_id is not None:
-        gh_template_respond(github_client,"received",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, "Started docker upload sequence.")
-        response = make_response(jsonify(f"Celery task assigned successfully {task_result.task_id}"),200)
-    else:
-        # If not successfully assigned, fail the status immediately and return 500
-        gh_template_respond(github_client,"failure",task_title,REVIEW_REPOSITORY,issue_id,task_result.task_id,comment_id, f"Internal server error: {JOURNAL_NAME} background task manager could not receive the request.")
-        response = make_response(jsonify("Celery could not start the task."),500)
-    return response
-
-docs.register(zenodo_upload_docker_post)
-
-
 @app.route('/api/zenodo/upload/data', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
@@ -782,6 +741,29 @@ def api_binder_build(user,id,repository_url):
     return response
 
 docs.register(api_binder_build)
+
+@app.route('/api/zenodo/upload/docker', methods=['POST'])
+@preprint_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description='Upload the docker image to the respective zenodo deposit.', tags=['Zenodo'])
+@use_kwargs(IdUrlSchema())
+def zenodo_upload_docker_post(user,id,repository_url):
+    
+    fname = f"zenodo_deposit_{JOURNAL_NAME}_{id:05d}.json"
+    local_file = os.path.join(get_deposit_dir(id), fname)
+    with open(local_file, 'r') as f:
+        zenodo_record = json.load(f)
+    # Fetch bucket url of the requested type of item
+    bucket_url = zenodo_record['docker']['links']['bucket']
+    extra_payload = dict(bucket_url=bucket_url)
+    screening = ScreeningClient(task_name="Reproducibility Assets - Archive Docker Image", 
+                                issue_id=id, 
+                                target_repo_url=repository_url,
+                                **extra_payload)
+    response = screening.start_celery_task(zenodo_upload_docker_task)
+    return response
+
+docs.register(zenodo_upload_docker_post)
 
 
 @app.route('/api/zenodo/upload/myst', methods=['POST'],endpoint='zenodo_upload_myst')

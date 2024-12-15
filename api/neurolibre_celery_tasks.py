@@ -899,141 +899,112 @@ def zenodo_upload_repository_task(self, payload):
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
 @celery_app.task(bind=True)
-def zenodo_upload_docker_task(self, payload):
+def zenodo_upload_docker_task(self, screening_dict):
 
-    payload['request_id'] = self.request.id
-    payload['task_name'] = payload['task_title']
-    task  = BaseNeuroLibreTask(payload)
-    GH_BOT=os.getenv('GH_BOT')
-    github_client = Github(GH_BOT)
-    task_id = self.request.id
+    task = BaseNeuroLibreTask(self, screening_dict)
 
-    gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'])
-
-    owner,repo,provider = get_owner_repo_provider(payload['repository_url'],provider_full_name=True)
-
-    fork_url = f"https://{provider}/{GH_ORGANIZATION}/{repo}"
+    fork_url = f"https://{task.provider_name}/{GH_ORGANIZATION}/{task.repo_name}"
     commit_fork = format_commit_hash(fork_url,"HEAD")
-
     record_name = item_to_record_name("docker")
 
-    tar_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.tar.gz")
+    tar_file = os.path.join(get_archive_dir(task.screening.issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{commit_fork[0:6]}.tar.gz")
     check_docker = os.path.exists(tar_file)
 
+    task.start("Started processing the request")
+    
     if check_docker:
-        msg = "Docker image already exists, uploading to zenodo."
-        gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+        task.start("Docker exported archive already exists, uploading to zenodo.")
         # If image exists but could not upload due to a previous issue.
-        response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
+        response = zenodo_upload_item(tar_file,task.screening.bucket_url,task.screening.issue_id,commit_fork,"docker")
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                task.fail(f"ERROR {fork_url}: {response.text}")
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
-                log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{commit_fork[0:6]}.json"
+                log_file = os.path.join(get_deposit_dir(task.screening.issue_id), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
-                gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
-                self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker upload for {owner}/{repo} at {commit_fork} has succeeded."})
+                task.succeed(f"Completed uploading {tar_file} to {task.screening.bucket_url}")
         elif (isinstance(response, str)):
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            task.fail(f"An exception has occurred: {response}")
         elif response is None:
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
+            task.fail(f"ERROR: Unrecognized archive type.")
     else:
-        # Get the lookup_table.tsv entry (from the preview server) for the fork_url
 
-        try:
-            rees_resources = REES(dict(
-                registry_url=BINDER_REGISTRY,
-                gh_user_repo_name = f"{GH_ORGANIZATION}/{repo}",
-                gh_repo_commit_hash = commit_fork,
-                binder_image_tag = commit_fork,
-                dotenv = task.get_dotenv_path()))
+        # try:
+        rees_resources = REES(dict(
+            registry_url=BINDER_REGISTRY,
+            gh_user_repo_name = f"{GH_ORGANIZATION}/{task.screening.repo_name}",
+            gh_repo_commit_hash = commit_fork,
+            binder_image_tag = commit_fork,
+            dotenv = task.get_dotenv_path()))
 
-            if rees_resources.search_img_by_repo_name():
-                logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-                all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
-                rees_resources.pull_image()
-            else:
-                msg = f"Failes REES docker image pull for {fork_url}"
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-            
-        except:
+        if rees_resources.search_img_by_repo_name():
+            logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
+            all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
+            rees_resources.pull_image()
+        else:
+            task.fail(f"Failes REES docker image pull for {fork_url}")
 
-            lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
+        # except:
 
-            if not lut:    
-                # Terminate ERROR
-                msg = f"Looks like there's not a successful book build record for {fork_url}"
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-                return
+            # lut = get_resource_lookup(PREVIEW_SERVER,True,fork_url)
 
-            msg = f"Found docker image: \n {lut}"
-            gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+            # if not lut:    
+            #     # Terminate ERROR
+            #     msg = f"Looks like there's not a successful book build record for {fork_url}"
+            #     gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            #     self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            #     return
 
-            # Login to the private registry to pull images
-            r = docker_login()
+            # msg = f"Found docker image: \n {lut}"
+            # gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
 
-            if not r['status']:
-                msg = f"Cannot login to {JOURNAL_NAME} private docker registry. \n {r['message']}"
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-                return
+            # # Login to the private registry to pull images
+            # r = docker_login()
 
-            msg = f"Pulling docker image: \n {lut['docker_image']}"
-            gh_template_respond(github_client,"started",payload['task_title'] + " `pulling (1/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+            # if not r['status']:
+            #     msg = f"Cannot login to {JOURNAL_NAME} private docker registry. \n {r['message']}"
+            #     gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            #     self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            #     return
 
-            # The lookup table (lut) should contain a docker image (see get_resource_lookup)
-            r = docker_pull(lut['docker_image'])
-            if not r['status']:
-                msg = f"Cannot pull the docker image \n {r['message']}"
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-                return
+            # msg = f"Pulling docker image: \n {lut['docker_image']}"
+            # gh_template_respond(github_client,"started",payload['task_title'] + " `pulling (1/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
 
-        # Export the docker image
-        msg = f"Exporting docker image: \n {lut['docker_image']}"
-        gh_template_respond(github_client,"started",payload['task_title'] + " `exporting (2/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+            # # The lookup table (lut) should contain a docker image (see get_resource_lookup)
+            # r = docker_pull(lut['docker_image'])
+            # if not r['status']:
+            #     msg = f"Cannot pull the docker image \n {r['message']}"
+            #     gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+            #     self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            #     return
 
-        r = docker_save(lut['docker_image'],payload['issue_id'],commit_fork)
+        task.start(f"Exporting docker image: \n {rees_resources.found_image_name}")
+
+        r = docker_save(rees_resources.found_image_name,task.screening.issue_id,commit_fork)
         if not r[0]['status']:
-            msg = f"Cannot save the docker image \n {r[0]['message']}"
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            task.fail(f"Cannot save the docker image \n {r[0]['message']}")
             return
 
         tar_file = r[1]
 
-        msg = f"Uploading docker image: \n {tar_file}"
-        gh_template_respond(github_client,"started",payload['task_title'] + " `uploading (3/3)`", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
+        task.start(f"Uploading docker image: \n {tar_file}")
 
-        response = zenodo_upload_item(tar_file,payload['bucket_url'],payload['issue_id'],commit_fork,"docker")
+        response = zenodo_upload_item(tar_file,task.screening.bucket_url,task.screening.issue_id,commit_fork,"docker")
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
-                gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                task.fail(f"ERROR {fork_url}: {response.text}")
             elif (response.status_code < 300):
-                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
-                log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
+                tmp = f"zenodo_uploaded_docker_{JOURNAL_NAME}_{task.screening.issue_id:05d}_{commit_fork[0:6]}.json"
+                log_file = os.path.join(get_deposit_dir(task.screening.issue_id), tmp)
                 with open(log_file, 'w') as outfile:
                     json.dump(response.json(), outfile)
-                gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Successful {tar_file} to {payload['bucket_url']}")
-                self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Docker upload for {owner}/{repo} at {commit_fork} has succeeded."})
+                task.succeed(f"Completed uploading {tar_file} to {task.screening.bucket_url}")
         elif (isinstance(response, str)):
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            task.fail(f"An exception has occurred: {response}")
         elif response is None:
-            gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
-        r = docker_logout()
-        # No need to break the operation this fails, just log.
-        if not r['status']:
-            logging.info("Problem with docker logout.")
+            task.fail(f"ERROR: Unrecognized archive type.")
 
 @celery_app.task(bind=True)
 def zenodo_publish_task(self, payload):
