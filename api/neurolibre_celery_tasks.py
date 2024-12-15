@@ -1056,9 +1056,9 @@ def zenodo_publish_task(self, payload):
             gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Congrats! Reproducibility assets have been successfully archived and published :rocket: \n\n {gpt_response}", False)
             dois = zenodo_collect_dois(payload['issue_id'])
             msgs = ["🥳 Reproducibility assets have been successfully archived and published!"]
-            msgs.append("\n>[!NOTE]\n>It may take a few minutes for Zenodo DOIs to be set. You can test each DOI by clicking the `(test ... DOI)` button. Successful page load is a prerequisite for finalizing DOI assignment. \n\n When the DOIs become available, you can set them as reproducibility assets by running the following commands per object:")
+            msgs.append("\n>[!NOTE]\n>It may take a few minutes for Zenodo DOIs to be set. You can test each DOI by clicking the `(test ... DOI)` hyperlinks. Successful page load is a prerequisite for finalizing DOI assignment. \n\n When the DOIs become available, you can set them as reproducibility assets by running the following commands per object:")
             for key in dois.keys():
-                msgs.append(f"\n* `@roboneuro set {dois[key]} as {key} archive` ([test {key} DOI](https://doi.org/{dois[key]}))")
+                msgs.append(f"\n* [Test {key} DOI](https://doi.org/{dois[key]}) ➡️ `@roboneuro set {dois[key]} as {key} archive`")
             
             gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],"".join(msgs))
 
