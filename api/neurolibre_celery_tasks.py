@@ -934,7 +934,7 @@ def zenodo_upload_docker_task(self, screening_dict):
         # try:
         rees_resources = REES(dict(
             registry_url=BINDER_REGISTRY,
-            gh_user_repo_name = f"{GH_ORGANIZATION}/{task.screening.repo_name}",
+            gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
             gh_repo_commit_hash = commit_fork,
             binder_image_tag = commit_fork,
             dotenv = task.get_dotenv_path()))
