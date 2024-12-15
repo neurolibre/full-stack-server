@@ -220,25 +220,47 @@ def docker_pull(image):
     result  = execute_subprocess(command)
     return result
 
-def docker_save(image,issue_id,commit_fork):
+def docker_save(image, issue_id, commit_fork):
     record_name = item_to_record_name("docker")
-    save_name = os.path.join(get_archive_dir(issue_id),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
+    save_name = os.path.join(get_archive_dir(issue_id), 
+                            f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{issue_id:05d}_{commit_fork[0:6]}.tar.gz")
     try:
-        save_process = subprocess.Popen(['docker', 'save', '-o', save_name, image], stdout=subprocess.PIPE)
-        gzip_process = subprocess.Popen(['gzip', '-c'], stdin=save_process.stdout, stdout=open(save_name, 'wb'))
-        # Wait for the gzip process to complete
-        ret = gzip_process.wait()
-        if ret == 0:
+        # First save the docker image to a temporary file without compression
+        temp_save_name = save_name.replace('.tar.gz', '.tar')
+        
+        # Save the docker image
+        save_process = subprocess.Popen(['docker', 'save', '-o', temp_save_name, image])
+        save_status = save_process.wait()  # Wait for save to complete
+        
+        if save_status != 0:
+            return {"status": False, "message": "Docker save failed"}, None
+            
+        # Now compress the saved file
+        with open(temp_save_name, 'rb') as f_in:
+            with open(save_name, 'wb') as f_out:
+                gzip_process = subprocess.Popen(['gzip', '-c'], 
+                                             stdin=f_in,
+                                             stdout=f_out)
+                gzip_status = gzip_process.wait()  # Wait for compression to complete
+                
+        # Remove temporary uncompressed file
+        os.remove(temp_save_name)
+        
+        if gzip_status == 0:
             status = True
             output = "Success"
         else:
             status = False
-            output = "Fail"
+            output = "Gzip compression failed"
+            
     except subprocess.CalledProcessError as e:
-        # If there's a problem with issuing the subprocess.
-        output = e.output
+        output = str(e)
         status = False
-    return {"status": status, "message": output}, save_name
+    except Exception as e:
+        output = str(e)
+        status = False
+        
+    return {"status": status, "message": output}, save_name if status else None
 
 def get_archive_dir(issue_id):
     path = f"{DATA_ROOT_PATH}/{ZENODO_ARCHIVES_FOLDER}/{issue_id:05d}"
