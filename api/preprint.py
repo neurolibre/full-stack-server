@@ -228,39 +228,59 @@ def docker_save(image, issue_id, commit_fork):
         # First save the docker image to a temporary file without compression
         temp_save_name = save_name.replace('.tar.gz', '.tar')
         
-        # Save the docker image
-        save_process = subprocess.Popen(['docker', 'save', '-o', temp_save_name, image])
-        save_status = save_process.wait()  # Wait for save to complete
+        # Save the docker image with output capture
+        save_process = subprocess.Popen(['docker', 'save', '-o', temp_save_name, image],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE)
+        save_stdout, save_stderr = save_process.communicate()
+        save_status = save_process.returncode
         
         if save_status != 0:
-            return {"status": False, "message": "Docker save failed"}, None
+            error_msg = f"Docker save failed:\nStdout: {save_stdout.decode()}\nStderr: {save_stderr.decode()}"
+            return {"status": False, "message": error_msg}, None
             
+        # Check if the temporary file exists and has content
+        if not os.path.exists(temp_save_name):
+            return {"status": False, "message": "Docker save did not create output file"}, None
+            
+        temp_size = os.path.getsize(temp_save_name)
+        if temp_size == 0:
+            return {"status": False, "message": "Docker save created empty file"}, None
+            
+        print(f"Debug: Temporary file size: {temp_size} bytes")
+        
         # Now compress the saved file
-        with open(temp_save_name, 'rb') as f_in:
-            with open(save_name, 'wb') as f_out:
-                gzip_process = subprocess.Popen(['gzip', '-c'], 
-                                             stdin=f_in,
-                                             stdout=f_out)
-                gzip_status = gzip_process.wait()  # Wait for compression to complete
+        try:
+            with open(temp_save_name, 'rb') as f_in:
+                with open(save_name, 'wb') as f_out:
+                    gzip_process = subprocess.Popen(['gzip', '-c'], 
+                                                  stdin=f_in,
+                                                  stdout=f_out,
+                                                  stderr=subprocess.PIPE)
+                    gzip_stdout, gzip_stderr = gzip_process.communicate()
+                    gzip_status = gzip_process.returncode
+                    
+            if gzip_status != 0:
+                error_msg = f"Gzip compression failed:\nStderr: {gzip_stderr.decode()}"
+                return {"status": False, "message": error_msg}, None
                 
-        # Remove temporary uncompressed file
-        os.remove(temp_save_name)
+        finally:
+            # Always try to clean up the temporary file
+            if os.path.exists(temp_save_name):
+                os.remove(temp_save_name)
         
-        if gzip_status == 0:
-            status = True
-            output = "Success"
-        else:
-            status = False
-            output = "Gzip compression failed"
+        final_size = os.path.getsize(save_name)
+        print(f"Debug: Final compressed file size: {final_size} bytes")
+        
+        if final_size == 0:
+            return {"status": False, "message": "Final compressed file is empty"}, None
             
-    except subprocess.CalledProcessError as e:
-        output = str(e)
-        status = False
-    except Exception as e:
-        output = str(e)
-        status = False
+        return {"status": True, "message": f"Success: saved {temp_size} bytes, compressed to {final_size} bytes"}, save_name
         
-    return {"status": status, "message": output}, save_name if status else None
+    except subprocess.CalledProcessError as e:
+        return {"status": False, "message": f"Process error: {str(e)}"}, None
+    except Exception as e:
+        return {"status": False, "message": f"Unexpected error: {str(e)}"}, None
 
 def get_archive_dir(issue_id):
     path = f"{DATA_ROOT_PATH}/{ZENODO_ARCHIVES_FOLDER}/{issue_id:05d}"

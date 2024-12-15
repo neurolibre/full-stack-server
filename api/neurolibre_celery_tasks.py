@@ -983,6 +983,7 @@ def zenodo_upload_docker_task(self, screening_dict):
         task.start(f"Exporting docker image: \n {rees_resources.found_image_name}:{commit_fork}")
 
         r = docker_save(f"{rees_resources.found_image_name}:{commit_fork}",task.screening.issue_id,commit_fork)
+        print(r)
         if not r[0]['status']:
             task.fail(f"Cannot save the docker image \n {r[0]['message']}")
             return
