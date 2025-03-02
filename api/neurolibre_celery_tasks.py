@@ -1751,11 +1751,16 @@ def preview_download_data(self, screening_dict):
             error_message += f"with valid `project_name` values."
             
             logging.error(error_message)
-            task.fail(github_alert(error_message, alert_type='caution'))
-            return
+            raise ValueError(error_message)  # Raise a different exception to be caught below
+            #task.fail(github_alert(error_message, alert_type='caution'))
+            #return
         
         # Use the first project name for the data path (repo2data will handle the rest)
         project_name = project_names[0]
+    except ValueError as ve:
+        # Handle our custom validation error
+        task.fail(github_alert(str(ve), alert_type='caution'))
+        return
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
         if task.screening.email:
