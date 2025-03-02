@@ -25,6 +25,7 @@ from celery.schedules import crontab
 import zipfile
 import tempfile
 import tarfile
+import re
 
 '''
 TODO: IMPORTANT REFACTORING
@@ -1720,18 +1721,41 @@ def preview_download_data(self, screening_dict):
         if not data_manifest:
             task.fail("binder/data_requirement.json not found.")
             raise
-        #valid_pattern = re.compile(r'^[a-z0-9_-]+$')
+            
         valid_pattern = re.compile(r'^[a-z0-9/_-]+$')
-        project_name = data_manifest['projectName']
-        if not valid_pattern.match(project_name):
-            logging.error(f"👀 Project name {project_name} is not valid.")
-            task.fail(github_alert(
-                f"👀 Project name {project_name} is not valid. Only `alphanumerical lowercase characters` in kebab-case (using `-` or `_`) and `/` are allowed."
-                f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
-                f"with a valid `project_name`.",
-                alert_type='caution'
-            ))
-            raise
+        
+        # Check if it's a single project or multiple datasets format
+        if 'projectName' in data_manifest:
+            # Single project format
+            project_names = [data_manifest['projectName']]
+        else:
+            # Multiple datasets format - validate all project names
+            project_names = []
+            for dataset_key in data_manifest:
+                if isinstance(data_manifest[dataset_key], dict) and 'projectName' in data_manifest[dataset_key]:
+                    project_names.append(data_manifest[dataset_key]['projectName'])
+            
+            if not project_names:
+                task.fail("No projectName found in data_requirement.json")
+                raise ValueError("No projectName found in data_requirement.json")
+        
+        # Validate all project names
+        invalid_names = []
+        for project_name in project_names:
+            if not valid_pattern.match(project_name):
+                invalid_names.append(project_name)
+        
+        if invalid_names:
+            error_message = f"👀 Project name(s) {', '.join(invalid_names)} are not valid. Only `alphanumerical lowercase characters` in kebab-case (using `-` or `_`) and `/` are allowed."
+            error_message += f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
+            error_message += f"with valid `project_name` values."
+            
+            logging.error(error_message)
+            task.fail(github_alert(error_message, alert_type='caution'))
+            raise ValueError(f"Invalid project names: {invalid_names}")
+        
+        # Use the first project name for the data path (repo2data will handle the rest)
+        project_name = project_names[0]
     except Exception as e:
         message = f"Data download has failed: {str(e)}"
         if task.screening.email:
