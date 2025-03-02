@@ -57,9 +57,10 @@ class ScreeningClient:
 
             def __call__(self, message="", collapsable=True):
                 template = self.client.gh_response_template(message=message, collapse=collapsable)
-                if self.phase == "PENDING" or self.client.comment_id is None:
+                if self.phase == "PENDING" or self.comment_id is None:
                     comment_id = self.client.gh_create_comment(template['PENDING'])
                     self.comment_id = comment_id
+                    return comment_id
                 else:
                     return self.client.gh_update_comment(template[self.phase])
 
