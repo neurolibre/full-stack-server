@@ -1753,7 +1753,7 @@ def preview_download_data(self, screening_dict):
     repo2data = Repo2Data(json_path, server=True)
     repo2data.set_server_dst_folder(DATA_ROOT_PATH)
     try:
-        logging.info(f"Downloading data from {repo2data.server_url} to {DATA_ROOT_PATH}")
+        logging.info(f"Downloading data to {DATA_ROOT_PATH}")
         downloaded_data_path = repo2data.install()[0]
         content, total_size = get_directory_content_summary(downloaded_data_path)
         message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
