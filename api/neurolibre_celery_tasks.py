@@ -1706,6 +1706,7 @@ def preview_download_data(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
 
     task.start("Started downloading the data.")
+    logging.info(f"Started downloading data for {task.owner_name}/{task.repo_name}")
     try:
         contents = task.screening.repo_object.get_contents("binder/data_requirement.json")
         # logging.debug(contents.decoded_content)
@@ -1723,6 +1724,7 @@ def preview_download_data(self, screening_dict):
         valid_pattern = re.compile(r'^[a-z0-9/_-]+$')
         project_name = data_manifest['projectName']
         if not valid_pattern.match(project_name):
+            logging.error(f"👀 Project name {project_name} is not valid.")
             task.fail(github_alert(
                 f"👀 Project name {project_name} is not valid. Only `alphanumerical lowercase characters` in kebab-case (using `-` or `_`) and `/` are allowed."
                 f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
@@ -1736,6 +1738,7 @@ def preview_download_data(self, screening_dict):
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", message)
         else:
             task.fail(message)
+        return
 
     data_path = task.join_data_root_path(project_name)
     not_again_message = f"😩 I already have data for `{project_name}` downloaded to `{data_path}`. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set `overwrite=True` if you really know what you are doing."
@@ -1744,12 +1747,13 @@ def preview_download_data(self, screening_dict):
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
         else:
             task.fail(github_alert(not_again_message,"caution"))
-            return
+        return
 
     # Download data with repo2data
     repo2data = Repo2Data(json_path, server=True)
     repo2data.set_server_dst_folder(DATA_ROOT_PATH)
     try:
+        logging.info(f"Downloading data from {repo2data.server_url} to {DATA_ROOT_PATH}")
         downloaded_data_path = repo2data.install()[0]
         content, total_size = get_directory_content_summary(downloaded_data_path)
         message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
@@ -1757,9 +1761,11 @@ def preview_download_data(self, screening_dict):
             message += f"\n- {file_path} ({size})"
         # Sync data between the preview server and binderhub cluster.
         task.start(f"🍰 Sharing data with the BinderHub cluster.")
-        return_code, output = run_celery_subprocess(["rsync", "-avz", "--delete", downloaded_data_path, DATA_NFS_PATH])
+        logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
+        return_code, output = run_celery_subprocess(["rsync", "-a", "--delete", downloaded_data_path, DATA_NFS_PATH])
         if return_code != 0:
             task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {output}.","caution"))
+            return
         else:
             task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
     except Exception as e:
