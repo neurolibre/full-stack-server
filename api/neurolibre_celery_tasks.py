@@ -1737,7 +1737,7 @@ def preview_download_data(self, screening_dict):
             
             if not project_names:
                 task.fail("No projectName found in data_requirement.json")
-                raise ValueError("No projectName found in data_requirement.json")
+                return
         
         # Validate all project names
         invalid_names = []
@@ -1752,7 +1752,7 @@ def preview_download_data(self, screening_dict):
             
             logging.error(error_message)
             task.fail(github_alert(error_message, alert_type='caution'))
-            raise ValueError(f"Invalid project names: {invalid_names}")
+            return
         
         # Use the first project name for the data path (repo2data will handle the rest)
         project_name = project_names[0]
