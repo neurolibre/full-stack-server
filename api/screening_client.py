@@ -51,29 +51,29 @@ class ScreeningClient:
 
     def _init_responder(self):
         class PhaseResponder:
-            def __init__(self, phase, client, comment_id=None):
+            def __init__(self, phase, client):
                 self.phase = phase
                 self.client = client
-                self.comment_id = comment_id
 
             def __call__(self, message="", collapsable=True):
                 template = self.client.gh_response_template(message=message, collapse=collapsable)
-                if self.phase == "PENDING" or self.comment_id is None:
+                #if self.phase == "PENDING" or self.comment_id is None:
+                if self.phase == "PENDING":    
                     comment_id = self.client.gh_create_comment(template['PENDING'])
                     self.comment_id = comment_id
-                    # return comment_id
+                    return comment_id
                 else:
                     return self.client.gh_update_comment(template[self.phase])
 
         class ResponderContainer:
             def __init__(self, client):
                 self.client = client
-                self.PENDING = PhaseResponder("PENDING", client, client.comment_id)
-                self.RECEIVED = PhaseResponder("RECEIVED", client, client.comment_id)
-                self.STARTED = PhaseResponder("STARTED", client, client.comment_id)
-                self.SUCCESS = PhaseResponder("SUCCESS", client, client.comment_id)
-                self.FAILURE = PhaseResponder("FAILURE", client, client.comment_id)
-                self.EXISTS = PhaseResponder("EXISTS", client, client.comment_id)
+                self.PENDING = PhaseResponder("PENDING", client)
+                self.RECEIVED = PhaseResponder("RECEIVED", client)
+                self.STARTED = PhaseResponder("STARTED", client)
+                self.SUCCESS = PhaseResponder("SUCCESS", client)
+                self.FAILURE = PhaseResponder("FAILURE", client)
+                self.EXISTS = PhaseResponder("EXISTS", client)
 
             def __getattr__(self, phase):
                 if phase in self.__dict__:
