@@ -28,6 +28,7 @@ import tarfile
 import re
 from celery.exceptions import TimeoutError, SoftTimeLimitExceeded
 import functools
+import fnmatch
 
 '''
 TODO: IMPORTANT REFACTORING
@@ -1854,10 +1855,12 @@ def preview_download_data(self, screening_dict):
         logging.info(f"Downloading data to {DATA_ROOT_PATH}")
         downloaded_data_path = repo2data.install()[0]
         content, total_size = get_directory_content_summary(downloaded_data_path)
+        removed_items = clean_garbage_files(downloaded_data_path)
+        if removed_items > 0:
+            logging.info(f"Cleaned {removed_items} unwanted items from {downloaded_data_path}")
         base_message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
         file_items = [(f"{file_path} ({size})", "\n- {0}") for file_path, size in content]
         message = truncate_for_github_comment(base_message, file_items)
-    
         task.start(f"🍰 Sharing data with the BinderHub cluster.")
         logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
         success, e_msg = local_to_nfs(downloaded_data_path, DATA_NFS_PATH)
@@ -2007,16 +2010,7 @@ def local_to_nfs(source_path, dest_path):
         tuple: (success, message)
             - success (bool): Whether the transfer succeeded
             - message (str): Status or error message
-    """
-
-    
-        
-    for root, dirs, files in os.walk(source_path, topdown=True):
-        if "__MACOSX" in dirs:
-            macosx_path = os.path.join(root, "__MACOSX")
-            logging.info(f"Removing __MACOSX directory: {macosx_path}")
-            shutil.rmtree(macosx_path)
-            dirs.remove("__MACOSX")  # Prevent os.walk from recursing into it
+    """    
 
     # Optimize rsync for NFS transfers
     rsync_args = [
@@ -2070,3 +2064,50 @@ def truncate_for_github_comment(message, items_to_add=None, max_length=60000):
             result += line
     
     return result
+
+def clean_garbage_files(source_path, unwanted_dirs=None, unwanted_files=None):
+    """
+    Recursively clean a directory by removing unwanted directories and files.
+    
+    Args:
+        source_path (str): Path to the directory to clean
+        unwanted_dirs (list, optional): List of directory names to remove
+        unwanted_files (list, optional): List of file patterns to remove
+        
+    Returns:
+        int: Number of items removed
+    """
+    if unwanted_dirs is None:
+        unwanted_dirs = ["__MACOSX", ".DS_Store", "__pycache__"]
+    
+    if unwanted_files is None:
+        unwanted_files = ["*.pyc", "Thumbs.db", ".DS_Store", "*.tmp"]
+    
+    removed_count = 0
+    
+    # First pass: remove unwanted directories
+    for root, dirs, files in os.walk(source_path, topdown=True):
+        for unwanted_dir in unwanted_dirs:
+            if unwanted_dir in dirs:
+                unwanted_path = os.path.join(root, unwanted_dir)
+                logging.info(f"Removing unwanted directory: {unwanted_path}")
+                try:
+                    shutil.rmtree(unwanted_path)
+                    removed_count += 1
+                    dirs.remove(unwanted_dir)  # Prevent os.walk from recursing into it
+                except Exception as e:
+                    logging.warning(f"Failed to remove {unwanted_path}: {str(e)}")
+    
+    # Second pass: remove unwanted files
+    for pattern in unwanted_files:
+        for root, _, files in os.walk(source_path):
+            for filename in fnmatch.filter(files, pattern):
+                file_path = os.path.join(root, filename)
+                try:
+                    os.remove(file_path)
+                    logging.info(f"Removed unwanted file: {file_path}")
+                    removed_count += 1
+                except Exception as e:
+                    logging.warning(f"Failed to remove {file_path}: {str(e)}")
+    
+    return removed_count
