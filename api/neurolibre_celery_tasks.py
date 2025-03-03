@@ -1944,6 +1944,17 @@ def transfer_data_compressed(source_path, dest_path, task=None):
     temp_archive = f"{source_path}.tar.gz"
     
     try:
+        # Remove any __MACOSX directories before compressing
+        if task:
+            task.start(f"🧹 Cleaning up any __MACOSX directories...")
+        
+        for root, dirs, files in os.walk(source_path, topdown=True):
+            if "__MACOSX" in dirs:
+                macosx_path = os.path.join(root, "__MACOSX")
+                logging.info(f"Removing __MACOSX directory: {macosx_path}")
+                shutil.rmtree(macosx_path)
+                dirs.remove("__MACOSX")  # Prevent os.walk from recursing into it
+        
         # Compress the data
         if task:
             task.start(f"📦 Compressing data for efficient transfer...")
