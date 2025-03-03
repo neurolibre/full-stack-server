@@ -26,6 +26,8 @@ import zipfile
 import tempfile
 import tarfile
 import re
+from celery.exceptions import TimeoutError, SoftTimeLimitExceeded
+import functools
 
 '''
 TODO: IMPORTANT REFACTORING
@@ -86,6 +88,72 @@ celery_app.conf.update(task_track_started=True)
 Configuration END
 """
 
+def handle_soft_timeout(func):
+    """
+    Decorator to handle SoftTimeLimitExceeded and TimeoutError exceptions for Celery tasks.
+    
+    This decorator wraps a Celery task function and catches timeout exceptions,
+    updating the task state and raising Ignore to prevent the task from being retried.
+    """
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except (SoftTimeLimitExceeded, TimeoutError) as e:
+            task_name = func.__name__
+            exception_type = e.__class__.__name__
+            logging.error(f"Task {task_name} timed out with {exception_type}: {str(e)}")
+            
+            # Try to extract issue_id and other info for GitHub notification
+            issue_id = None
+            comment_id = None
+            review_repository = None
+            
+            # Extract parameters from different argument patterns
+            if args and isinstance(args[0], dict):
+                if 'issue_id' in args[0]:
+                    issue_id = args[0]['issue_id']
+                if 'comment_id' in args[0]:
+                    comment_id = args[0]['comment_id']
+                if 'review_repository' in args[0]:
+                    review_repository = args[0]['review_repository']
+            
+            # If we have a BaseNeuroLibreTask
+            if hasattr(self, 'screening') and hasattr(self.screening, 'issue_id'):
+                self.screening.respond.FAILURE(f"Task timed out after reaching its time limit: {str(e)}")
+            
+            # If we have enough info for a GitHub notification
+            elif issue_id and comment_id and review_repository:
+                try:
+                    GH_BOT = os.getenv('GH_BOT')
+                    github_client = Github(GH_BOT)
+                    gh_template_respond(
+                        github_client, 
+                        "failure", 
+                        f"Task {task_name} timed out", 
+                        review_repository, 
+                        issue_id, 
+                        self.request.id, 
+                        comment_id, 
+                        f"The task exceeded its time limit and was terminated. Please try again or contact support if this persists."
+                    )
+                except Exception as notify_error:
+                    logging.error(f"Failed to notify on GitHub: {str(notify_error)}")
+            
+            # Update task state
+            self.update_state(
+                state=states.FAILURE,
+                meta={
+                    'exc_type': exception_type,
+                    'exc_message': str(e),
+                    'message': f"Task {task_name} exceeded its time limit and was terminated."
+                }
+            )
+            
+            # Prevent retry
+            raise Ignore()
+    
+    return wrapper
 
 def fast_copytree(src, dst):
     # Create a temporary directory for the zip file
@@ -1700,6 +1768,7 @@ def zenodo_flush_task(self,screening_dict):
 
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def preview_download_data(self, screening_dict):
     """
     Downloading data to the preview server.
