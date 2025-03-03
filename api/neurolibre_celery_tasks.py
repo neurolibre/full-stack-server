@@ -1854,10 +1854,10 @@ def preview_download_data(self, screening_dict):
         logging.info(f"Downloading data to {DATA_ROOT_PATH}")
         downloaded_data_path = repo2data.install()[0]
         content, total_size = get_directory_content_summary(downloaded_data_path)
-        message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
-        for file_path, size in content:
-            message += f"\n- {file_path} ({size})"
-        # Sync data between the preview server and binderhub cluster.
+        base_message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
+        file_items = [(f"{file_path} ({size})", "\n- {0}") for file_path, size in content]
+        message = truncate_for_github_comment(base_message, file_items)
+    
         task.start(f"🍰 Sharing data with the BinderHub cluster.")
         logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
         success, e_msg = local_to_nfs(downloaded_data_path, DATA_NFS_PATH)
@@ -2031,10 +2031,42 @@ def local_to_nfs(source_path, dest_path):
         "--stats",           # Show transfer statistics
     ]
 
+    start_time = time.time()
     return_code, output = run_celery_subprocess(rsync_args + [source_path, dest_path])
+    end_time = time.time()
+    duration = end_time - start_time
+    logging.info(f"Rsync transfer completed in {duration:.2f} seconds {get_time()}")
 
     if return_code != 0:
         return False, f"Could not extract the data at destination: {output}"
 
     logging.info(f"Data transfer completed successfully: {output}")
     return True, "Data transfer completed successfully"
+
+def truncate_for_github_comment(message, items_to_add=None, max_length=60000):
+    """
+    Truncates a message to ensure it doesn't exceed GitHub's comment size limit.
+    
+    Args:
+        message (str): The base message
+        items_to_add (list, optional): List of items to append to the message, each as (item_text, format_str)
+        max_length (int, optional): Maximum allowed length for the message
+    
+    Returns:
+        str: The truncated message that fits within GitHub's limits
+    """
+    result = message
+    truncation_notice = "\n\n... (output truncated due to GitHub comment size limits)"
+    
+    if items_to_add:
+        for item, format_str in items_to_add:
+            line = format_str.format(item)
+            
+            # Check if adding this line would exceed our limit
+            if len(result) + len(line) + len(truncation_notice) > max_length:
+                result += truncation_notice
+                break
+                
+            result += line
+    
+    return result
