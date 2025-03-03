@@ -1791,9 +1791,11 @@ def preview_download_data(self, screening_dict):
         # Sync data between the preview server and binderhub cluster.
         task.start(f"🍰 Sharing data with the BinderHub cluster.")
         logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
-        return_code, output = run_celery_subprocess(["rsync", "-a", "--delete", downloaded_data_path, DATA_NFS_PATH])
-        if return_code != 0:
-            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {output}.","caution"))
+        success, message = transfer_data_compressed(downloaded_data_path, DATA_NFS_PATH, task)
+        # return_code, output = run_celery_subprocess(["rsync", "-a", "--delete", downloaded_data_path, DATA_NFS_PATH])
+        
+        if not success:
+            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {message}.","caution"))
             return
         else:
             task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
@@ -1923,3 +1925,75 @@ def get_repository_license(github_client, repo_url):
             "message": f"Error getting repository license: {str(e)}",
             "license": None
         }
+
+def transfer_data_compressed(source_path, dest_path, task=None):
+    """
+    Transfer data from source to destination using compression for efficiency.
+    
+    Args:
+        source_path (str): Path to the source data directory
+        dest_path (str): Base destination path
+        task (BaseNeuroLibreTask, optional): Task object for status updates
+        
+    Returns:
+        tuple: (success, message)
+            - success (bool): Whether the transfer succeeded
+            - message (str): Status or error message
+    """
+    # Create a temporary compressed file
+    temp_archive = f"{source_path}.tar.gz"
+    
+    try:
+        # Compress the data
+        if task:
+            task.start(f"📦 Compressing data for efficient transfer...")
+        logging.info(f"Compressing {source_path} to {temp_archive}")
+        
+        return_code, output = run_celery_subprocess([
+            "tar", "-czf", temp_archive, 
+            "-C", os.path.dirname(source_path), 
+            os.path.basename(source_path)
+        ])
+        
+        if return_code != 0:
+            return False, f"Could not compress the data for transfer: {output}"
+            
+        # Transfer the compressed file
+        if task:
+            task.start(f"🚚 Transferring compressed data...")
+        logging.info(f"Transferring {temp_archive} to {dest_path}")
+        
+        return_code, output = run_celery_subprocess([
+            "cp", temp_archive, f"{dest_path}/"
+        ])
+        
+        if return_code != 0:
+            return False, f"Could not transfer the data: {output}"
+            
+        # Extract at destination, preserving the same structure
+        if task:
+            task.start(f"📂 Extracting data at destination...")
+        logging.info(f"Extracting data at destination {dest_path}")
+        
+        dest_dir = os.path.dirname(os.path.join(dest_path, os.path.basename(source_path)))
+        archive_name = os.path.basename(temp_archive)
+        
+        # First extract the archive
+        return_code, output = run_celery_subprocess([
+            "tar", "-xzf", f"{dest_path}/{archive_name}", "-C", dest_dir
+        ])
+        
+        if return_code != 0:
+            return False, f"Could not extract the data at destination: {output}"
+
+        return_code, output = run_celery_subprocess([
+            "rm", f"{dest_path}/{archive_name}"
+        ])
+
+        return True, "Data transfer completed successfully"
+        
+    finally:
+        # Clean up the temporary archive on the source server
+        if os.path.exists(temp_archive):
+            os.remove(temp_archive)
+            logging.info(f"Removed temporary archive {temp_archive}")
