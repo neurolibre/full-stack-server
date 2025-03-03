@@ -1860,7 +1860,7 @@ def preview_download_data(self, screening_dict):
         # Sync data between the preview server and binderhub cluster.
         task.start(f"🍰 Sharing data with the BinderHub cluster.")
         logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
-        success, e_msg = local_to_nfs(downloaded_data_path, DATA_NFS_PATH, task)
+        success, e_msg = local_to_nfs(downloaded_data_path, DATA_NFS_PATH)
         # return_code, output = run_celery_subprocess(["rsync", "-a", "--delete", downloaded_data_path, DATA_NFS_PATH])
 
         if not success:
