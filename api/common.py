@@ -26,10 +26,10 @@ performed by both servers (preview and preprint).
 
 load_dotenv()
 
-def load_yaml(file):
-    with open(file, 'r') as file:
-        data = yaml.safe_load(file)
-    return data 
+def load_yaml(file_path):
+    """Load a YAML file and return its contents as a dictionary."""
+    with open(file_path, 'r') as file:
+        return yaml.safe_load(file)
 
 common_config  = load_yaml('config/common.yaml')
 preview_config  = load_yaml('config/preview.yaml')
