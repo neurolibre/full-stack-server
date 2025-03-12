@@ -1854,8 +1854,8 @@ def preview_download_data(self, screening_dict):
     try:
         logging.info(f"Downloading data to {DATA_ROOT_PATH}")
         downloaded_data_path = repo2data.install()[0]
-        content, total_size = get_directory_content_summary(downloaded_data_path)
         removed_items = clean_garbage_files(downloaded_data_path)
+        content, total_size = get_directory_content_summary(downloaded_data_path)
         if removed_items > 0:
             logging.info(f"Cleaned {removed_items} unwanted items from {downloaded_data_path}")
         base_message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
