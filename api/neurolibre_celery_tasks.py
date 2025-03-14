@@ -1359,7 +1359,7 @@ def preprint_build_pdf_draft(self, payload):
 # REFACTORED TASKS ----------------------------------------------------------------
 # ---------------------------------------------------------------------------------
 
-@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 def myst_upload_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     # Check if there is a latest.txt file in the myst build folder of the forked repo on the preview server.
@@ -1418,7 +1418,7 @@ def myst_upload_task(self, screening_dict):
     else:
         task.fail(f"⛔️ Failed to upload MyST build assets to zenodo as none found for {GH_ORGANIZATION}/{task.repo_name} {response.text}")
 
-@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 def binder_build_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -1476,7 +1476,7 @@ def rsync_myst_prod_task(self, screening_dict):
     else:
         task.fail(f"⛔️ Production MyST build not found on the preview server {expected_myst_url} \n {response.text}")
 
-@celery_app.task(bind=True, soft_time_limit=600, time_limit=1000)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 def preview_build_myst_task(self, screening_dict):
 
     all_logs = ""
