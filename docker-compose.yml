@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    container_name: neurolibre-api
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ${DATA_ROOT_PATH:-/DATA}:${DATA_ROOT_PATH:-/DATA}
+      - ${DATA_NFS_PATH:-/DATA_NFS}:${DATA_NFS_PATH:-/DATA_NFS}
+    env_file:
+      - .env
+    networks:
+      - neurolibre-network
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/celery/Dockerfile
+    container_name: neurolibre-celery-worker
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - api
+    volumes:
+      - ${DATA_ROOT_PATH:-/DATA}:${DATA_ROOT_PATH:-/DATA}
+      - ${DATA_NFS_PATH:-/DATA_NFS}:${DATA_NFS_PATH:-/DATA_NFS}
+    env_file:
+      - .env
+    networks:
+      - neurolibre-network
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/celery-beat/Dockerfile
+    container_name: neurolibre-celery-beat
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - api
+    volumes:
+      - ${DATA_ROOT_PATH:-/DATA}:${DATA_ROOT_PATH:-/DATA}
+    env_file:
+      - .env
+    networks:
+      - neurolibre-network
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    container_name: neurolibre-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${DATA_ROOT_PATH:-/DATA}:${DATA_ROOT_PATH:-/DATA}
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - api
+    networks:
+      - neurolibre-network
+
+  postgres:
+    image: postgres:14
+    container_name: neurolibre-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neurolibre}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-neurolibre}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neurolibre}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - neurolibre-network
+
+  redis:
+    build:
+      context: .
+      dockerfile: docker/redis/Dockerfile
+    container_name: neurolibre-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - neurolibre-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: neurolibre-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@neurolibre.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - neurolibre-network
+
+networks:
+  neurolibre-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data: 
