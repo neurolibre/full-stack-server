@@ -1526,9 +1526,9 @@ def preview_build_myst_task(self, screening_dict):
     if noexec:
         # Base runtime.
         task.screening.binder_hash = NOEXEC_CONTAINER_COMMIT_HASH
-    else:
-        # User defined runtime.
-        task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
+    # else:
+    #     # User defined runtime.
+    #     task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
 
     if noexec:
         # Overrides build image to the base
@@ -1552,15 +1552,15 @@ def preview_build_myst_task(self, screening_dict):
             binder_image_name_override = binder_image_name_override,
             dotenv = task.get_dotenv_path()))      
 
-        if rees_resources.search_img_by_repo_name():
-            logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-            all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
-            rees_resources.pull_image()
-        else:
-            if (not noexec) and is_prod:
-                task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
-                task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. See more at {PREVIEW_BINDERHUB}")
-                logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
+        # if rees_resources.search_img_by_repo_name():
+        #     logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
+        #     all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
+        #     rees_resources.pull_image()
+        # else:
+        #     if (not noexec) and is_prod:
+        #         task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
+        #         task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. See more at {PREVIEW_BINDERHUB}")
+        #         logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
         
         hub = JupyterHubLocalSpawner(rees_resources,
                                 host_build_source_parent_dir = task.join_myst_path(),
