@@ -1532,23 +1532,24 @@ def preview_build_myst_task(self, screening_dict):
 
     if noexec:
         # Overrides build image to the base
-        binder_image_name = NOEXEC_CONTAINER_REPOSITORY
+        binder_image_name_override = NOEXEC_CONTAINER_REPOSITORY
     else:
         # Falls back to the repo name to look for the image. 
-        binder_image_name = None
+        binder_image_name_override = None
 
     all_logs_dict["commit_hash"] = task.screening.commit_hash
     all_logs_dict["binder_hash"] = task.screening.binder_hash
-    all_logs_dict["binder_image_name"] = binder_image_name
+    all_logs_dict["binder_image_name_override"] = binder_image_name_override
 
     try:
 
         rees_resources = REES(dict(
             registry_url=BINDER_REGISTRY,
             gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+            bh_project_name = BINDER_REGISTRY.split('https://')[-1],
             gh_repo_commit_hash = task.screening.commit_hash,
             binder_image_tag = task.screening.binder_hash,
-            binder_image_name = binder_image_name,
+            binder_image_name_override = binder_image_name_override,
             dotenv = task.get_dotenv_path()))      
 
         if rees_resources.search_img_by_repo_name():
