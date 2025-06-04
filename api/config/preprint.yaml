@@ -23,7 +23,7 @@ SERVER_DESC: 'Preprint (production) server'
 SERVER_ABOUT: "<h3>Endpoints to handle publishing tasks <u>following the completion of</u> the technical screening process.</h3>"
 
 # Swagger API documentation source endpoint (json formatted)
-APISPEC_SWAGGER_URL: "/swagger/"
+APISPEC_SWAGGER_URL: "/swagger"
 
 # Swagger API documentation page
 APISPEC_SWAGGER_UI_URL: "/documentation"
