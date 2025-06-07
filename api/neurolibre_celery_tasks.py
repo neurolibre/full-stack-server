@@ -531,7 +531,7 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['project']['thebe'] = {}
         myst_config_new['project']['thebe']['binder'] = {}
         myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
-        myst_config_new['project']['thebe']['binder']['repo'] = f"https://github.com/{forked_name}"
+        myst_config_new['project']['thebe']['binder']['repo'] = f"{forked_name}"
         myst_config_new['project']['thebe']['binder']['ref'] = "main"
         myst_config_new['project']['github'] = f"https://github.com/{forked_name}"
         myst_config_new['project']['open_access'] = True
