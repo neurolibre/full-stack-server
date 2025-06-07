@@ -225,7 +225,12 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None,
     This endpoint is to download data from GitHub (technical screening) requests.
     """
     app.logger.info(f'Entered MyST build endpoint')
-    extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, is_prod=is_prod)
+    
+    if commit_hash == "production":
+        extra_payload = dict(commit_hash="latest", binder_hash="latest", is_prod=True)
+    else:
+        extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, is_prod=is_prod)
+
     screening = ScreeningClient(task_name="Build MyST article", 
                                 issue_id=id, 
                                 target_repo_url=repository_url,
