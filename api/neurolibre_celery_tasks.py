@@ -1510,7 +1510,7 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
         # Enforce latest binder image
         task.screening.binder_hash = "latest"
-        app.logger.info(f"Entered PRODUCTION MyST build. Binder hash: {task.screening.binder_hash}, Commit hash: {task.screening.commit_hash}, Owner name: {task.owner_name}, Repo name: {task.repo_name} Target repo url: {task.screening.target_repo_url}")
+        logging.info(f"Entered PRODUCTION MyST build. Binder hash: {task.screening.binder_hash}, Commit hash: {task.screening.commit_hash}, Owner name: {task.owner_name}, Repo name: {task.repo_name} Target repo url: {task.screening.target_repo_url}")
         base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
         os.makedirs(prod_path, exist_ok=True)
