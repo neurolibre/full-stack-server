@@ -547,6 +547,9 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
         myst_config_new['site']['options']['logo'] = 'logo.png'
 
+        if myst_config['site']['template'] == "article-theme" and 'banner' not in myst_config['project']:
+            myst_config_new['project']['banner'] = f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg"
+
         if not myst_config_new != myst_config:
             response = gh_update_myst_config(github_client,forked_name,myst_config_new)
         
