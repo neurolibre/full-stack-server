@@ -898,7 +898,9 @@ def zenodo_upload_data_task(self,payload):
         else:
             # We will archive the data synced from the test server. (item_arg is the project_name, indicating that the
             # data is stored at the DATA_ROOT_PATH/project_name folder)
-            local_path = os.path.join(DATA_ROOT_PATH, project_name)
+            # local_path = os.path.join(DATA_ROOT_PATH, project_name)
+            # NEW CONVENTION: SHARED STORAGE
+            local_path = os.path.join(DATA_NFS_PATH, project_name)
             # Descriptive file name
             zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
             # Zip it!
