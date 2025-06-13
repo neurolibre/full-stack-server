@@ -542,10 +542,25 @@ def fork_configure_repository_task(self, payload):
         myst_config_new['project']['venue'] = JOURNAL_NAME
         myst_config_new['project']['subject'] = JOURNAL_SUBJECT
         myst_config_new['project']['doi'] = f"{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
-        myst_config_new['site']['options'] = {}
-        myst_config_new['site']['options']['favicon'] = 'favicon.ico'
-        myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
-        myst_config_new['site']['options']['logo'] = 'logo.png'
+        
+        if 'options' not in myst_config['site']:
+            myst_config_new['site']['options'] = {}
+            myst_config_new['site']['options']['favicon'] = 'favicon.ico'
+            myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
+            myst_config_new['site']['options']['logo'] = 'logo.png'
+            myst_config_new['site']['options']['logo_text'] = JOURNAL_NAME
+        
+        if not isinstance(myst_config['site'].get('actions', []), list):
+            myst_config_new['site']['actions'] = []
+            myst_config_new['site']['actions'].append({
+                "title": f"🏠 Home",
+                "url": f"https://doi.org/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
+            })
+        else:
+            myst_config_new['site']['actions'].append({
+                "title": f"🏠",
+                "url": f"https://doi.org/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
+            })
 
         if myst_config['site']['template'] == "article-theme" and 'banner' not in myst_config['project']:
             myst_config_new['project']['banner'] = f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg"
