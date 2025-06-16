@@ -550,7 +550,7 @@ def fork_configure_repository_task(self, payload):
             myst_config_new['site']['options']['logo'] = 'logo.png'
             myst_config_new['site']['options']['logo_text'] = JOURNAL_NAME
         
-        if not isinstance(myst_config['site'].get('actions', []), list):
+        if 'actions' not in myst_config['site'] or not isinstance(myst_config['site']['actions'], list):
             myst_config_new['site']['actions'] = []
             myst_config_new['site']['actions'].append({
                 "title": f"🏠 Home",
