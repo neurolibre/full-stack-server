@@ -414,6 +414,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def fork_configure_repository_task(self, payload):
     task_title = "INITIATE PRODUCTION (Fork and Configure)"
 
@@ -741,6 +742,7 @@ def preview_build_book_task(self, payload):
     #     gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],issue_comment)
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def zenodo_create_buckets_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -836,6 +838,7 @@ def zenodo_create_buckets_task(self, payload):
         gh_template_respond(github_client,"success",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Zenodo records have been created successfully: \n {collect}")
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def zenodo_upload_book_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -887,7 +890,8 @@ def zenodo_upload_book_task(self, payload):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def zenodo_upload_data_task(self,payload):
 
         GH_BOT=os.getenv('GH_BOT')
@@ -941,7 +945,8 @@ def zenodo_upload_data_task(self,payload):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def zenodo_upload_repository_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -988,7 +993,8 @@ def zenodo_upload_repository_task(self, payload):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def zenodo_upload_docker_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -1102,6 +1108,7 @@ def zenodo_upload_docker_task(self, screening_dict):
             task.fail(f"ERROR: Unrecognized archive type.")
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def zenodo_publish_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')
@@ -1162,6 +1169,7 @@ def zenodo_publish_task(self, payload):
 ### DUPLICATION FOR NOW, SAVING THE DAY.
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def preview_build_book_test_task(self, payload):
 
     task_id = self.request.id
@@ -1380,6 +1388,7 @@ def preprint_build_pdf_draft(self, payload):
 # ---------------------------------------------------------------------------------
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def myst_upload_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     # Check if there is a latest.txt file in the myst build folder of the forked repo on the preview server.
@@ -1439,6 +1448,7 @@ def myst_upload_task(self, screening_dict):
         task.fail(f"⛔️ Failed to upload MyST build assets to zenodo as none found for {GH_ORGANIZATION}/{task.repo_name} {response.text}")
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def binder_build_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -1475,7 +1485,8 @@ def binder_build_task(self, screening_dict):
     else:
         task.fail(f"⛔️ BinderHub build failed. See logs [here]({cur_server}/api/logs/{log_path})")
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def rsync_myst_prod_task(self, screening_dict):
     """
     DOI-formatted myst html files are synced to the production server.
@@ -1497,6 +1508,7 @@ def rsync_myst_prod_task(self, screening_dict):
         task.fail(f"⛔️ Production MyST build not found on the preview server {expected_myst_url} \n {response.text}")
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
 def preview_build_myst_task(self, screening_dict):
 
     all_logs = ""
@@ -1733,6 +1745,7 @@ def preview_build_myst_task(self, screening_dict):
         cleanup_hub(hub)
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
 def zenodo_flush_task(self,screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
