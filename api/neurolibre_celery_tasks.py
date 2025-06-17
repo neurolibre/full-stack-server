@@ -1602,8 +1602,14 @@ def preview_build_myst_task(self, screening_dict):
                                 container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
 
         task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
-        hub_logs = hub.spawn_jupyter_hub()
-        all_logs += ''.join(hub_logs)
+        try:
+            hub_logs = hub.spawn_jupyter_hub()
+            all_logs += ''.join(hub_logs)
+        except Exception as e:
+            task.fail(f"⛔️ Failed to spawn JupyterHub: {str(e)}")
+            task.email_user(f"⛔️ Failed to spawn JupyterHub: {str(e)}")
+            cleanup_hub(hub)
+            return
 
         expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
         if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
