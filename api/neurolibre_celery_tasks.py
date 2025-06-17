@@ -1606,9 +1606,10 @@ def preview_build_myst_task(self, screening_dict):
             hub_logs = hub.spawn_jupyter_hub()
             all_logs += ''.join(hub_logs)
         except Exception as e:
-            task.fail(f"⛔️ Failed to spawn JupyterHub: {str(e)}")
-            task.email_user(f"⛔️ Failed to spawn JupyterHub: {str(e)}")
-            cleanup_hub(hub)
+            all_logs += f"\n ⚠️ Warning: Failed to spawn JupyterHub: {str(e)}"
+            log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
+            task.fail(f"⛔️ Failed to spawn JupyterHub: {str(e)} See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
+            task.email_user(f"⛔️ Failed to spawn JupyterHub: {str(e)} See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
             return
 
         expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
@@ -1679,6 +1680,7 @@ def preview_build_myst_task(self, screening_dict):
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
+            log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ MyST build failed {str(e)}. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
             task.email_user(f"⛔️ MyST build failed. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
             cleanup_hub(hub)
