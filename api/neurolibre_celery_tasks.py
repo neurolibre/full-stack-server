@@ -529,11 +529,17 @@ def fork_configure_repository_task(self, payload):
 
         myst_config_new = myst_config   
         myst_config_new['project']['copyright'] = JOURNAL_NAME
-        myst_config_new['project']['thebe'] = {}
-        myst_config_new['project']['thebe']['binder'] = {}
-        myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
-        myst_config_new['project']['thebe']['binder']['repo'] = f"{forked_name}"
-        myst_config_new['project']['thebe']['binder']['ref'] = "main"
+        # This should be applied only if thebe is already configured (could be non-executable)
+        if myst_config.get('project', {}).get('thebe'):
+            myst_config_new['project']['thebe'] = {}
+            myst_config_new['project']['thebe']['binder'] = {}
+            myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
+            myst_config_new['project']['thebe']['binder']['repo'] = f"{forked_name}"
+            myst_config_new['project']['thebe']['binder']['ref'] = "main"
+        # This should be applied only if binder is already configured (could be non-executable)
+        if myst_config.get('project', {}).get('binder'):
+            myst_config_new['project']['binder'] = PRODUCTION_BINDERHUB
+
         myst_config_new['project']['github'] = f"https://github.com/{forked_name}"
         myst_config_new['project']['open_access'] = True
         myst_config_new['project']['license'] = {}
