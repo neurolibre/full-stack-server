@@ -1668,9 +1668,15 @@ def preview_build_myst_task(self, screening_dict):
         active_ports_before = get_active_ports()
 
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
-
-        myst_logs = builder.build('--execute','--html',user="ubuntu",group="ubuntu")
-        all_logs += f"\n {myst_logs}"
+        try:
+            myst_logs = builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+            all_logs += f"\n {myst_logs}"
+        except Exception as e:
+            all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
+            task.fail(f"⛔️ MyST build failed {str(e)}. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
+            task.email_user(f"⛔️ MyST build failed. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
+            cleanup_hub(hub)
+            return
 
 
         active_ports_after = get_active_ports()
