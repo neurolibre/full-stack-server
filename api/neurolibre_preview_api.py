@@ -227,7 +227,10 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None,
     app.logger.info(f'Entered MyST build endpoint')
     
     if commit_hash == "production":
-        extra_payload = dict(commit_hash="latest", binder_hash="latest", is_prod=True)
+        if binder_hash == "noexec":
+            extra_payload = dict(commit_hash="latest", binder_hash="noexec", is_prod=True)
+        else:
+            extra_payload = dict(commit_hash="latest", binder_hash="latest", is_prod=True)
     else:
         extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, is_prod=is_prod)
 
