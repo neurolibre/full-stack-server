@@ -158,11 +158,27 @@ def gh_get_project_name(github_client,target_repo):
     folder as required by neurolibre.
     """
     repo = github_client.get_repo(gh_filter(target_repo))
-    print(target_repo)
     # This is a requirement
     contents = repo.get_contents("binder/data_requirement.json")
     data = json.loads(contents.decoded_content)
-    return data['projectName']
+    if 'projectName' in data:
+        # Single project format
+        project_name = data['projectName']
+        return project_name
+    else:
+        # Multiple datasets format - validate all project names match
+        project_names = []
+        for dataset_key in data:
+            if isinstance(data[dataset_key], dict) and 'projectName' in data[dataset_key]:
+                project_names.append(data[dataset_key]['projectName'])        
+        if not project_names:
+            raise ValueError("No projectName found in data_requirement.json")    
+        # Check all project names match
+        first_name = project_names[0]
+        for name in project_names[1:]:
+            if name != first_name:
+                raise ValueError(f"Project names must all match. Found '{first_name}' and '{name}'")
+        return first_name
 
 def gh_fork_repository(github_client,source_repo):
     """
