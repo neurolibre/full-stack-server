@@ -648,6 +648,16 @@ def fork_configure_repository_task(self, payload):
         json.dump(rec_info, outfile)
     
     gh_template_respond(github_client,"success",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+    
+    # Instruction to build production binderhub if executable
+    docker_archive_value = gh_read_from_issue_body(github_client,payload['review_repository'],payload['issue_id'],"docker-archive")
+    if docker_archive_value != "N/A":
+        build_msg = f"## 🐳 Next step: Build the production runtime \n \
+                \n > [!IMPORTANT] \
+                \n > Production has been started and looks like this preprint contains executable content. A new docker image has to be built for the forked and configured repository. \
+                \n \
+                \n 🐳 Please click [HERE](https://{PRODUCTION_BINDERHUB}/v2/gh/{forked_name}/HEAD) to build the production runtime."
+        gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],build_msg)
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 
