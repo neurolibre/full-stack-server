@@ -656,7 +656,7 @@ def fork_configure_repository_task(self, payload):
                 \n > [!IMPORTANT] \
                 \n > Production has been started and looks like this preprint contains executable content. A new docker image has to be built for the forked and configured repository. \
                 \n \
-                \n 🐳 Please click [HERE](https://{PRODUCTION_BINDERHUB}/v2/gh/{forked_name}/HEAD) to build the production runtime."
+                \n 🐳 Please click [HERE]({PRODUCTION_BINDERHUB}/v2/gh/{forked_name}/HEAD) to build the production runtime."
         gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],build_msg)
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
