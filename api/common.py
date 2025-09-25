@@ -12,7 +12,6 @@ from botocore.exceptions import ClientError
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
-from email.mime.image import MIMEImage
 from email import encoders
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -443,76 +442,6 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
             Content={
                 'Raw': {
                     'Data': msg.as_bytes()
-                }
-            },
-            ReplyToAddresses=[sender_email]
-        )
-        print("Email sent successfully!")
-        print(f"Message ID: {response['MessageId']}")
-    except ClientError as e:
-        print(f"Error sending email: {e.response['Error']['Message']}")
-    except Exception as e:
-        print("Error sending email:", str(e))
-
-def send_email_with_embedded_image(to_email, subject, body, image_path, image_cid):
-    """
-    Send email with embedded image that can be referenced via CID in HTML
-    """
-    aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
-    sender_email = common_config['SENDER_EMAIL']
-    sender_name = "EvidencePub"
-
-    # Create SESv2 client
-    sesv2_client = boto3.client(
-        'sesv2',
-        region_name=aws_region,
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-    )
-
-    # Create MIME message with proper headers for raw email
-    msg = MIMEMultipart('related')
-    msg['From'] = f"{sender_name} <{sender_email}>"
-    msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
-    msg['Subject'] = subject
-
-    # Anti-spam headers
-    msg['X-Mailer'] = 'Evidence Publication Platform'
-    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
-    msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
-    msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
-    msg['X-Priority'] = '3'
-    msg['X-MSMail-Priority'] = 'Normal'
-    msg['Importance'] = 'Normal'
-
-    # Add HTML body
-    msg.attach(MIMEText(body, 'html', 'utf-8'))
-
-    # Add embedded image
-    if os.path.exists(image_path):
-        with open(image_path, 'rb') as img_file:
-            img_data = img_file.read()
-
-        # Determine image type from file extension
-        if image_path.lower().endswith('.svg'):
-            img = MIMEImage(img_data, _subtype='svg+xml')
-        else:
-            img = MIMEImage(img_data)
-
-        img.add_header('Content-ID', f'<{image_cid}>')
-        img.add_header('Content-Disposition', 'inline', filename=os.path.basename(image_path))
-        msg.attach(img)
-
-    try:
-        # Send email using SESv2 with raw message
-        response = sesv2_client.send_email(
-            FromEmailAddress=f"{sender_name} <{sender_email}>",
-            Destination={
-                'ToAddresses': to_email if isinstance(to_email, list) else [to_email]
-            },
-            Content={
-                'Raw': {
-                    'Data': msg.as_string()
                 }
             },
             ReplyToAddresses=[sender_email]

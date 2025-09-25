@@ -233,10 +233,6 @@ class BaseNeuroLibreTask:
         if self.screening.email_address is not None:
             self.screening.send_user_email(message)
 
-    def email_user_with_logo(self, message):
-        if self.screening.email_address is not None:
-            self.screening.send_user_email_with_logo(message)
-
     def succeed(self, message, collapsable=True, attachment_path=None):
         if self.screening.issue_id is not None:
             if attachment_path:
