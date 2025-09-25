@@ -4,77 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {
+        body {{
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;
             margin: 0;
             padding: 0;
-        }
+        }}
 
-        .email-container {
+        .email-container {{
             max-width: 600px;
             margin: 20px auto;
             background-color: #ffffff;
             border: 1px solid #ddd;
             border-radius: 8px;
             overflow: hidden;
-        }
+        }}
 
-        .header {
+        .header {{
             background-color: #4CAF50;
             color: #ffffff;
             padding: 20px;
             text-align: center;
-        }
+        }}
 
-        .header h1 {
+        .header h1 {{
             margin: 0;
             font-size: 24px;
-        }
+        }}
 
-        .content {
+        .content {{
             padding: 20px;
             color: #333333;
             line-height: 1.6;
-        }
+        }}
 
-        .content h2 {
+        .content h2 {{
             font-size: 20px;
             margin-top: 0;
-        }
+        }}
 
-        .content p {
+        .content p {{
             margin: 10px 0;
-        }
+        }}
 
-        .content a {
+        .content a {{
             color: #4CAF50;
             text-decoration: none;
             font-weight: bold;
-        }
+        }}
 
-        .footer {
+        .footer {{
             background-color: #f4f4f4;
             text-align: center;
             padding: 10px 20px;
             color: #666;
             font-size: 12px;
-        }
+        }}
 
-        .footer a {
+        .footer a {{
             color: #4CAF50;
             text-decoration: none;
-        }
+        }}
 
-        @media (max-width: 600px) {
-            .content h2 {
+        @media (max-width: 600px) {{
+            .content h2 {{
                 font-size: 18px;
-            }
+            }}
 
-            .header h1 {
+            .header h1 {{
                 font-size: 20px;
-            }
-        }
+            }}
+        }}
     </style>
 </head>
 <body>
