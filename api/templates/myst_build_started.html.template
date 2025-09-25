@@ -44,7 +44,7 @@
         .content h2 {{
             font-size: 20px;
             margin-top: 0;
-            color: #488099;
+            color: #b256a1;
         }}
 
         .content p {{
@@ -79,19 +79,20 @@
         }}
 
         .info-box {{
-            background-color: #35cbe3;
+            background-color: #f4f4f4;
             border-left: 4px solid #394459;
+            border-right: 4px solid #394459;
             padding: 15px;
             margin: 15px 0;
             border-radius: 4px;
         }}
 
         .code {{
-            background-color: #f5f5f5;
+            background-color: #e3e3e3;
             border-radius: 5px;
-            padding: 2px 4px;
+            padding: 0px 4px;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 0.9em;
+            font-size: 1em;
             color: #333;
         }}
 
@@ -125,14 +126,14 @@
         <div class="content">
             <h2>PREVIEW Build Started</h2>
 
-            <p>We're weaving your <strong>{owner_name}/{repo_name}</strong> preprint into existence...</p>
+            <p>We're weaving your preprint into existence from <a href="https://github.com/{owner_name}/{repo_name}"><strong>{owner_name}/{repo_name}</strong></a></p>
 
             <div class="info-box">
-                <p><strong>Build Details:</strong></p>
+                <p><strong>Build Details</strong></p>
                 <ul class="details-list">
-                    <li><strong>Task ID:</strong> <span class="code">{task_id}</span></li>
-                    <li><strong>Commit Hash:</strong> <span class="code">{commit_hash}</span></li>
-                    <li><strong>Binder Hash:</strong> <span class="code">{binder_hash}</span></li>
+                    <li>🆔 <span class="code">{task_id}</span></li>
+                    <li>#️⃣ <span class="code">{commit_hash}</span></li>
+                    <li>▶️ <span class="code">{binder_hash}</span></li>
                 </ul>
             </div>
 
