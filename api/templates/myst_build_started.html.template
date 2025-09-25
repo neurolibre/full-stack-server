@@ -125,7 +125,7 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <img src="https://raw.githubusercontent.com/evidencepub/brand/1c7271f3abc192ea82b1096730438e0bf2f5af72/logo/svg/evidence_logo_white.svg" alt="Evidence" class="logo">
+            <img src="cid:evidence-logo" alt="Evidence" class="logo">
             <h1><span class="emoji">🚀</span> MyST Build Started <span class="emoji">🚀</span></h1>
         </div>
 

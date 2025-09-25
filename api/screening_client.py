@@ -6,7 +6,7 @@ import json
 import yaml
 import git
 from github import Github, InputFileContent
-from common  import load_yaml, send_email
+from common  import load_yaml, send_email, send_email_with_embedded_image
 from dotenv import load_dotenv
 from flask import jsonify, make_response
 
@@ -316,3 +316,8 @@ class ScreeningClient:
     
     def send_user_email(self, body):
         send_email(self.email_address, self.task_name, body)
+
+    def send_user_email_with_logo(self, body):
+        """Send email with embedded Evidence logo"""
+        logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'evidence_logo_white.svg')
+        send_email_with_embedded_image(self.email_address, self.task_name, body, logo_path, 'evidence-logo')
