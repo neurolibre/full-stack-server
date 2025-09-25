@@ -1529,7 +1529,7 @@ def preview_build_myst_task(self, screening_dict):
             commit_hash=task.screening.commit_hash,
             binder_hash=task.screening.binder_hash
         )
-        task.email_user_with_logo(email_content)
+        task.email_user(email_content)
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
