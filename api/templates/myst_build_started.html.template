@@ -30,13 +30,6 @@
             position: relative;
         }}
 
-        .header .logo {{
-            position: absolute;
-            left: 20px;
-            height: 32px;
-            width: auto;
-        }}
-
         .header h1 {{
             margin: 0;
             font-size: 24px;
@@ -125,7 +118,7 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <img src="https://github.com/evidencepub/brand/blob/main/logo/png/white_300x300.png?raw=true" class="logo">
+            <img src="https://raw.githubusercontent.com/evidencepub/brand/main/logo/png/white_300x300.png" style="height: 32px; display:block; position: absolute; top: 2px; left: 2px;">
             <h1><span class="emoji">🚀</span> MyST Build Started <span class="emoji">🚀</span></h1>
         </div>
 
