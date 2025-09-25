@@ -364,7 +364,7 @@ def send_email(to_email, subject, body):
                         }
                     },
                     'Headers': [
-                        {'Name': 'Return-Path', 'Value': sender_email},
+                        {'Name': 'Reply-To', 'Value': sender_email},
                         {'Name': 'X-Mailer', 'Value': 'Evidence Publication Platform'},
                         {'Name': 'Message-ID', 'Value': f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"},
                         {'Name': 'List-Unsubscribe', 'Value': f'<mailto:{sender_email}?subject=Unsubscribe>'},
@@ -410,7 +410,6 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
 
     # Anti-spam headers (these will be included in the raw MIME message)
     msg['Reply-To'] = sender_email
-    msg['Return-Path'] = sender_email
     msg['X-Mailer'] = 'Evidence Publication Platform'
     msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
