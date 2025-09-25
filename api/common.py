@@ -342,6 +342,25 @@ def send_email(to_email, subject, body):
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
     )
 
+    # Create MIME message with proper headers for raw email
+    msg = MIMEMultipart()
+    msg['From'] = f"{sender_name} <{sender_email}>"
+    msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
+    msg['Subject'] = subject
+
+    # Anti-spam headers (these will be included in the raw MIME message)
+    msg['X-Mailer'] = 'Evidence Publication Platform'
+    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
+    msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
+    msg['MIME-Version'] = '1.0'
+    msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
+    msg['X-Priority'] = '3'
+    msg['X-MSMail-Priority'] = 'Normal'
+    msg['Importance'] = 'Normal'
+
+    # Add body to email
+    msg.attach(MIMEText(body, 'html', 'utf-8'))
+
     # Ensure to_email is a list
     destinations = [to_email] if isinstance(to_email, str) else to_email
 
@@ -352,26 +371,8 @@ def send_email(to_email, subject, body):
                 'ToAddresses': destinations
             },
             Content={
-                'Simple': {
-                    'Subject': {
-                        'Data': subject,
-                        'Charset': 'UTF-8'
-                    },
-                    'Body': {
-                        'Html': {
-                            'Data': body,
-                            'Charset': 'UTF-8'
-                        }
-                    },
-                    'Headers': [
-                        {'Name': 'Reply-To', 'Value': sender_email},
-                        {'Name': 'X-Mailer', 'Value': 'Evidence Publication Platform'},
-                        {'Name': 'Message-ID', 'Value': f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"},
-                        {'Name': 'List-Unsubscribe', 'Value': f'<mailto:{sender_email}?subject=Unsubscribe>'},
-                        {'Name': 'X-Priority', 'Value': '3'},
-                        {'Name': 'X-MSMail-Priority', 'Value': 'Normal'},
-                        {'Name': 'Importance', 'Value': 'Normal'}
-                    ]
+                'Raw': {
+                    'Data': msg.as_bytes()
                 }
             },
             ReplyToAddresses=[sender_email]
@@ -409,7 +410,6 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     msg['Subject'] = subject
 
     # Anti-spam headers (these will be included in the raw MIME message)
-    msg['Reply-To'] = sender_email
     msg['X-Mailer'] = 'Evidence Publication Platform'
     msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
