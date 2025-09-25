@@ -1281,62 +1281,14 @@ def preview_build_book_test_task(self, payload):
         self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Build for {owner}/{repo} at {payload['commit_hash']} has succeeded."})
 
 def send_email_celery(to_email, subject, body):
-    sg_api_key = os.getenv('SENDGRID_API_KEY')
-    sender_email = "no-reply@neurolibre.org"
-
-    message = Mail(
-        from_email=sender_email,
-        to_emails=to_email,
-        subject=subject,
-        html_content=body
-    )
-
-    try:
-        sg = SendGridAPIClient(sg_api_key)
-        response = sg.send(message)
-        print("Email sent successfully!")
-        print(response.status_code)
-        print(response.body)
-        print(response.headers)
-    except Exception as e:
-        print("Error sending email:", str(e))
+    # Use the updated SES function from common.py
+    send_email(to_email, subject, body)
 
 
 
 def send_email_with_html_attachment_celery(to_email, subject, body, attachment_path):
-    sg_api_key = os.getenv('SENDGRID_API_KEY')
-    sender_email = "no-reply@neurolibre.org"
-
-    message = Mail(
-        from_email=sender_email,
-        to_emails=to_email,
-        subject=subject,
-        html_content=body
-    )
-
-    with open(attachment_path, "rb") as file:
-        data = file.read()
-
-    encoded_data = base64.b64encode(data).decode()
-
-    # Add the attachment to the email with MIME type "text/html"
-    attachment = Attachment(
-        FileContent(encoded_data),
-        FileName(os.path.basename(attachment_path)),
-        FileType("text/html"),
-        Disposition("attachment")
-    )
-    message.attachment = attachment
-
-    try:
-        sg = SendGridAPIClient(sg_api_key)
-        response = sg.send(message)
-        print("Email sent successfully!")
-        print(response.status_code)
-        print(response.body)
-        print(response.headers)
-    except Exception as e:
-        print("Error sending email:", str(e))
+    # Use the updated SES function from common.py
+    send_email_with_html_attachment(to_email, subject, body, attachment_path)
 
 def write_html_log(commit_sha, logs):
     file_path = os.path.join(DATA_ROOT_PATH,"api_build_logs", f"logs_{commit_sha[:7]}.html")

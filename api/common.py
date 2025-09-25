@@ -7,8 +7,12 @@ import json
 from flask import abort
 from itertools import chain
 import yaml
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import boto3
+from botocore.exceptions import ClientError
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from dotenv import load_dotenv
 from openai import OpenAI
 import humanize
@@ -326,58 +330,117 @@ def parse_front_matter(markdown_string):
     return yaml.safe_load(front_matter)
 
 def send_email(to_email, subject, body):
-    sg_api_key = os.getenv('SENDGRID_API_KEY')
+    aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
     sender_email = common_config['SENDER_EMAIL']
+    sender_name = "NeuroLibre"
 
-    message = Mail(
-        from_email=sender_email,
-        to_emails=to_email,
-        subject=subject,
-        html_content=body
+    # Create SES client
+    ses_client = boto3.client(
+        'ses',
+        region_name=aws_region,
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
     )
 
+    # Create MIME message with proper headers
+    msg = MIMEMultipart('alternative')
+    msg['From'] = f"{sender_name} <{sender_email}>"
+    msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
+    msg['Subject'] = subject
+
+    # Anti-spam headers
+    msg['Reply-To'] = sender_email
+    msg['Return-Path'] = sender_email
+    msg['X-Mailer'] = 'NeuroLibre Server'
+    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@neurolibre.org>"
+    msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
+    msg['MIME-Version'] = '1.0'
+    msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
+    msg['X-Priority'] = '3'
+    msg['X-MSMail-Priority'] = 'Normal'
+    msg['Importance'] = 'Normal'
+
+    # Add HTML body
+    html_part = MIMEText(body, 'html', 'utf-8')
+    msg.attach(html_part)
+
     try:
-        sg = SendGridAPIClient(sg_api_key)
-        response = sg.send(message)
+        response = ses_client.send_raw_email(
+            Source=f"{sender_name} <{sender_email}>",
+            Destinations=[to_email] if isinstance(to_email, str) else to_email,
+            RawMessage={
+                'Data': msg.as_string(),
+            }
+        )
         print("Email sent successfully!")
-        # print(response.status_code)
-        # print(response.body)
-        # print(response.headers)
+        print(f"Message ID: {response['MessageId']}")
+    except ClientError as e:
+        print(f"Error sending email: {e.response['Error']['Message']}")
     except Exception as e:
         print("Error sending email:", str(e))
 
 
 
 def send_email_with_html_attachment(to_email, subject, body, attachment_path):
-    sg_api_key = os.getenv('SENDGRID_API_KEY')
-    sender_email = "no-reply@neurolibre.org"
+    aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
+    sender_email = common_config['SENDER_EMAIL']
+    sender_name = "NeuroLibre"
 
-    message = Mail(
-        from_email=sender_email,
-        to_emails=to_email,
-        subject=subject,
-        html_content=body
+    # Create SES client
+    ses_client = boto3.client(
+        'ses',
+        region_name=aws_region,
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
     )
 
+    # Read attachment file
     with open(attachment_path, "rb") as file:
-        data = file.read()
+        attachment_data = file.read()
 
-    # Add the attachment to the email with MIME type "text/html"
-    attachment = Attachment(
-        FileContent(data),
-        FileName(os.path.basename(attachment_path)),
-        FileType("text/html"),
-        Disposition("attachment")
+    # Create MIME message with proper headers
+    msg = MIMEMultipart()
+    msg['From'] = f"{sender_name} <{sender_email}>"
+    msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
+    msg['Subject'] = subject
+
+    # Anti-spam headers
+    msg['Reply-To'] = sender_email
+    msg['Return-Path'] = sender_email
+    msg['X-Mailer'] = 'NeuroLibre Server'
+    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@neurolibre.org>"
+    msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
+    msg['MIME-Version'] = '1.0'
+    msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
+    msg['X-Priority'] = '3'
+    msg['X-MSMail-Priority'] = 'Normal'
+    msg['Importance'] = 'Normal'
+
+    # Add body to email
+    msg.attach(MIMEText(body, 'html', 'utf-8'))
+
+    # Add attachment
+    part = MIMEBase('text', 'html')
+    part.set_payload(attachment_data)
+    encoders.encode_base64(part)
+    part.add_header(
+        'Content-Disposition',
+        f'attachment; filename= {os.path.basename(attachment_path)}'
     )
-    message.attachment = attachment
+    msg.attach(part)
 
     try:
-        sg = SendGridAPIClient(sg_api_key)
-        response = sg.send(message)
+        response = ses_client.send_raw_email(
+            Source=f"{sender_name} <{sender_email}>",
+            Destinations=[to_email] if isinstance(to_email, str) else to_email,
+            RawMessage={
+                'Data': msg.as_string(),
+            }
+        )
         print("Email sent successfully!")
-        # print(response.status_code)
-        # print(response.body)
-        # print(response.headers)
+        print(f"Message ID: {response['MessageId']}")
+    except ClientError as e:
+        print(f"Error sending email: {e.response['Error']['Message']}")
     except Exception as e:
         print("Error sending email:", str(e))
 
