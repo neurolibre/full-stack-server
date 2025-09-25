@@ -334,43 +334,48 @@ def send_email(to_email, subject, body):
     sender_email = common_config['SENDER_EMAIL']
     sender_name = "EvidencePub"
 
-    # Create SES client
-    ses_client = boto3.client(
-        'ses',
+    # Create SESv2 client
+    sesv2_client = boto3.client(
+        'sesv2',
         region_name=aws_region,
         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
     )
 
-    # Create MIME message with proper headers
-    msg = MIMEMultipart('alternative')
-    msg['From'] = f"{sender_name} <{sender_email}>"
-    msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
-    msg['Subject'] = subject
-
-    # Anti-spam headers
-    msg['Reply-To'] = sender_email
-    msg['Return-Path'] = sender_email
-    msg['X-Mailer'] = 'EvidencePub Server'
-    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@neurolibre.org>"
-    msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
-    msg['MIME-Version'] = '1.0'
-    msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
-    msg['X-Priority'] = '3'
-    msg['X-MSMail-Priority'] = 'Normal'
-    msg['Importance'] = 'Normal'
-
-    # Add HTML body
-    html_part = MIMEText(body, 'html', 'utf-8')
-    msg.attach(html_part)
+    # Ensure to_email is a list
+    destinations = [to_email] if isinstance(to_email, str) else to_email
 
     try:
-        response = ses_client.send_raw_email(
-            Source=f"{sender_name} <{sender_email}>",
-            Destinations=[to_email] if isinstance(to_email, str) else to_email,
-            RawMessage={
-                'Data': msg.as_string(),
-            }
+        response = sesv2_client.send_email(
+            FromEmailAddress=f"{sender_name} <{sender_email}>",
+            Destination={
+                'ToAddresses': destinations
+            },
+            Content={
+                'Simple': {
+                    'Subject': {
+                        'Data': subject,
+                        'Charset': 'UTF-8'
+                    },
+                    'Body': {
+                        'Html': {
+                            'Data': body,
+                            'Charset': 'UTF-8'
+                        }
+                    },
+                    'Headers': [
+                        {'Name': 'Return-Path', 'Value': sender_email},
+                        {'Name': 'X-Mailer', 'Value': 'Evidence Publication Platform'},
+                        {'Name': 'Message-ID', 'Value': f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"},
+                        {'Name': 'List-Unsubscribe', 'Value': f'<mailto:{sender_email}?subject=Unsubscribe>'},
+                        {'Name': 'X-Priority', 'Value': '3'},
+                        {'Name': 'X-MSMail-Priority', 'Value': 'Normal'},
+                        {'Name': 'Importance', 'Value': 'Normal'}
+                    ]
+                }
+            },
+            ReplyToAddresses=[sender_email],
+            ConfigurationSetName=None  # Optional: specify if you have a configuration set
         )
         print("Email sent successfully!")
         print(f"Message ID: {response['MessageId']}")
@@ -384,11 +389,11 @@ def send_email(to_email, subject, body):
 def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
     sender_email = common_config['SENDER_EMAIL']
-    sender_name = "NeuroLibre"
+    sender_name = "Evidence"
 
-    # Create SES client
-    ses_client = boto3.client(
-        'ses',
+    # Create SESv2 client
+    sesv2_client = boto3.client(
+        'sesv2',
         region_name=aws_region,
         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
@@ -398,17 +403,17 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     with open(attachment_path, "rb") as file:
         attachment_data = file.read()
 
-    # Create MIME message with proper headers
+    # Create MIME message with proper headers for raw email
     msg = MIMEMultipart()
     msg['From'] = f"{sender_name} <{sender_email}>"
     msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
     msg['Subject'] = subject
 
-    # Anti-spam headers
+    # Anti-spam headers (these will be included in the raw MIME message)
     msg['Reply-To'] = sender_email
     msg['Return-Path'] = sender_email
-    msg['X-Mailer'] = 'NeuroLibre Server'
-    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@neurolibre.org>"
+    msg['X-Mailer'] = 'Evidence Publication Platform'
+    msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
     msg['MIME-Version'] = '1.0'
     msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
@@ -429,13 +434,22 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     )
     msg.attach(part)
 
+    # Ensure to_email is a list
+    destinations = [to_email] if isinstance(to_email, str) else to_email
+
     try:
-        response = ses_client.send_raw_email(
-            Source=f"{sender_name} <{sender_email}>",
-            Destinations=[to_email] if isinstance(to_email, str) else to_email,
-            RawMessage={
-                'Data': msg.as_string(),
-            }
+        response = sesv2_client.send_email(
+            FromEmailAddress=f"{sender_name} <{sender_email}>",
+            Destination={
+                'ToAddresses': destinations
+            },
+            Content={
+                'Raw': {
+                    'Data': msg.as_bytes()
+                }
+            },
+            ReplyToAddresses=[sender_email],
+            ConfigurationSetName=None  # Optional: specify if you have a configuration set
         )
         print("Email sent successfully!")
         print(f"Message ID: {response['MessageId']}")
