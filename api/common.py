@@ -352,7 +352,6 @@ def send_email(to_email, subject, body):
     msg['X-Mailer'] = 'Evidence Publication Platform'
     msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
-    msg['MIME-Version'] = '1.0'
     msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
     msg['X-Priority'] = '3'
     msg['X-MSMail-Priority'] = 'Normal'
@@ -413,7 +412,6 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     msg['X-Mailer'] = 'Evidence Publication Platform'
     msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@evidencepub.io>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
-    msg['MIME-Version'] = '1.0'
     msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=Unsubscribe>'
     msg['X-Priority'] = '3'
     msg['X-MSMail-Priority'] = 'Normal'
