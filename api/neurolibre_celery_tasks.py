@@ -1517,10 +1517,15 @@ def preview_build_myst_task(self, screening_dict):
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
-        task.email_user(f"""PREVIEW MyST build for {task.owner_name}/{task.repo_name} has been started. <br>
-                            Task ID: {task.task_id} <br>
-                            Commit hash: {task.screening.commit_hash} <br>
-                            Binder hash: {task.screening.binder_hash}""")
+        template = load_txt_file('templates/myst_build_started.html.template')
+        email_content = template.format(
+            owner_name=task.owner_name,
+            repo_name=task.repo_name,
+            task_id=task.task_id,
+            commit_hash=task.screening.commit_hash,
+            binder_hash=task.screening.binder_hash
+        )
+        task.email_user(email_content)
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
@@ -1716,14 +1721,21 @@ def preview_build_myst_task(self, screening_dict):
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
                 task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
-                task.email_user(
-                    f"""🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! 🌺<br><br>
-                    🌱 Click <a href="{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html">here</a> to view the latest version of your living preprint.<br><br>
-                    👋 Remember to take a look at the <a href="{PREVIEW_SERVER}/api/logs/{log_path}">build logs</a> to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.""")
+                template = load_txt_file('templates/myst_build_completion.html.template')
+                email_content = template.format(
+                    preview_url=f"{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html",
+                    build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}"
+                )
+                task.email_user(email_content)
         else:
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to locate the error.")
-            task.email_user(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>build logs</a> to locate the error.")
+            template = load_txt_file('templates/build_error.html.template')
+            email_content = template.format(
+                error_message="MyST build did not produce the expected webpage",
+                build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}"
+            )
+            task.email_user(email_content)
     finally:
         cleanup_hub(hub)
 

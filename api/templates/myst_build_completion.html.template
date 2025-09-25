@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #4CAF50;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .content {
+            padding: 20px;
+            color: #333333;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            font-size: 20px;
+            margin-top: 0;
+            color: #4CAF50;
+        }
+
+        .content p {
+            margin: 10px 0;
+        }
+
+        .content a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        .cta-button {
+            background-color: #4CAF50;
+            color: #ffffff !important;
+            padding: 12px 24px;
+            border-radius: 5px;
+            text-decoration: none !important;
+            font-size: 16px;
+            display: inline-block;
+            margin: 15px 0;
+        }
+
+        .cta-button:hover {
+            background-color: #45a049;
+        }
+
+        .footer {
+            background-color: #f4f4f4;
+            text-align: center;
+            padding: 10px 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        .highlight-box {
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 600px) {
+            .content h2 {
+                font-size: 18px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .cta-button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1><span class="emoji">🌺</span> MyST Build Completed! <span class="emoji">🌺</span></h1>
+        </div>
+
+        <div class="content">
+            <h2><span class="emoji">🧐</span> PREVIEW <span class="emoji">🧐</span></h2>
+
+            <p>Great news! Your MyST build has been completed successfully.</p>
+
+            <div style="text-align: center;">
+                <a href="{preview_url}" class="cta-button">
+                    <span class="emoji">🌱</span> View Your Living Preprint
+                </a>
+            </div>
+
+            <div class="highlight-box">
+                <p><strong><span class="emoji">👋</span> Important Reminder:</strong></p>
+                <p>Remember to take a look at the <a href="{build_logs_url}">build logs</a> to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.</p>
+            </div>
+
+            <p>If you have any questions or need assistance, please don't hesitate to reach out.</p>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for using our MyST build service!</p>
+        </div>
+    </div>
+</body>
+</html>

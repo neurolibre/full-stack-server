@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #f44336;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .content {
+            padding: 20px;
+            color: #333333;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            font-size: 20px;
+            margin-top: 0;
+            color: #f44336;
+        }
+
+        .content p {
+            margin: 10px 0;
+        }
+
+        .content a {
+            color: #f44336;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        .error-button {
+            background-color: #f44336;
+            color: #ffffff !important;
+            padding: 12px 24px;
+            border-radius: 5px;
+            text-decoration: none !important;
+            font-size: 16px;
+            display: inline-block;
+            margin: 15px 0;
+        }
+
+        .error-button:hover {
+            background-color: #da190b;
+        }
+
+        .footer {
+            background-color: #f4f4f4;
+            text-align: center;
+            padding: 10px 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #f44336;
+            text-decoration: none;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        .error-box {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 600px) {
+            .content h2 {
+                font-size: 18px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .error-button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1><span class="emoji">⛔️</span> Build Error <span class="emoji">⛔️</span></h1>
+        </div>
+
+        <div class="content">
+            <h2>Build Failed</h2>
+
+            <p>Unfortunately, there was an issue with your build process.</p>
+
+            <div class="error-box">
+                <p><strong>Error Details:</strong></p>
+                <p>{error_message}</p>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="{build_logs_url}" class="error-button">
+                    <span class="emoji">🔍</span> View Build Logs
+                </a>
+            </div>
+
+            <p>Please review the build logs to identify and resolve the issue. If you need assistance, don't hesitate to reach out for support.</p>
+        </div>
+
+        <div class="footer">
+            <p>Need help? Contact our support team.</p>
+        </div>
+    </div>
+</body>
+</html>

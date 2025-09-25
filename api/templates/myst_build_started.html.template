@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: #2196F3;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .content {
+            padding: 20px;
+            color: #333333;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            font-size: 20px;
+            margin-top: 0;
+            color: #2196F3;
+        }
+
+        .content p {
+            margin: 10px 0;
+        }
+
+        .content a {
+            color: #2196F3;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        .footer {
+            background-color: #f4f4f4;
+            text-align: center;
+            padding: 10px 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #2196F3;
+            text-decoration: none;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        .info-box {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .code {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        .details-list {
+            margin: 15px 0;
+        }
+
+        .details-list li {
+            margin: 8px 0;
+        }
+
+        @media (max-width: 600px) {
+            .content h2 {
+                font-size: 18px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1><span class="emoji">🚀</span> MyST Build Started <span class="emoji">🚀</span></h1>
+        </div>
+
+        <div class="content">
+            <h2>PREVIEW MyST Build Started</h2>
+
+            <p>Your MyST build for <strong>{owner_name}/{repo_name}</strong> has been started!</p>
+
+            <div class="info-box">
+                <p><strong>Build Details:</strong></p>
+                <ul class="details-list">
+                    <li><strong>Task ID:</strong> <span class="code">{task_id}</span></li>
+                    <li><strong>Commit Hash:</strong> <span class="code">{commit_hash}</span></li>
+                    <li><strong>Binder Hash:</strong> <span class="code">{binder_hash}</span></li>
+                </ul>
+            </div>
+
+            <p>You will receive another notification once the build is completed. Please allow some time for the process to finish.</p>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for using our MyST build service!</p>
+        </div>
+    </div>
+</body>
+</html>
