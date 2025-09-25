@@ -21,10 +21,20 @@
         }}
 
         .header {{
-            background-color: #2196F3;
+            background-color: #394459;
             color: #ffffff;
             padding: 20px;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }}
+
+        .header .logo {{
+            position: absolute;
+            left: 20px;
+            height: 32px;
+            width: auto;
         }}
 
         .header h1 {{
@@ -41,7 +51,7 @@
         .content h2 {{
             font-size: 20px;
             margin-top: 0;
-            color: #2196F3;
+            color: #488099;
         }}
 
         .content p {{
@@ -49,7 +59,7 @@
         }}
 
         .content a {{
-            color: #2196F3;
+            color: #488099;
             text-decoration: none;
             font-weight: bold;
         }}
@@ -67,7 +77,7 @@
         }}
 
         .footer a {{
-            color: #2196F3;
+            color: #90c37f;
             text-decoration: none;
         }}
 
@@ -115,6 +125,7 @@
 <body>
     <div class="email-container">
         <div class="header">
+            <img src="https://raw.githubusercontent.com/evidencepub/brand/1c7271f3abc192ea82b1096730438e0bf2f5af72/logo/svg/evidence_logo_white.svg" alt="Evidence" class="logo">
             <h1><span class="emoji">🚀</span> MyST Build Started <span class="emoji">🚀</span></h1>
         </div>
 

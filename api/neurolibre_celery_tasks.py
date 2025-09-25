@@ -1721,7 +1721,7 @@ def preview_build_myst_task(self, screening_dict):
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
                 task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
-                template = load_txt_file('templates/myst_build_completion.html.template')
+                template = load_txt_file(os.path.join(os.path.dirname(__file__), 'templates/myst_build_completion.html.template'))
                 email_content = template.format(
                     preview_url=f"{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html",
                     build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}"
@@ -1730,7 +1730,7 @@ def preview_build_myst_task(self, screening_dict):
         else:
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ MyST build did not produce the expected webpage \n\n > [!CAUTION] \n > Please take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to locate the error.")
-            template = load_txt_file('templates/build_error.html.template')
+            template = load_txt_file(os.path.join(os.path.dirname(__file__), 'templates/build_error.html.template'))
             email_content = template.format(
                 error_message="MyST build did not produce the expected webpage",
                 build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}"
