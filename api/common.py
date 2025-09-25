@@ -332,7 +332,7 @@ def parse_front_matter(markdown_string):
 def send_email(to_email, subject, body):
     aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
     sender_email = common_config['SENDER_EMAIL']
-    sender_name = "EvidencePub"
+    sender_name = "Evidence"
 
     # Create SESv2 client
     sesv2_client = boto3.client(

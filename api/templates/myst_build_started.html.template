@@ -79,8 +79,8 @@
         }}
 
         .info-box {{
-            background-color: #e3f2fd;
-            border-left: 4px solid #2196F3;
+            background-color: #fff8e0;
+            border-left: 4px solid #394459;
             padding: 15px;
             margin: 15px 0;
             border-radius: 4px;
@@ -118,14 +118,15 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <img src="https://raw.githubusercontent.com/evidencepub/brand/main/logo/png/white_300x300.png" style="height: 32px; display:block; position: absolute; top: 2px; left: 2px;">
-            <h1><span class="emoji">🚀</span> MyST Build Started <span class="emoji">🚀</span></h1>
+            <center>
+            <img src="https://raw.githubusercontent.com/evidencepub/brand/main/logo/png/white_300x300.png" style="height: 50px; display:block;">
+            </center>
         </div>
 
         <div class="content">
-            <h2>PREVIEW MyST Build Started</h2>
+            <h2>PREVIEW Build Started</h2>
 
-            <p>Your MyST build for <strong>{owner_name}/{repo_name}</strong> has been started!</p>
+            <p>We're weaving your <strong>{owner_name}/{repo_name}</strong> preprint into existence...</p>
 
             <div class="info-box">
                 <p><strong>Build Details:</strong></p>
@@ -141,6 +142,9 @@
 
         <div class="footer">
             <p>Thank you for using our MyST build service!</p>
+            <center>
+            <img src="https://raw.githubusercontent.com/evidencepub/brand/main/logo/png/colored_300x300.png" style="height: 25px; display:block;">
+            </center>
         </div>
     </div>
 </body>
