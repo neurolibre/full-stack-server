@@ -374,8 +374,7 @@ def send_email(to_email, subject, body):
                     ]
                 }
             },
-            ReplyToAddresses=[sender_email],
-            ConfigurationSetName=None  # Optional: specify if you have a configuration set
+            ReplyToAddresses=[sender_email]
         )
         print("Email sent successfully!")
         print(f"Message ID: {response['MessageId']}")
@@ -448,8 +447,7 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
                     'Data': msg.as_bytes()
                 }
             },
-            ReplyToAddresses=[sender_email],
-            ConfigurationSetName=None  # Optional: specify if you have a configuration set
+            ReplyToAddresses=[sender_email]
         )
         print("Email sent successfully!")
         print(f"Message ID: {response['MessageId']}")
