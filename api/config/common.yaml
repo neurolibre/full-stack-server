@@ -77,7 +77,7 @@ CONTAINER_MYST_SOURCE_PATH: "/home/jovyan"
 CONTAINER_MYST_DATA_PATH: "/home/jovyan/data"
 
 # Sender email address
-SENDER_EMAIL: "no-reply@neurolibre.org"
+SENDER_EMAIL: "no-reply@evidencepub.io"
 
 # Noexec container repository
 NOEXEC_CONTAINER_REPOSITORY: "neurolibre/mystical-article"

@@ -332,7 +332,7 @@ def parse_front_matter(markdown_string):
 def send_email(to_email, subject, body):
     aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
     sender_email = common_config['SENDER_EMAIL']
-    sender_name = "NeuroLibre"
+    sender_name = "EvidencePub"
 
     # Create SES client
     ses_client = boto3.client(
@@ -351,7 +351,7 @@ def send_email(to_email, subject, body):
     # Anti-spam headers
     msg['Reply-To'] = sender_email
     msg['Return-Path'] = sender_email
-    msg['X-Mailer'] = 'NeuroLibre Server'
+    msg['X-Mailer'] = 'EvidencePub Server'
     msg['Message-ID'] = f"<{int(time.time())}.{hash(to_email)}@neurolibre.org>"
     msg['Date'] = time.strftime('%a, %d %b %Y %H:%M:%S %z')
     msg['MIME-Version'] = '1.0'
