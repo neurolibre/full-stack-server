@@ -1382,7 +1382,7 @@ def myst_upload_task(self, screening_dict):
             ret = process.wait()
             if ret == 0:
                 local_path = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,GH_ORGANIZATION,task.repo_name,latest_commit,"_build")
-                template = load_txt_file('templates/serve_preprint.py.template')
+                template = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/serve_preprint.py.template'))
                 py_content = template.format(
                     journal_name=JOURNAL_NAME,
                     doi_prefix=DOI_PREFIX,
@@ -1517,7 +1517,7 @@ def preview_build_myst_task(self, screening_dict):
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
-        template = load_txt_file('templates/myst_build_started.html.template')
+        template = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/myst_build_started.html.template'))
         email_content = template.format(
             owner_name=task.owner_name,
             repo_name=task.repo_name,
