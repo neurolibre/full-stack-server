@@ -1600,8 +1600,8 @@ def preview_build_myst_task(self, screening_dict):
         task.start("Warming up the myst builder...")
         builder = MystBuilder(hub=hub)
 
-        # CHANGED: Cache handling moved BEFORE build command
-        # This will use exec cache both for preview and production.
+        # NOTE: _build folder is preserved in latest/ via git exclude
+        # No need to copy cache - it naturally persists across commits
         base_user_dir = os.path.join(DATA_ROOT_PATH, MYST_FOLDER, original_owner, task.repo_name)
         latest_file_user = os.path.join(base_user_dir, "latest.txt")
 
@@ -1622,37 +1622,12 @@ def preview_build_myst_task(self, screening_dict):
             all_logs += f"\n ✔️ Found latest.txt"
             with open(latest_file, 'r') as f:
                 previous_commit = f.read().strip()
-            all_logs += f"\n ✔️ Found previous build at commit {previous_commit}"
+            all_logs += f"\n ✔️ Previous successful build at commit {previous_commit}"
 
-        logging.info(f"💾 Cache will be loaded from commit: {previous_commit}")
-        all_logs += f"\n 💾 Cache will be loaded from commit: {previous_commit}"
+        logging.info(f"💾 Previous build cache: {previous_commit}")
+        all_logs += f"\n 💾 Previous build cache: {previous_commit if previous_commit else 'None'}"
         logging.info(f" -- Current commit: {task.screening.commit_hash}")
         all_logs += f"\n -- Current commit: {task.screening.commit_hash}"
-
-        # CHANGED: Copy previous successful build's _build folder to latest/_build for caching
-        if previous_commit and (previous_commit != task.screening.commit_hash):
-            # Source: previous successful commit's _build directory
-            if is_prod and base_prod_dir:
-                previous_build_dir = task.join_myst_path(base_prod_dir, previous_commit, "_build")
-            else:
-                previous_build_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
-
-            # Destination: latest/_build directory (where we're about to build)
-            latest_build_dir = task.join_myst_path(task.owner_name, task.repo_name, 'latest', "_build")
-
-            if os.path.isdir(previous_build_dir):
-                task.start(f"♻️ Copying _build folder from previous build {previous_commit} to latest")
-                all_logs += f"\n ♻️ Copying _build folder from previous build {previous_commit} to latest"
-                try:
-                    # Remove existing _build in latest if it exists
-                    if os.path.exists(latest_build_dir):
-                        shutil.rmtree(latest_build_dir)
-                    shutil.copytree(previous_build_dir, latest_build_dir)
-                    task.start("✔️ Successfully copied previous build folder to latest")
-                    all_logs += f"\n ✔️ Successfully copied previous build folder to latest"
-                except Exception as e:
-                    task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
-                    all_logs += f"\n ⚠️ Warning: Failed to copy previous build folder: {str(e)}"
 
         builder.setenv('BASE_URL', base_url)
         # builder.setenv('CONTENT_CDN_PORT', "3102")
