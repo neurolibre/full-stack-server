@@ -1485,6 +1485,8 @@ def preview_build_myst_task(self, screening_dict):
 
     task = BaseNeuroLibreTask(self, screening_dict)
     is_prod = task.screening.is_prod
+    preserve_cache = task.screening.build_cache
+
     noexec = False
 
     all_logs_dict["task_id"] = task.task_id
@@ -1492,6 +1494,9 @@ def preview_build_myst_task(self, screening_dict):
     all_logs_dict["owner_name"] = task.owner_name
     all_logs_dict["repo_name"] = task.repo_name
     all_logs_dict["is_prod"] = is_prod
+    all_logs_dict["build_cache"] = task.screening.build_cache
+    all_logs_dict["binder_hash_requested"] = task.screening.binder_hash
+    all_logs_dict["commit_hash_requested"] = task.screening.commit_hash
 
     # No docker archive signals no user-defined runtime.
     if task.screening.issue_id is not None:
@@ -1544,8 +1549,8 @@ def preview_build_myst_task(self, screening_dict):
         # Falls back to the repo name to look for the image.
         binder_image_name_override = None
 
-    all_logs_dict["commit_hash"] = task.screening.commit_hash
-    all_logs_dict["binder_hash"] = task.screening.binder_hash
+    all_logs_dict["commit_hash_calculated"] = task.screening.commit_hash
+    all_logs_dict["binder_hash_calculated"] = task.screening.binder_hash
     all_logs_dict["binder_image_name_override"] = binder_image_name_override
 
     try:
@@ -1558,16 +1563,10 @@ def preview_build_myst_task(self, screening_dict):
             binder_image_tag = task.screening.binder_hash,
             binder_image_name_override = binder_image_name_override,
             dotenv = task.get_dotenv_path()))
-
-        # if rees_resources.search_img_by_repo_name():
-        #     logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-        #     all_logs += f"\n 🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}"
-        #     rees_resources.pull_image()
-        # else:
-        #     if (not noexec) and is_prod:
-        #         task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
-        #         task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. See more at {PREVIEW_BINDERHUB}")
-        #         logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
+        
+        if not preserve_cache:
+            all_logs += f"\n ⚠️ Warning: MyST build cache preservation disabled."
+            rees_resources.preserve_cache = False
 
         hub = JupyterHubLocalSpawner(rees_resources,
                                 host_build_source_parent_dir = task.join_myst_path(),

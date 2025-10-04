@@ -48,6 +48,7 @@ class MystBuildSchema(Schema):
     commit_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
     binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
     is_prod = fields.Boolean(required=False,dump_default=False,description="Whether or not the build is intended for production.")
+    build_cache = fields.Boolean(required=False,dump_default=True,description="Whether or not to use the MyST build cache.")
 
 class BuildTestSchema(Schema):
     """
