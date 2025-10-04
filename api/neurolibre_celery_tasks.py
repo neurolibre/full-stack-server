@@ -1500,7 +1500,7 @@ def preview_build_myst_task(self, screening_dict):
             noexec = True
 
     noexec = True if task.screening.binder_hash in ["noexec"] else False
-    
+
     original_owner = task.owner_name
     if is_prod:
         task.start("⚡️ Initiating PRODUCTION MyST build.")
@@ -1541,7 +1541,7 @@ def preview_build_myst_task(self, screening_dict):
         # Overrides build image to the base
         binder_image_name_override = NOEXEC_CONTAINER_REPOSITORY
     else:
-        # Falls back to the repo name to look for the image. 
+        # Falls back to the repo name to look for the image.
         binder_image_name_override = None
 
     all_logs_dict["commit_hash"] = task.screening.commit_hash
@@ -1557,7 +1557,7 @@ def preview_build_myst_task(self, screening_dict):
             gh_repo_commit_hash = task.screening.commit_hash,
             binder_image_tag = task.screening.binder_hash,
             binder_image_name_override = binder_image_name_override,
-            dotenv = task.get_dotenv_path()))      
+            dotenv = task.get_dotenv_path()))
 
         # if rees_resources.search_img_by_repo_name():
         #     logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
@@ -1568,7 +1568,7 @@ def preview_build_myst_task(self, screening_dict):
         #         task.fail(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}.")
         #         task.email_user(f"🚨 Ensure a successful binderhub build before production MyST build for {task.owner_name}/{task.repo_name}. See more at {PREVIEW_BINDERHUB}")
         #         logging.error(f"⛔️ NOT FOUND - A docker image was not found for {task.owner_name}/{task.repo_name} at {task.screening.commit_hash}")
-        
+
         hub = JupyterHubLocalSpawner(rees_resources,
                                 host_build_source_parent_dir = task.join_myst_path(),
                                 container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
@@ -1586,24 +1586,29 @@ def preview_build_myst_task(self, screening_dict):
             task.email_user(f"⛔️ Build failed: {str(e)} See logs <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>here</a>")
             return
 
-        expected_source_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+        # CHANGED: Check for 'latest' directory instead of commit hash
+        expected_source_path = task.join_myst_path(task.owner_name, task.repo_name, 'latest')
         if os.path.exists(expected_source_path) and os.listdir(expected_source_path):
             task.start("🎉 Successfully cloned the repository.")
         else:
-            task.fail(f"⛔️ Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
-            task.email_user(f"⛔️ Source repository {task.owner_name}/{task.repo_name} at {task.screening.commit_hash} not found.")
+            task.fail(f"⛔️ Source repository {task.owner_name}/{task.repo_name} in latest directory not found.")
+            task.email_user(f"⛔️ Source repository {task.owner_name}/{task.repo_name} in latest directory not found.")
+            cleanup_hub(hub)
+            return
+
         # Initialize the builder
-        task.start("Warming up the myst builder...")   
+        task.start("Warming up the myst builder...")
         builder = MystBuilder(hub=hub)
 
+        # CHANGED: Cache handling moved BEFORE build command
         # This will use exec cache both for preview and production.
-        base_user_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,original_owner,task.repo_name)
+        base_user_dir = os.path.join(DATA_ROOT_PATH, MYST_FOLDER, original_owner, task.repo_name)
         latest_file_user = os.path.join(base_user_dir, "latest.txt")
 
         latest_file_prod = None
         base_prod_dir = None
         if is_prod:
-            base_prod_dir = os.path.join(DATA_ROOT_PATH,MYST_FOLDER,task.owner_name,task.repo_name)
+            base_prod_dir = os.path.join(DATA_ROOT_PATH, MYST_FOLDER, task.owner_name, task.repo_name)
             latest_file_prod = os.path.join(base_prod_dir, "latest.txt")
 
         if is_prod and os.path.exists(latest_file_prod):
@@ -1613,8 +1618,8 @@ def preview_build_myst_task(self, screening_dict):
 
         previous_commit = None
         if os.path.exists(latest_file):
-            logging.info(f"✔️ Found latest.txt at {base_user_dir}")
-            all_logs += f"\n ✔️ Found latest.txt at {base_user_dir}"
+            logging.info(f"✔️ Found latest.txt")
+            all_logs += f"\n ✔️ Found latest.txt"
             with open(latest_file, 'r') as f:
                 previous_commit = f.read().strip()
             all_logs += f"\n ✔️ Found previous build at commit {previous_commit}"
@@ -1623,34 +1628,41 @@ def preview_build_myst_task(self, screening_dict):
         all_logs += f"\n 💾 Cache will be loaded from commit: {previous_commit}"
         logging.info(f" -- Current commit: {task.screening.commit_hash}")
         all_logs += f"\n -- Current commit: {task.screening.commit_hash}"
-        # Copy previous build folder to the new build folder to take advantage of caching.
-        if previous_commit and (previous_commit != task.screening.commit_hash):
-            
-            previous_execute_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
-            if is_prod:
-                current_build_dir = task.join_myst_path(base_prod_dir, task.screening.commit_hash, "_build")
-            else:
-                current_build_dir = task.join_myst_path(base_user_dir, task.screening.commit_hash, "_build")
 
-            if os.path.isdir(previous_execute_dir):
-                task.start(f"♻️ Copying _build folder from previous build {previous_commit}")
-                all_logs += f"\n ♻️ Copying _build folder from previous build {previous_commit}"
+        # CHANGED: Copy previous successful build's _build folder to latest/_build for caching
+        if previous_commit and (previous_commit != task.screening.commit_hash):
+            # Source: previous successful commit's _build directory
+            if is_prod and base_prod_dir:
+                previous_build_dir = task.join_myst_path(base_prod_dir, previous_commit, "_build")
+            else:
+                previous_build_dir = task.join_myst_path(base_user_dir, previous_commit, "_build")
+
+            # Destination: latest/_build directory (where we're about to build)
+            latest_build_dir = task.join_myst_path(task.owner_name, task.repo_name, 'latest', "_build")
+
+            if os.path.isdir(previous_build_dir):
+                task.start(f"♻️ Copying _build folder from previous build {previous_commit} to latest")
+                all_logs += f"\n ♻️ Copying _build folder from previous build {previous_commit} to latest"
                 try:
-                    shutil.copytree(previous_execute_dir, current_build_dir)
-                    task.start("✔️ Successfully copied previous build folder")
-                    all_logs += f"\n ✔️ Successfully copied previous build folder"  
+                    # Remove existing _build in latest if it exists
+                    if os.path.exists(latest_build_dir):
+                        shutil.rmtree(latest_build_dir)
+                    shutil.copytree(previous_build_dir, latest_build_dir)
+                    task.start("✔️ Successfully copied previous build folder to latest")
+                    all_logs += f"\n ✔️ Successfully copied previous build folder to latest"
                 except Exception as e:
                     task.start(f"⚠️ Warning: Failed to copy previous build folder: {str(e)}")
                     all_logs += f"\n ⚠️ Warning: Failed to copy previous build folder: {str(e)}"
 
-        builder.setenv('BASE_URL',base_url)
+        builder.setenv('BASE_URL', base_url)
         # builder.setenv('CONTENT_CDN_PORT', "3102")
 
         active_ports_before = get_active_ports()
 
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
         try:
-            myst_logs = builder.build('--execute','--html',user="ubuntu",group="ubuntu")
+            # CHANGED: builder.build() now automatically calls save_successful_build() on success
+            myst_logs = builder.build('--execute', '--html', user="ubuntu", group="ubuntu")
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
@@ -1660,7 +1672,6 @@ def preview_build_myst_task(self, screening_dict):
             cleanup_hub(hub)
             return
 
-
         active_ports_after = get_active_ports()
 
         new_active_ports = set(active_ports_after) - set(active_ports_before)
@@ -1669,29 +1680,25 @@ def preview_build_myst_task(self, screening_dict):
         for port in new_active_ports:
             close_port(port)
 
-        expected_webpage_path = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html","index.html")
+        # CHANGED: After successful build, save_successful_build() has already been called by MystBuilder
+        # The commit-specific directory now exists at the commit hash path
+        expected_webpage_path = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash, "_build", "html", "index.html")
         if os.path.exists(expected_webpage_path):
 
-            source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+            source_dir = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash)
             archive_path = f"{source_dir}.tar.gz"
-    
+
             try:
-                source_dir = task.join_myst_path(task.owner_name,task.repo_name,task.screening.commit_hash)
+                source_dir = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash)
                 archive_path = f"{source_dir}.tar.gz"
                 with tarfile.open(archive_path, "w:gz") as tar:
                     tar.add(source_dir, arcname=os.path.basename(source_dir))
                 task.start(f"Created archive at {archive_path}")
                 all_logs += f"\n ✔️ Created archive at {archive_path}"
 
-                if is_prod:
-                    latest_file_write = os.path.join(base_prod_dir, "latest.txt")
-                else:
-                    latest_file_write = os.path.join(base_user_dir, "latest.txt")
-
-                with open(latest_file_write, 'w') as f:
-                    f.write(task.screening.commit_hash)
-                task.start(f"Updated latest.txt to {task.screening.commit_hash}")
-                all_logs += f"\n ✔️ Updated latest.txt to {task.screening.commit_hash}"
+                # REMOVED: latest.txt update - now handled by save_successful_build()
+                task.start(f"Build preserved at commit {task.screening.commit_hash}")
+                all_logs += f"\n ✔️ Build preserved at commit {task.screening.commit_hash}"
 
                 if is_prod:
                     html_source = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash, "_build", "html")
@@ -1710,12 +1717,12 @@ def preview_build_myst_task(self, screening_dict):
                     finally:
                         # Clean up temp archive
                         if os.path.exists(temp_archive):
-                            os.remove(temp_archive)                    
-                
+                            os.remove(temp_archive)
+
             except Exception as e:
-                task.start(f"Warning: Failed to create archive/update latest: {str(e)}")
-                all_logs += f"\n ⚠️ Warning: Failed to create archive/update latest: {str(e)}"
-            
+                task.start(f"Warning: Failed to create archive: {str(e)}")
+                all_logs += f"\n ⚠️ Warning: Failed to create archive: {str(e)}"
+
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             if is_prod:
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
