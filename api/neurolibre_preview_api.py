@@ -220,13 +220,13 @@ docs.register(get_task_status_test)
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(MystBuildSchema())
 @doc(description='Endpoint for building myst formatted articles.', tags=['Myst'])
-def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None, is_prod=False, build_cache=True):
+def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None, build_cache=True, is_prod=False, prod_version="v1"):
     """
     This endpoint is to download data from GitHub (technical screening) requests.
     """
     app.logger.info(f'Entered MyST build endpoint')
     
-    extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, is_prod=is_prod, build_cache=build_cache)
+    extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, build_cache=build_cache,is_prod=is_prod, prod_version=prod_version)
 
     # if commit_hash == "production":
     #     if binder_hash == "noexec":

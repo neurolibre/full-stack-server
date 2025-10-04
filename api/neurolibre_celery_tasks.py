@@ -1497,6 +1497,7 @@ def preview_build_myst_task(self, screening_dict):
     all_logs_dict["build_cache"] = task.screening.build_cache
     all_logs_dict["binder_hash_requested"] = task.screening.binder_hash
     all_logs_dict["commit_hash_requested"] = task.screening.commit_hash
+    all_logs_dict["prod_version"] = task.screening.prod_version
 
     # No docker archive signals no user-defined runtime.
     if task.screening.issue_id is not None:
@@ -1517,8 +1518,8 @@ def preview_build_myst_task(self, screening_dict):
         # Enforce latest binder image
         task.screening.binder_hash = "latest"
         logging.info(f"Entered PRODUCTION MyST build. Binder hash: {task.screening.binder_hash}, Commit hash: {task.screening.commit_hash}, Owner name: {task.owner_name}, Repo name: {task.repo_name} Target repo url: {task.screening.target_repo_url}")
-        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
-        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}")
+        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
+        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
         os.makedirs(prod_path, exist_ok=True)
     else:
         task.start("🔎 Initiating PREVIEW MyST build.")
@@ -1565,7 +1566,7 @@ def preview_build_myst_task(self, screening_dict):
             dotenv = task.get_dotenv_path()))
         
         if not preserve_cache:
-            all_logs += f"\n ⚠️ Warning: MyST build cache preservation disabled."
+            all_logs += f"\n ⚠️⚠️⚠️ Warning: MyST build cache preservation disabled. ⚠️⚠️⚠️"
             rees_resources.preserve_cache = False
 
         hub = JupyterHubLocalSpawner(rees_resources,
@@ -1623,8 +1624,10 @@ def preview_build_myst_task(self, screening_dict):
                 previous_commit = f.read().strip()
             all_logs += f"\n ✔️ Previous successful build at commit {previous_commit}"
 
-        logging.info(f"💾 Previous build cache: {previous_commit}")
-        all_logs += f"\n 💾 Previous build cache: {previous_commit if previous_commit else 'None'}"
+        if preserve_cache:
+            logging.info(f"💾 Previous build cache: {previous_commit}")
+            all_logs += f"\n 💾 Previous build cache: {previous_commit if previous_commit else 'None'}"
+        
         logging.info(f" -- Current commit: {task.screening.commit_hash}")
         all_logs += f"\n -- Current commit: {task.screening.commit_hash}"
 

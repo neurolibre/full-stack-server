@@ -49,6 +49,7 @@ class MystBuildSchema(Schema):
     binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
     is_prod = fields.Boolean(required=False,dump_default=False,description="Whether or not the build is intended for production.")
     build_cache = fields.Boolean(required=False,dump_default=True,description="Whether or not to use the MyST build cache.")
+    prod_version = fields.String(required=False,dump_default="v1",description="Version suffix to be used to define the build directory.")
 
 class BuildTestSchema(Schema):
     """
