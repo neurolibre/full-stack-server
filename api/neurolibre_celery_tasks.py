@@ -663,6 +663,99 @@ def fork_configure_repository_task(self, payload):
 
 
 @celery_app.task(bind=True)
+@handle_soft_timeout
+def sync_fork_from_upstream_task(self, payload):
+    """
+    Sync the forked repository with changes from the upstream repository by creating a pull request.
+    This creates a PR in the fork from the upstream repository.
+
+    Payload should contain:
+    - review_repository: The review repository name
+    - issue_id: The issue ID
+    - repository_url: The original source repository URL
+    - comment_id: Comment ID for status updates
+    - pr_title: (optional) Title for the pull request
+    - pr_body: (optional) Body content for the pull request
+    - base_branch: (optional) Base branch in the fork (default: main)
+    - head_branch: (optional) Head branch in upstream (default: main)
+    """
+    task_title = "SYNC FORK FROM UPSTREAM"
+
+    GH_BOT = os.getenv('GH_BOT')
+    github_client = Github(GH_BOT)
+    task_id = self.request.id
+
+    now = get_time()
+    self.update_state(state=states.STARTED, meta={'message': f"Fork sync started {now}"})
+    gh_template_respond(github_client, "started", task_title, payload['review_repository'],
+                       payload['issue_id'], task_id, payload['comment_id'], "")
+
+    # Get the forked repository name
+    forked_name = gh_forkify_it(gh_filter(payload['repository_url']))
+
+    # Verify fork exists
+    try:
+        forked_repo = github_client.get_repo(forked_name)
+    except UnknownObjectException as e:
+        msg = f"Forked repository {forked_name} not found. Please ensure the fork exists before syncing."
+        gh_template_respond(github_client, "failure", task_title, payload['review_repository'],
+                           payload['issue_id'], task_id, payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'exc_type': f"{JOURNAL_NAME} celery exception",
+                         'exc_message': "Custom", 'message': msg})
+        return
+
+    # Get the upstream repository
+    upstream_repo_name = gh_filter(payload['repository_url'])
+    upstream_owner = upstream_repo_name.split('/')[0]
+
+    try:
+        upstream_repo = github_client.get_repo(upstream_repo_name)
+    except UnknownObjectException as e:
+        msg = f"Upstream repository {upstream_repo_name} not found."
+        gh_template_respond(github_client, "failure", task_title, payload['review_repository'],
+                           payload['issue_id'], task_id, payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'exc_type': f"{JOURNAL_NAME} celery exception",
+                         'exc_message': "Custom", 'message': msg})
+        return
+
+    # Get PR parameters from payload or use defaults
+    pr_title = payload.get('pr_title', f'Sync from upstream ({upstream_repo_name})')
+    pr_body = payload.get('pr_body', f'This pull request syncs changes from the upstream repository {upstream_repo_name}.')
+    base_branch = payload.get('base_branch', 'main')
+    head_branch = payload.get('head_branch', 'main')
+
+    # Create the pull request in the fork
+    # The head should be upstream_owner:branch format
+    head = f"{upstream_owner}:{head_branch}"
+
+    try:
+        gh_template_respond(github_client, "started", task_title, payload['review_repository'],
+                           payload['issue_id'], task_id, payload['comment_id'],
+                           f"Creating pull request from {upstream_repo_name}:{head_branch} to {forked_name}:{base_branch}")
+
+        pr = forked_repo.create_pull(
+            title=pr_title,
+            body=pr_body,
+            head=head,
+            base=base_branch
+        )
+
+        msg = f"Successfully created pull request <a href=\"{pr.html_url}\">#{pr.number}</a> to sync fork from upstream."
+        gh_template_respond(github_client, "success", task_title, payload['review_repository'],
+                           payload['issue_id'], task_id, payload['comment_id'], msg)
+        self.update_state(state=states.SUCCESS, meta={'message': msg, 'pr_url': pr.html_url, 'pr_number': pr.number})
+
+    except Exception as e:
+        error_msg = str(e)
+        msg = f"Failed to create sync pull request: {error_msg}"
+        gh_template_respond(github_client, "failure", task_title, payload['review_repository'],
+                           payload['issue_id'], task_id, payload['comment_id'], msg)
+        self.update_state(state=states.FAILURE, meta={'exc_type': f"{JOURNAL_NAME} celery exception",
+                         'exc_message': "Custom", 'message': msg})
+        return
+
+
+@celery_app.task(bind=True)
 def preview_build_book_task(self, payload):
 
     GH_BOT=os.getenv('GH_BOT')

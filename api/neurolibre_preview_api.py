@@ -13,7 +13,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task,sync_fork_from_upstream_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
 from screening_client import ScreeningClient
@@ -214,6 +214,15 @@ def get_task_status_test(user,task_id):
     return jsonify(response)
 
 docs.register(get_task_status_test)
+
+@app.route('/api/sync/fork', methods=['POST'],endpoint='sync_fork_from_upstream_task')
+@preview_api.auth_required
+@doc(description='Sync a fork from the upstream repository.', tags=['Sync'])
+@use_kwargs(IdUrlSchema())
+def sync_fork_from_upstream_task(user, id, repository_url):
+    screening = ScreeningClient(task_name="Sync fork from upstream repository", issue_id=id, target_repo_url=repository_url)
+    response = screening.start_celery_task(sync_fork_from_upstream_task)
+    return response
 
 @app.route('/api/myst/build', methods=['POST'],endpoint='api_myst_build')
 @preview_api.auth_required
