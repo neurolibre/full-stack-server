@@ -13,7 +13,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task,sync_fork_from_upstream_task
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task, sync_fork_from_upstream_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
 from screening_client import ScreeningClient
@@ -215,11 +215,12 @@ def get_task_status_test(user,task_id):
 
 docs.register(get_task_status_test)
 
-@app.route('/api/sync/fork', methods=['POST'],endpoint='sync_fork_from_upstream')
+@app.route('/api/sync/fork', methods=['POST'],endpoint='api_sync_fork_from_upstream')
 @preview_api.auth_required
-@doc(description='Sync a fork from the upstream repository.', tags=['Versioning'])
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @use_kwargs(IdUrlSchema())
-def sync_fork_from_upstream(user, id, repository_url):
+@doc(description='Sync a fork from the upstream repository.', tags=['Versioning'])
+def api_sync_fork_from_upstream(user, id, repository_url):
     screening = ScreeningClient(task_name="Sync fork from upstream repository", issue_id=id, target_repo_url=repository_url)
     response = screening.start_celery_task(sync_fork_from_upstream_task)
     return response
@@ -412,9 +413,4 @@ def process():
 
 
 docs.register(api_myst_build)
-
-# for rule in app.url_map.iter_rules():
-#     if "POST" in rule.methods:
-#         app.logger.info(f"{rule.rule} - {rule.endpoint}")
-#     if "GET" in rule.methods:
-#         app.logger.info(f"{rule.rule} - {rule.endpoint}")
+docs.register(api_sync_fork_from_upstream)
