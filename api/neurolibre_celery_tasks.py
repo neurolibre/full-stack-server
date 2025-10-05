@@ -1693,7 +1693,14 @@ def rsync_myst_prod_task(self, screening_dict):
     # Create symlink from bare folder to latest version
     os.symlink(latest_version_folder, bare_folder_path)
 
-    task.succeed(f"🌺 MyST build synced to production server. Latest version: v{latest_version_num}. URL: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi}", True)
+    # List all available versions
+    all_versions = sorted([f"v{ver_num}" for ver_num, _ in versioned_folders], reverse=True)
+    all_versions_str = ", ".join(all_versions)
+    task.succeed(
+        f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi} \n"
+        f"Latest version: v{latest_version_num}.\n"
+        f"All versions: {all_versions_str}\n",
+        False)
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
