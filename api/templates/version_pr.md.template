@@ -1,0 +1,11 @@
+> [!IMPORTANT]
+> This automated PR has been created to apply changes from the upstream repository `{upstream_repo_name}` to publish version `{task.screening.preprint_version}` of this preprint.
+
+* Before proceeding, ensure that the [latest preview build](https://{preview_server}/myst/{upstream_repo_name}/latest/_build/html/index.html) is successful.
+
+* In resolving merge conflicts (mostly `myst.yml`), please ensure that:
+
+- [ ] The author list remains the same. Changes to the authorship is not typically expected in a new version.
+- [ ] Ensure that the **production binderhub** is kept, unless the publication is of type `noexec`. 
+- [ ] Production DOI is preserved.
+- [ ] Source repository is unchanged.

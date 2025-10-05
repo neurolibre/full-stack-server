@@ -77,6 +77,11 @@ class IdUrlSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
+class IdUrlPreprintVersionSchema(Schema):
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
+    repository_url = fields.String(required=True,description="Full URL of the target repository")
+    preprint_version = fields.String(required=False,dump_default="v2",description="Preprint version.")
+
 class BooksyncSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")

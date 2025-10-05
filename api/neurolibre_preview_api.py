@@ -5,7 +5,7 @@ import time
 import requests
 import json
 from common import *
-from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlSchema
+from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlPreprintVersionSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -218,10 +218,11 @@ docs.register(get_task_status_test)
 @app.route('/api/sync/fork', methods=['POST'],endpoint='api_sync_fork_from_upstream')
 @preview_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@use_kwargs(IdUrlSchema())
+@use_kwargs(IdUrlPreprintVersionSchema())
 @doc(description='Sync a fork from the upstream repository.', tags=['Versioning'])
-def api_sync_fork_from_upstream(user, id, repository_url):
-    screening = ScreeningClient(task_name="Sync fork from upstream repository", issue_id=id, target_repo_url=repository_url)
+def api_sync_fork_from_upstream(user, id, repository_url, preprint_version="v2"):
+    extra_payload = dict(preprint_version=preprint_version)
+    screening = ScreeningClient(task_name="Sync fork from upstream repository", issue_id=id, target_repo_url=repository_url, **extra_payload)
     response = screening.start_celery_task(sync_fork_from_upstream_task)
     return response
 
