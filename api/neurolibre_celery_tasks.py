@@ -710,6 +710,30 @@ def sync_fork_from_upstream_task(self, screening_dict):
             else:
                 raise
 
+        # Preserve specific files from fork's main to avoid conflicts
+        files_to_preserve = ['myst.yml']
+        fork_main_branch = forked_repo.get_branch(base_branch)
+        fork_main_sha = fork_main_branch.commit.sha
+
+        for file_path in files_to_preserve:
+            try:
+                task.start(f"Preserving {file_path} from fork's main")
+                # Get the file content from fork's main
+                file_content = forked_repo.get_contents(file_path, ref=base_branch)
+
+                # Update the file in the sync branch with fork's version
+                forked_repo.update_file(
+                    path=file_path,
+                    message=f"Preserve {file_path} from fork",
+                    content=file_content.decoded_content,
+                    sha=forked_repo.get_contents(file_path, ref=sync_branch).sha,
+                    branch=sync_branch
+                )
+                task.start(f"Preserved {file_path} from fork's main in {sync_branch}")
+            except Exception as e:
+                # File might not exist in upstream or fork, log but continue
+                task.start(f"Could not preserve {file_path}: {str(e)}")
+
         # Create a pull request from sync branch to main
         pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
         pr_body = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/version_pr.md.template'))
