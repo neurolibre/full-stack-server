@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> This automated PR has been created to apply changes from the upstream repository `{upstream_repo_name}` to publish version `{task.screening.preprint_version}` of this preprint.
+> This automated PR has been created to apply changes from the upstream repository `{upstream_repo_name}` to publish version `{preprint_version}` of this preprint.
 
 * Before proceeding, ensure that the [latest preview build](https://{preview_server}/myst/{upstream_repo_name}/latest/_build/html/index.html) is successful.
 
