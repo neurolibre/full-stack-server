@@ -697,7 +697,9 @@ def sync_fork_from_upstream_task(self, screening_dict):
     # Get PR parameters from payload or use defaults
     pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
     pr_body = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/version_pr.md.template'))
-    pr_body = pr_body.format(upstream_repo_name=upstream_repo_name, preprint_version=task.screening.preprint_versionm preview_server=PREVIEW_SERVER)
+    pr_body = pr_body.format(upstream_repo_name=upstream_repo_name, 
+                             preprint_version=task.screening.preprint_version, 
+                             preview_server=PREVIEW_SERVER)
     base_branch = 'main'
     head_branch = 'main'
 
