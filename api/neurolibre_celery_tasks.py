@@ -1694,8 +1694,11 @@ def rsync_myst_prod_task(self, screening_dict):
     os.symlink(latest_version_folder, bare_folder_path)
 
     # List all available versions
-    all_versions = sorted([f"v{ver_num}" for ver_num, _ in versioned_folders], reverse=True)
-    all_versions_str = ", ".join(all_versions)
+    all_versions = sorted([ver_num for ver_num, _ in versioned_folders], reverse=True)
+    all_versions_links = [
+        f"[v{ver_num}]({PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi}.v{ver_num})"
+        for ver_num in all_versions]
+    all_versions_str = ", ".join(all_versions_links)
     task.succeed(
         f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi} \n"
         f"Latest version: v{latest_version_num}.\n"
