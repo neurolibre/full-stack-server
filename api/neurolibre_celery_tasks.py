@@ -28,6 +28,7 @@ import tarfile
 import re
 from celery.exceptions import TimeoutError, SoftTimeLimitExceeded
 import functools
+import yaml
 import fnmatch
 
 '''
@@ -662,6 +663,53 @@ def fork_configure_repository_task(self, payload):
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 
+def compare_yaml_files(fork_yaml_content, upstream_yaml_content, file_path):
+    """
+    Compare two YAML files field by field and return a markdown formatted diff.
+
+    Args:
+        fork_yaml_content: Decoded content of YAML from fork
+        upstream_yaml_content: Decoded content of YAML from upstream
+        file_path: Name of the file being compared
+
+    Returns:
+        Markdown formatted string showing differences
+    """
+    try:
+        fork_data = yaml.safe_load(fork_yaml_content)
+        upstream_data = yaml.safe_load(upstream_yaml_content)
+    except Exception as e:
+        return f"⚠️ Could not parse YAML files: {str(e)}"
+
+    def flatten_dict(d, parent_key='', sep='.'):
+        """Flatten nested dict to show full path to each field"""
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
+    fork_flat = flatten_dict(fork_data) if isinstance(fork_data, dict) else {}
+    upstream_flat = flatten_dict(upstream_data) if isinstance(upstream_data, dict) else {}
+
+    all_keys = set(fork_flat.keys()) | set(upstream_flat.keys())
+
+    differences = []
+    for key in sorted(all_keys):
+        fork_val = fork_flat.get(key, "❌ Not present")
+        upstream_val = upstream_flat.get(key, "❌ Not present")
+
+        if fork_val != upstream_val:
+            differences.append(f"- **`{key}`**:\n  - Fork (kept): `{fork_val}`\n  - Upstream (ignored): `{upstream_val}`")
+
+    if differences:
+        return f"### 📝 Preserved `{file_path}` from fork\n\nThe following fields differ between fork and upstream:\n\n" + "\n".join(differences)
+    else:
+        return f"### ✅ `{file_path}` is identical in fork and upstream"
+
 @celery_app.task(bind=True)
 @handle_soft_timeout
 def sync_fork_from_upstream_task(self, screening_dict):
@@ -669,7 +717,7 @@ def sync_fork_from_upstream_task(self, screening_dict):
     Sync the forked repository with changes from the upstream repository using merge_upstream.
     Equivalent to: gh repo sync owner/fork -b branch
     """
-    
+
     task = BaseNeuroLibreTask(self, screening_dict)
 
     # Get the forked repository name
@@ -715,17 +763,35 @@ def sync_fork_from_upstream_task(self, screening_dict):
         fork_main_branch = forked_repo.get_branch(base_branch)
         fork_main_sha = fork_main_branch.commit.sha
 
+        yaml_comparisons = []
         for file_path in files_to_preserve:
             try:
                 task.start(f"Preserving {file_path} from fork's main")
                 # Get the file content from fork's main
-                file_content = forked_repo.get_contents(file_path, ref=base_branch)
+                fork_file_content = forked_repo.get_contents(file_path, ref=base_branch)
+
+                # Get the file content from upstream (in sync branch before we overwrite)
+                try:
+                    upstream_file_content = forked_repo.get_contents(file_path, ref=sync_branch)
+                    upstream_decoded = upstream_file_content.decoded_content
+
+                    # Compare YAML files if it's a .yml or .yaml file
+                    if file_path.endswith(('.yml', '.yaml')):
+                        comparison = compare_yaml_files(
+                            fork_file_content.decoded_content,
+                            upstream_decoded,
+                            file_path
+                        )
+                        yaml_comparisons.append(comparison)
+                except:
+                    # File doesn't exist in upstream
+                    yaml_comparisons.append(f"### 📝 `{file_path}`\n\nThis file exists in fork but not in upstream.")
 
                 # Update the file in the sync branch with fork's version
                 forked_repo.update_file(
                     path=file_path,
                     message=f"Preserve {file_path} from fork",
-                    content=file_content.decoded_content,
+                    content=fork_file_content.decoded_content,
                     sha=forked_repo.get_contents(file_path, ref=sync_branch).sha,
                     branch=sync_branch
                 )
@@ -733,6 +799,7 @@ def sync_fork_from_upstream_task(self, screening_dict):
             except Exception as e:
                 # File might not exist in upstream or fork, log but continue
                 task.start(f"Could not preserve {file_path}: {str(e)}")
+                yaml_comparisons.append(f"### ⚠️ `{file_path}`\n\nCould not preserve: {str(e)}")
 
         # Create a pull request from sync branch to main
         pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
@@ -740,6 +807,10 @@ def sync_fork_from_upstream_task(self, screening_dict):
         pr_body = pr_body.format(upstream_repo_name=upstream_repo_name,
                                  preprint_version=task.screening.preprint_version,
                                  preview_server=PREVIEW_SERVER)
+
+        # Append YAML comparison to PR body
+        if yaml_comparisons:
+            pr_body += "\n\n---\n\n## 🔍 Preserved Files Analysis\n\n" + "\n\n".join(yaml_comparisons)
 
         task.start(f"Creating pull request from {sync_branch} to {base_branch}")
         pr = forked_repo.create_pull(
