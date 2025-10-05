@@ -8,7 +8,7 @@ from github_client import *
 from screening_client import ScreeningClient
 from common import *
 from preprint import *
-from github import Github, UnknownObjectException
+from github import Github, UnknownObjectException, GithubException
 from dotenv import load_dotenv
 import logging
 import requests
@@ -666,8 +666,8 @@ def fork_configure_repository_task(self, payload):
 @handle_soft_timeout
 def sync_fork_from_upstream_task(self, screening_dict):
     """
-    Sync the forked repository with changes from the upstream repository by creating a pull request.
-    This creates a PR in the fork from the upstream repository.
+    Sync the forked repository with changes from the upstream repository using merge_upstream.
+    Equivalent to: gh repo sync owner/fork -b branch
     """
     
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -683,45 +683,36 @@ def sync_fork_from_upstream_task(self, screening_dict):
         task.fail(msg)
         return
 
-    # Get the upstream repository
+    # Get the upstream repository name for logging
     upstream_repo_name = gh_filter(task.screening.target_repo_url)
-    upstream_owner = upstream_repo_name.split('/')[0]
 
-    try:
-        upstream_repo = task.screening.github_client.get_repo(upstream_repo_name)
-    except UnknownObjectException as e:
-        msg = f"⛔️ Upstream repository {upstream_repo_name} not found."
-        task.fail(msg)
-        return
-
-    # Get PR parameters from payload or use defaults
-    pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
-    pr_body = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/version_pr.md.template'))
-    pr_body = pr_body.format(upstream_repo_name=upstream_repo_name, 
-                             preprint_version=task.screening.preprint_version, 
-                             preview_server=PREVIEW_SERVER)
+    # Sync the fork with upstream using merge_upstream
+    # This is equivalent to: gh repo sync owner/cli-fork -b BRANCH-NAME
     base_branch = 'main'
-    head_branch = 'main'
-
-    # Create the pull request in the fork
-    # The head should be upstream_owner:branch format
-    head = f"{upstream_owner}:{head_branch}"
 
     try:
-        task.start(f"Creating pull request from {upstream_repo_name}:{head_branch} to {forked_name}:{base_branch}")
+        task.start(f"Syncing fork {forked_name} from upstream {upstream_repo_name}:{base_branch}")
 
-        pr = forked_repo.create_pull(
-            title=pr_title,
-            body=pr_body,
-            head=head,
-            base=base_branch)
+        merge_result = forked_repo.merge_upstream(base_branch)
 
-        msg = f"✅ Successfully created pull request <a href=\"{pr.html_url}\">#{pr.number}</a> to sync fork from upstream."
+        if merge_result.merged:
+            msg = f"✅ Successfully synced fork from upstream. Merge type: {merge_result.merge_type}, base commit: {merge_result.base_commit}"
+        else:
+            msg = f"ℹ️ Fork is already up-to-date with upstream."
         task.succeed(msg)
 
+    except GithubException as e:
+        error_msg = str(e)
+        # Handle merge conflicts (409 status code)
+        if e.status == 409:
+            msg = f"⛔️ Merge conflict detected when syncing from upstream. Manual resolution required at <a href=\"https://github.com/{forked_name}\">https://github.com/{forked_name}</a>. Error: {error_msg}"
+        else:
+            msg = f"⛔️ Failed to sync fork from upstream: {error_msg}"
+        task.fail(msg)
+        return
     except Exception as e:
         error_msg = str(e)
-        msg = f"⛔️ Failed to create sync pull request: {error_msg}"
+        msg = f"⛔️ Failed to sync fork from upstream: {error_msg}"
         task.fail(msg)
         return
 
