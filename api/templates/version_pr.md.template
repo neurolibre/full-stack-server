@@ -1,11 +1,31 @@
 > [!IMPORTANT]
 > This automated PR has been created to apply changes from the upstream repository `{upstream_repo_name}` to publish version `{preprint_version}` of this preprint.
 
-* Before proceeding, ensure that the [latest preview build](https://{preview_server}/myst/{upstream_repo_name}/latest/_build/html/index.html) is successful.
+* Before proceeding, ensure that the [latest preview build]({preview_server}/myst/{upstream_repo_name}/latest/_build/html/index.html) is successful.
 
-* In resolving merge conflicts (mostly `myst.yml`), please ensure that:
+* To avoid merge conflicts, `myst.yml` is kept unchanged (i.e., the same as in {gh_organization}).
 
-- [ ] The author list remains the same. Changes to the authorship is not typically expected in a new version.
-- [ ] Ensure that the **production binderhub** is kept, unless the publication is of type `noexec`. 
-- [ ] Production DOI is preserved.
-- [ ] Source repository is unchanged.
+* To explore whether any changes were introduced to `myst.yml` (e.g., keywords, etc.) in the new version, please carefully inspect the **Preserved Files Analysis** below.
+
+### The following is not expected to appear in the preserved file analysis:
+
+- [ ] `project.authors` (unless there is a change to `project.affiliations` OR an exceptional case where authorship changed in the new version, which is unusual).
+- [ ] `project.title`
+- [ ] `project.github`
+
+### The following is expected to be kept in its {gh_organization} state
+
+- [ ] `project.doi` MUST be {gh_organization} (kept)
+- [ ] `project.thebe` MUST be {gh_organization} (kept), unless the preprint is of type `noexec`.
+- [ ] `project.binder` MUST be {gh_organization} (kept), unless the preprint is of type `noexec`.
+- [ ] `project.copyright` MUST be {gh_organization} (kept)
+
+
+### Upstream changes that MAY be pushed after merging this PR
+
+- [ ] `project.abbreviations` 
+- [ ] `project.keywords` 
+- [ ] Any other change that is about style/content/misc 
+
+> [!WARNING]
+> If there are any upstream changes to be pushed, it must be done so after merging this PR.

@@ -703,19 +703,18 @@ def compare_yaml_files(fork_yaml_content, upstream_yaml_content, file_path):
         upstream_val = upstream_flat.get(key, "❌ Not present")
 
         if fork_val != upstream_val:
-            differences.append(f"- **`{key}`**:\n  - Fork (kept): `{fork_val}`\n  - Upstream (ignored): `{upstream_val}`")
+            differences.append(f"- **`{key}`**:\n  - {GH_ORGANIZATION} (kept): `{fork_val}`\n  - Upstream (ignored): `{upstream_val}`")
 
     if differences:
-        return f"### 📝 Preserved `{file_path}` from fork\n\nThe following fields differ between fork and upstream:\n\n" + "\n".join(differences)
+        return f"### 📝 Preserved `{file_path}` from {GH_ORGANIZATION}\n\nThe following fields differ between {GH_ORGANIZATION} and upstream:\n\n" + "\n".join(differences)
     else:
-        return f"### ✅ `{file_path}` is identical in fork and upstream"
+        return f"### ✅ `{file_path}` is identical in {GH_ORGANIZATION} and upstream"
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
 def sync_fork_from_upstream_task(self, screening_dict):
     """
     Sync the forked repository with changes from the upstream repository using merge_upstream.
-    Equivalent to: gh repo sync owner/fork -b branch
     """
 
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -806,6 +805,7 @@ def sync_fork_from_upstream_task(self, screening_dict):
         pr_body = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/version_pr.md.template'))
         pr_body = pr_body.format(upstream_repo_name=upstream_repo_name,
                                  preprint_version=task.screening.preprint_version,
+                                 gh_organization=GH_ORGANIZATION,
                                  preview_server=PREVIEW_SERVER)
 
         # Append YAML comparison to PR body
