@@ -215,11 +215,11 @@ def get_task_status_test(user,task_id):
 
 docs.register(get_task_status_test)
 
-@app.route('/api/sync/fork', methods=['POST'],endpoint='sync_fork_from_upstream_task')
+@app.route('/api/sync/fork', methods=['POST'],endpoint='sync_fork_from_upstream')
 @preview_api.auth_required
-@doc(description='Sync a fork from the upstream repository.', tags=['Sync'])
+@doc(description='Sync a fork from the upstream repository.', tags=['Versioning'])
 @use_kwargs(IdUrlSchema())
-def sync_fork_from_upstream_task(user, id, repository_url):
+def sync_fork_from_upstream(user, id, repository_url):
     screening = ScreeningClient(task_name="Sync fork from upstream repository", issue_id=id, target_repo_url=repository_url)
     response = screening.start_celery_task(sync_fork_from_upstream_task)
     return response
@@ -236,14 +236,6 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None,
     app.logger.info(f'Entered MyST build endpoint')
     
     extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, build_cache=build_cache,is_prod=is_prod, prod_version=prod_version)
-
-    # if commit_hash == "production":
-    #     if binder_hash == "noexec":
-    #         extra_payload = dict(commit_hash="latest", binder_hash="noexec", is_prod=True)
-    #     else:
-    #         extra_payload = dict(commit_hash="latest", binder_hash="latest", is_prod=True)
-    # else:
-    #     extra_payload = dict(commit_hash=commit_hash, binder_hash=binder_hash, is_prod=is_prod, build_cache=build_cache)
 
     screening = ScreeningClient(task_name="Build MyST article", 
                                 issue_id=id, 
