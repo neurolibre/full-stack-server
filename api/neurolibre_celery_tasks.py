@@ -685,27 +685,55 @@ def sync_fork_from_upstream_task(self, screening_dict):
 
     # Get the upstream repository name for logging
     upstream_repo_name = gh_filter(task.screening.target_repo_url)
-
-    # Sync the fork with upstream using merge_upstream
-    # This is equivalent to: gh repo sync owner/cli-fork -b BRANCH-NAME
     base_branch = 'main'
+    sync_branch = f'sync-upstream-{task.screening.preprint_version}'
 
     try:
-        task.start(f"Syncing fork {forked_name} from upstream {upstream_repo_name}:{base_branch}")
+        # Get the upstream repository to access its latest commit
+        task.start(f"Fetching upstream repository {upstream_repo_name}")
+        upstream_repo = task.screening.github_client.get_repo(upstream_repo_name)
+        upstream_branch = upstream_repo.get_branch(base_branch)
+        upstream_sha = upstream_branch.commit.sha
 
-        merge_result = forked_repo.merge_upstream(base_branch)
+        task.start(f"Creating sync branch {sync_branch} from upstream commit {upstream_sha[:7]}")
 
-        if merge_result.merged:
-            msg = f"✅ Successfully synced fork from upstream. Merge type: {merge_result.merge_type}, base commit: {merge_result.base_commit}"
-        else:
-            msg = f"ℹ️ Fork is already up-to-date with upstream."
+        # Create a new branch in the fork from the upstream's main branch
+        try:
+            forked_repo.create_git_ref(ref=f'refs/heads/{sync_branch}', sha=upstream_sha)
+            task.start(f"Created branch {sync_branch} from upstream/{base_branch}")
+        except GithubException as e:
+            if e.status == 422:  # Branch already exists, update it to point to upstream
+                task.start(f"Branch {sync_branch} already exists, updating to latest upstream")
+                ref = forked_repo.get_git_ref(f'heads/{sync_branch}')
+                ref.edit(sha=upstream_sha, force=True)
+                task.start(f"Updated {sync_branch} to upstream commit {upstream_sha[:7]}")
+            else:
+                raise
+
+        # Create a pull request from sync branch to main
+        pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
+        pr_body = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/version_pr.md.template'))
+        pr_body = pr_body.format(upstream_repo_name=upstream_repo_name,
+                                 preprint_version=task.screening.preprint_version,
+                                 preview_server=PREVIEW_SERVER)
+
+        task.start(f"Creating pull request from {sync_branch} to {base_branch}")
+        pr = forked_repo.create_pull(
+            title=pr_title,
+            body=pr_body,
+            head=sync_branch,
+            base=base_branch)
+
+        msg = f"✅ Successfully created pull request <a href=\"{pr.html_url}\">#{pr.number}</a> to sync fork from upstream."
+        if pr.mergeable_state == 'dirty':
+            msg += f" ⚠️ This PR has merge conflicts that need to be resolved."
         task.succeed(msg)
 
     except GithubException as e:
         error_msg = str(e)
         # Handle merge conflicts (409 status code)
         if e.status == 409:
-            msg = f"⛔️ Merge conflict detected when syncing from upstream. Manual resolution required at <a href=\"https://github.com/{forked_name}\">https://github.com/{forked_name}</a>. Error: {error_msg}"
+            msg = f"⛔️ Merge conflict detected when syncing from upstream into branch {sync_branch}. Manual resolution required at <a href=\"https://github.com/{forked_name}\">https://github.com/{forked_name}</a>. Error: {error_msg}"
         else:
             msg = f"⛔️ Failed to sync fork from upstream: {error_msg}"
         task.fail(msg)
