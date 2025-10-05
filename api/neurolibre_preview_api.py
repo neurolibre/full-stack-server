@@ -5,7 +5,7 @@ import time
 import requests
 import json
 from common import *
-from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema
+from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
