@@ -1637,22 +1637,63 @@ def binder_build_task(self, screening_dict):
 def rsync_myst_prod_task(self, screening_dict):
     """
     DOI-formatted myst html files are synced to the production server.
+    Version-aware syncing: syncs all versions from preview, and symlinks the bare folder to the latest version on production.
     """
     task = BaseNeuroLibreTask(self, screening_dict)
     task.start("🔄 Syncing MyST build to production server.")
-    expected_myst_url = f"{PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}"
-    response = requests.get(expected_myst_url)
-    if response.status_code == 200:
-        remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], DOI_PREFIX, f"{DOI_SUFFIX}.{task.screening.issue_id:05d}" + "*")
-        process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-        output = process.communicate()[0]
-        ret = process.wait()
-        if ret == 0:
-            task.succeed(f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}",False)
-        else:
-            task.fail(f"⛔️ Failed to sync MyST build to production server: {output}")
-    else:
-        task.fail(f"⛔️ Production MyST build not found on the preview server {expected_myst_url} \n {response.text}")
+
+    # Base DOI identifier without version suffix
+    base_doi = f"{DOI_SUFFIX}.{task.screening.issue_id:05d}"
+
+    # Sync all versioned folders from preview to production
+    # The wildcard pattern will match all version-suffixed folders (e.g., .v1, .v2, etc.)
+    remote_path = os.path.join("neurolibre-preview:", DATA_ROOT_PATH[1:], DOI_PREFIX, f"{base_doi}.v*")
+    process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = process.communicate()[0]
+    ret = process.wait()
+
+    if ret != 0:
+        task.fail(f"⛔️ Failed to sync MyST build to production server: {output}")
+        return
+
+    # Find the latest version on the production server
+    local_doi_path = os.path.join(DATA_ROOT_PATH, DOI_PREFIX)
+    versioned_folders = []
+
+    if os.path.exists(local_doi_path):
+        for item in os.listdir(local_doi_path):
+            if item.startswith(base_doi + ".v"):
+                # Extract version number from folder name (e.g., "10.55458.00041.v1" -> 1)
+                try:
+                    version_str = item.split(".v")[-1]
+                    version_num = int(version_str)
+                    versioned_folders.append((version_num, item))
+                except ValueError:
+                    continue
+
+    if not versioned_folders:
+        task.fail(f"⛔️ No versioned folders found for {base_doi} after sync")
+        return
+
+    # Sort by version number and get the latest
+    versioned_folders.sort(reverse=True)
+    latest_version_num, latest_version_folder = versioned_folders[0]
+
+    # Create or update symlink for the bare folder to point to the latest version
+    bare_folder_path = os.path.join(DATA_ROOT_PATH, DOI_PREFIX, base_doi)
+    latest_version_path = os.path.join(DATA_ROOT_PATH, DOI_PREFIX, latest_version_folder)
+
+    # Remove existing symlink or folder if it exists
+    if os.path.islink(bare_folder_path):
+        os.unlink(bare_folder_path)
+    elif os.path.exists(bare_folder_path):
+        task.fail(f"⛔️ Bare folder {bare_folder_path} exists but is not a symlink. Manual intervention required.")
+        return
+
+    # Create symlink from bare folder to latest version
+    os.symlink(latest_version_folder, bare_folder_path)
+
+    task.succeed(f"🌺 MyST build synced to production server. Latest version: v{latest_version_num}. URL: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi}", True)
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
