@@ -262,7 +262,7 @@ def api_myst_build_robo(user, repo_url, commit_hash, email):
     repo_url = gh_filter(repo_url,return_url=True)
     [owner, repo, _] =  get_owner_repo_provider(repo_url)
     commit_hash_source = format_commit_hash(repo_url,"HEAD")
-    extra_payload = dict(is_prod=False, commit_hash=commit_hash_source, binder_hash=commit_hash)
+    extra_payload = dict(is_prod=False, commit_hash=commit_hash_source, binder_hash=commit_hash, build_cache=True, prod_version="v0")
     screening = ScreeningClient(task_name=f"{JOURNAL_NAME} build request for {owner}/{repo} {commit_hash_source[0:6]}", 
                                 email_address=email,
                                 target_repo_url=repo_url,
