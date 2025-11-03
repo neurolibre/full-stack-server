@@ -1933,9 +1933,11 @@ def preview_build_myst_task(self, screening_dict):
             return
 
         builder_pid = builder.myst_client.run_pid
+        logging.info(f"MyST builder PID: {builder_pid}")
 
         try:
             close_port_by_pid(builder_pid)
+            logging.info(f"Closed builder port by PID {builder_pid}")
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to close builder port by PID {builder_pid}: {str(e)}"
 
