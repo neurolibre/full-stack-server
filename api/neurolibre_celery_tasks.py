@@ -1377,7 +1377,7 @@ def preview_build_book_test_task(self, payload):
     lock_filename = get_lock_filename(payload['repo_url'])
     response = requests.get(binderhub_request, stream=True)
     mail_body = f"Runtime environment build has been started <code>{task_id}</code> If successful, it will be followed by the Jupyter Book build."
-    send_email_celery(payload['email'],payload['mail_subject'],mail_body)
+    send_email_celery.delay(payload['email'],payload['mail_subject'],mail_body)
     now = get_time()
     self.update_state(state=states.STARTED, meta={'message': f"IN PROGRESS: Build for {owner}/{repo} at {payload['commit_hash']} has been running since {now}"})
     #gh_template_respond(github_client,"started",payload['task_title'],payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Running for: {binderhub_request}")
@@ -1450,24 +1450,76 @@ def preview_build_book_test_task(self, payload):
         issue_comment = "\n".join(issue_comment)
         tmp_log = write_html_log(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please download the log file attached and open in your web browser.</p>"
-        send_email_with_html_attachment_celery(payload['email'], payload['mail_subject'], body, tmp_log)
+        send_email_with_html_attachment_celery.delay(payload['email'], payload['mail_subject'], body, tmp_log)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed"})
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         #issue_comment = []
         mail_body = f"Book build successful: {book_status[0]['book_url']}"
-        send_email_celery(payload['email'],payload['mail_subject'],mail_body)
+        send_email_celery.delay(payload['email'],payload['mail_subject'],mail_body)
         self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Build for {owner}/{repo} at {payload['commit_hash']} has succeeded."})
 
-def send_email_celery(to_email, subject, body):
-    # Use the updated SES function from common.py
-    send_email(to_email, subject, body)
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_kwargs={'max_retries': 3, 'countdown': 5},
+    acks_late=True,
+    reject_on_worker_lost=True
+)
+def send_email_celery(self, to_email, subject, body):
+    """
+    Send email with automatic retry on failure.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        body: Email body text
+
+    Retries up to 3 times with 5 second delays if:
+    - Worker crashes (SIGTERM)
+    - AWS SES errors occur
+    - Network failures happen
+    """
+    try:
+        logging.info(f"Sending email to {to_email} (attempt {self.request.retries + 1}/4)")
+        send_email(to_email, subject, body)
+        logging.info(f"Email sent successfully to {to_email}")
+    except Exception as e:
+        logging.error(f"Failed to send email to {to_email}: {str(e)}")
+        raise  # Re-raise to trigger Celery retry mechanism
 
 
 
-def send_email_with_html_attachment_celery(to_email, subject, body, attachment_path):
-    # Use the updated SES function from common.py
-    send_email_with_html_attachment(to_email, subject, body, attachment_path)
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_kwargs={'max_retries': 3, 'countdown': 5},
+    acks_late=True,
+    reject_on_worker_lost=True
+)
+def send_email_with_html_attachment_celery(self, to_email, subject, body, attachment_path):
+    """
+    Send email with HTML attachment and automatic retry on failure.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        body: Email body text
+        attachment_path: Path to HTML file to attach
+
+    Retries up to 3 times with 5 second delays if:
+    - Worker crashes (SIGTERM)
+    - AWS SES errors occur
+    - Network failures happen
+    - File read errors occur
+    """
+    try:
+        logging.info(f"Sending email with attachment to {to_email} (attempt {self.request.retries + 1}/4)")
+        send_email_with_html_attachment(to_email, subject, body, attachment_path)
+        logging.info(f"Email with attachment sent successfully to {to_email}")
+    except Exception as e:
+        logging.error(f"Failed to send email with attachment to {to_email}: {str(e)}")
+        raise  # Re-raise to trigger Celery retry mechanism
 
 def write_html_log(commit_sha, logs):
     file_path = os.path.join(DATA_ROOT_PATH,"api_build_logs", f"logs_{commit_sha[:7]}.html")

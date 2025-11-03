@@ -376,12 +376,16 @@ def send_email(to_email, subject, body):
             },
             ReplyToAddresses=[sender_email]
         )
-        print("Email sent successfully!")
-        print(f"Message ID: {response['MessageId']}")
+        logging.info(f"Email sent successfully to {to_email}. Message ID: {response['MessageId']}")
+        return response['MessageId']
     except ClientError as e:
-        print(f"Error sending email: {e.response['Error']['Message']}")
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        logging.error(f"AWS SES ClientError sending email to {to_email}: [{error_code}] {error_message}")
+        raise  # Re-raise to trigger Celery retry
     except Exception as e:
-        print("Error sending email:", str(e))
+        logging.error(f"Unexpected error sending email to {to_email}: {type(e).__name__}: {str(e)}")
+        raise  # Re-raise to trigger Celery retry
 
 
 
@@ -446,12 +450,19 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
             },
             ReplyToAddresses=[sender_email]
         )
-        print("Email sent successfully!")
-        print(f"Message ID: {response['MessageId']}")
+        logging.info(f"Email with attachment sent successfully to {to_email}. Message ID: {response['MessageId']}")
+        return response['MessageId']
     except ClientError as e:
-        print(f"Error sending email: {e.response['Error']['Message']}")
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        logging.error(f"AWS SES ClientError sending email with attachment to {to_email}: [{error_code}] {error_message}")
+        raise  # Re-raise to trigger Celery retry
+    except FileNotFoundError as e:
+        logging.error(f"Attachment file not found: {attachment_path}")
+        raise  # Re-raise to trigger Celery retry
     except Exception as e:
-        print("Error sending email:", str(e))
+        logging.error(f"Unexpected error sending email with attachment to {to_email}: {type(e).__name__}: {str(e)}")
+        raise  # Re-raise to trigger Celery retry
 
 def remove_first_last_slash(input_string):
     if input_string.startswith('/'):
