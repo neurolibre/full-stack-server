@@ -576,6 +576,20 @@ def get_active_ports(start=3001, end=3099):
             active_ports.append(conn.laddr.port)
     return active_ports
 
+def close_port_by_pid(target_pid):
+    """Close all listening ports belonging to a given PID."""
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.pid == target_pid and conn.status == psutil.CONN_LISTEN:
+            logging.info(f"Closing port {conn.laddr.port} (PID={target_pid})")
+            try:
+                p = psutil.Process(target_pid)
+                p.terminate()  # or p.kill() if needed
+                p.wait(timeout=5)
+                logging.info(f"Process {target_pid} terminated, port {conn.laddr.port} freed.")
+            except Exception as e:
+                logging.warning(f"Failed to close port {conn.laddr.port}: {e}")
+            break  # usually one port per process
+
 def close_port(port):
     """
     Find and terminate processes using the specified port

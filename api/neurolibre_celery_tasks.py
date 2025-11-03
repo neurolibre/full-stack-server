@@ -1932,13 +1932,20 @@ def preview_build_myst_task(self, screening_dict):
             cleanup_hub(hub)
             return
 
-        active_ports_after = get_active_ports()
+        builder_pid = builder.myst_client.run_pid
 
-        new_active_ports = set(active_ports_after) - set(active_ports_before)
-        logging.info(f"New active ports: {new_active_ports}")
+        try:
+            close_port_by_pid(builder_pid)
+        except Exception as e:
+            all_logs += f"\n ⚠️ Warning: Failed to close builder port by PID {builder_pid}: {str(e)}"
 
-        for port in new_active_ports:
-            close_port(port)
+        # active_ports_after = get_active_ports()
+
+        # new_active_ports = set(active_ports_after) - set(active_ports_before)
+        # logging.info(f"New active ports: {new_active_ports}")
+
+        # for port in new_active_ports:
+        #     close_port(port)
 
         # CHANGED: After successful build, save_successful_build() has already been called by MystBuilder
         # The commit-specific directory now exists at the commit hash path
