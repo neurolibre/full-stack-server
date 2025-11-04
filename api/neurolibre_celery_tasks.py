@@ -87,6 +87,21 @@ celery_app = Celery('neurolibre_celery_tasks', backend='redis://localhost:6379/1
 celery_app.conf.update(task_track_started=True)
 celery_app.conf.broker_connection_retry_on_startup = True
 
+# Redis broker and backend optimizations
+celery_app.conf.broker_pool_limit = 10
+celery_app.conf.redis_max_connections = 50
+celery_app.conf.result_expires = 86400  # 24 hours
+celery_app.conf.result_persistent = True
+
+# For long-running tasks, increase visibility timeout to prevent premature re-delivery
+# Set to 2 hours to match worker time limit
+celery_app.conf.broker_transport_options = {
+    'visibility_timeout': 7200,  # 2 hours
+}
+
+celery_app.conf.worker_prefetch_multiplier = 1
+celery_app.conf.worker_max_tasks_per_child = 100
+
 """
 Configuration END
 """
