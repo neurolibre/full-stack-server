@@ -1941,13 +1941,18 @@ def preview_build_myst_task(self, screening_dict):
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to close builder port by PID {builder_pid}: {str(e)}"
 
-        # active_ports_after = get_active_ports()
+        # WARNING: In case of parallel runs, this may close other's ports
+        # But at that point, the myst built is done, so it is KINDA fine.
+        # Gotta find a more surgical way to do this in the future.
+        # That PID is opened as node process, that is not a child of the myst builder subprocess.
+        # So it is hard to track.
+        active_ports_after = get_active_ports()
 
-        # new_active_ports = set(active_ports_after) - set(active_ports_before)
-        # logging.info(f"New active ports: {new_active_ports}")
+        new_active_ports = set(active_ports_after) - set(active_ports_before)
+        logging.info(f"🔌 New active ports: {new_active_ports}")
 
-        # for port in new_active_ports:
-        #     close_port(port)
+        for port in new_active_ports:
+            close_port(port)
 
         # CHANGED: After successful build, save_successful_build() has already been called by MystBuilder
         # The commit-specific directory now exists at the commit hash path
