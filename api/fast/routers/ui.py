@@ -10,12 +10,11 @@ import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import HttpUrl
 
 # Import from parent api directory
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-from common import load_yaml, validate_repository_structure
+from common import load_yaml
 
 # Load configuration
 common_config = load_yaml('config/common.yaml')
@@ -96,48 +95,23 @@ async def api_validate(request: Request):
         )
 
 
-@router.get(
-    "/api/process",
-    summary="Repository validation processor",
-    description="Server-Sent Events endpoint for real-time repository validation",
-    tags=["UI"]
-)
-async def api_process(
-    repository_url: str,
-    format_style: str = "jupyter-book"
-):
-    """
-    Process repository validation with Server-Sent Events (SSE).
+# TODO: Implement /api/process endpoint
+# This requires the validate_repository_structure function
+# which needs to be ported from the Flask version
 
-    Streams validation results in real-time as they're computed.
-
-    Args:
-        repository_url: GitHub repository URL to validate
-        format_style: Either "jupyter-book" or "myst"
-    """
-    async def event_generator():
-        """Generate SSE events with validation results"""
-        try:
-            # Validate repository structure
-            results = validate_repository_structure(repository_url, format_style)
-
-            # Stream each validation result
-            for result in results:
-                yield f"data: {json.dumps(result)}\n\n"
-
-        except Exception as e:
-            logger.error(f"Error validating repository {repository_url}: {e}")
-            error_result = {
-                "status": "error",
-                "message": f"Validation error: {str(e)}"
-            }
-            yield f"data: {json.dumps(error_result)}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
+# @router.get(
+#     "/api/process",
+#     summary="Repository validation processor",
+#     description="Server-Sent Events endpoint for real-time repository validation",
+#     tags=["UI"]
+# )
+# async def api_process(
+#     repository_url: str,
+#     format_style: str = "jupyter-book"
+# ):
+#     """
+#     Process repository validation with Server-Sent Events (SSE).
+#     
+#     TODO: Implement this endpoint
+#     """
+#     pass
