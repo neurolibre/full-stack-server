@@ -16,8 +16,18 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-# Import existing Celery tasks (will be refactored later)
-from neurolibre_celery_tasks import (
+# # Import existing Celery tasks (will be refactored later)
+# from neurolibre_celery_tasks import (
+#     celery_app,
+#     sleep_task,
+#     preview_download_data,
+#     preview_build_book_task,
+#     preview_build_book_test_task,
+#     preview_build_myst_task,
+#     sync_fork_from_upstream_task
+# )
+
+from celery_tasks import (
     celery_app,
     sleep_task,
     preview_download_data,
@@ -26,6 +36,7 @@ from neurolibre_celery_tasks import (
     preview_build_myst_task,
     sync_fork_from_upstream_task
 )
+
 from screening_client import ScreeningClient
 
 from ..dependencies import verify_credentials

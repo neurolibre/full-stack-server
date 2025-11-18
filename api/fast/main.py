@@ -54,7 +54,7 @@ def create_app(server_type: Literal["preview", "preprint"] = "preview") -> FastA
         title=f"NeuroLibre {server_type.capitalize()} API",
         description="Reproducible preprint publishing platform for neuroscience",
         version="2.0.0",
-        docs_url="/documentation",
+        docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/swagger/openapi.json",
         # OpenAPI tags for organization
