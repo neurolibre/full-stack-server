@@ -1,0 +1,37 @@
+# FastAPI and ASGI dependencies for NeuroLibre API migration
+# Install with: pip install -r requirements-fastapi.txt
+
+# Core FastAPI
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+
+# Pydantic for data validation
+pydantic==2.9.2
+pydantic-settings==2.6.0
+email-validator==2.2.0
+
+# Authentication
+passlib[bcrypt]==1.7.4
+
+# ASGI server for production
+gunicorn==23.0.0
+
+# Template rendering (already have Jinja2, but specific version for FastAPI)
+jinja2==3.1.4
+
+# Async file operations
+aiofiles==24.1.0
+
+# Keep existing dependencies
+celery==5.4.0
+redis==5.2.0
+gevent==24.11.1
+
+# Optional: Code quality tools
+black==24.10.0
+ruff==0.7.3
+mypy==1.13.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2  # For testing async endpoints
