@@ -1,12 +1,12 @@
-# FastAPI and ASGI dependencies for NeuroLibre API migration
-# Install with: pip install -r requirements-fastapi.txt
+##############################
+# FastAPI and ASGI stack
+##############################
 
-# Core FastAPI
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 
-# Pydantic for data validation
+# Pydantic
 pydantic==2.9.2
 pydantic-settings==2.6.0
 email-validator==2.2.0
@@ -14,24 +14,83 @@ email-validator==2.2.0
 # Authentication
 passlib[bcrypt]==1.7.4
 
-# ASGI server for production
+# Production ASGI server
 gunicorn==23.0.0
 
-# Template rendering (already have Jinja2, but specific version for FastAPI)
+# Templates
 jinja2==3.1.4
 
-# Async file operations
+# Async file I/O
 aiofiles==24.1.0
 
-# Keep existing dependencies
+
+##############################
+# Task queue, cache, concurrency
+##############################
+
 celery==5.4.0
 redis==5.2.0
 gevent==24.11.1
 
-# Optional: Code quality tools
+
+##############################
+# Developer tools
+##############################
+
 black==24.10.0
 ruff==0.7.3
 mypy==1.13.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
-httpx==0.27.2  # For testing async endpoints
+httpx==0.27.2
+
+
+##############################
+# General utilities
+##############################
+
+python-dotenv==0.18.0
+pycryptodome
+pyOpenSSL==21.0.0
+asn1crypto==0.24.0
+requests
+GitPython
+pytz
+boto3
+nbformat
+markdown
+markdownify==0.11.6
+bs4
+markdown-it-py==2.0.1
+humanize==4.9.0
+psutil
+PyGithub
+
+
+##############################
+# MyST and content tools
+##############################
+
+myst-parser==0.18.1
+myst-libre
+repo2data
+
+
+##############################
+# OpenAI (API client)
+##############################
+
+openai
+
+
+##############################
+# Legacy Flask stack (kept but grouped)
+# Remove these entirely if FastAPI fully replaces Flask.
+##############################
+
+flask==2.0.3
+Werkzeug==2.0.1
+flask-htpasswd==0.5.0
+flask-apispec
+flask-restx
+apispec-webframeworks
