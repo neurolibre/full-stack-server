@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # Set server type for configuration
 os.environ.setdefault("SERVER_TYPE", "preview")
 
-from fastapi.main import preview_app as app
+from fast.main import preview_app as app
 
 # Export for ASGI server
 __all__ = ["app"]
