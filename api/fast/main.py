@@ -151,7 +151,8 @@ def create_app(server_type: Literal["preview", "preprint"] = "preview") -> FastA
 
 # Create application instances for WSGI/ASGI deployment
 preview_app = create_app("preview")
-preprint_app = create_app("preprint")
+# preprint_app = create_app("preprint")
 
 # Default app (can be selected via SERVER_TYPE env var)
-app = preview_app if os.getenv("SERVER_TYPE", "preview").lower() == "preview" else preprint_app
+#app = preview_app if os.getenv("SERVER_TYPE", "preview").lower() == "preview" else preprint_app
+app = preview_app if os.getenv("SERVER_TYPE", "preview").lower() == "preview" else create_app("preprint")
