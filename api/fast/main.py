@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from werkzeug.middleware.proxy_fix import ProxyFix
+#from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import PreviewSettings, PreprintSettings, CommonSettings
 from .middleware.error_handling import (
