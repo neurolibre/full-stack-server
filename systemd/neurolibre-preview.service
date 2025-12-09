@@ -5,6 +5,8 @@ After=network.target
 [Service]
 User=ubuntu
 Group=www-data
+RuntimeDirectory=neurolibre
+RuntimeDirectoryMode=0775
 WorkingDirectory=/home/ubuntu/full-stack-server/api
 EnvironmentFile=/etc/default/neurolibre-server
 Environment="PATH=$PATH:${VENV_PATH}/bin"

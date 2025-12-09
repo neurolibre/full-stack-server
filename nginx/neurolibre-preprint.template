@@ -9,7 +9,7 @@ error_log       /home/ubuntu/nginx-error.log;
 # Server is configures to run as a unix socket at this pre-determined path
 # /var/run/neurolibre/neurolibre_preprint_api.sock
 upstream app_server {
-    server unix:/var/run/neurolibre/neurolibre_preprint_api.sock fail_timeout=0;
+    server unix:/run/neurolibre/neurolibre_preprint_api.sock fail_timeout=0;
 }
 
 server{
