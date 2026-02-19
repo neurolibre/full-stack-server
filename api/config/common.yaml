@@ -107,3 +107,9 @@ CONTAINER_MEMORY_LIMIT: "max"
 # when multiple builds run concurrently.
 # Set to a low number (1-3) to avoid overloading the server.
 MYST_EXECUTE_PARALLEL: 2
+
+# Maximum time (seconds) for the entire `myst build` process.
+# Covers notebook execution + HTML build + theme server.
+# If exceeded, the process tree is killed and the build fails.
+# null = no timeout (relies on Celery's soft_time_limit instead)
+MYST_BUILD_TIMEOUT: 3600

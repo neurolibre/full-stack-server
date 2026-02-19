@@ -69,6 +69,7 @@ PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
 CONTAINER_CPU_LIMIT = common_config.get('CONTAINER_CPU_LIMIT')
 CONTAINER_MEMORY_LIMIT = common_config.get('CONTAINER_MEMORY_LIMIT')
 MYST_EXECUTE_PARALLEL = common_config.get('MYST_EXECUTE_PARALLEL', 2)
+MYST_BUILD_TIMEOUT = common_config.get('MYST_BUILD_TIMEOUT')
 
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
@@ -1961,7 +1962,7 @@ def preview_build_myst_task(self, screening_dict):
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
-            myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu")
+            myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu", timeout=MYST_BUILD_TIMEOUT)
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
