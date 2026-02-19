@@ -3,6 +3,7 @@ import time
 import os
 import json
 import subprocess
+import redis as redis_lib
 from celery import states
 from github_client import *
 from screening_client import ScreeningClient
@@ -112,6 +113,10 @@ celery_app.conf.worker_max_tasks_per_child = 100
 # while blocked on subprocess I/O, causing "missed heartbeat" warnings and
 # potential task re-delivery.
 celery_app.conf.broker_heartbeat = 0
+
+# Redis client for distributed locks (uses the same broker instance).
+# DB 0 is the Celery broker; we use DB 2 for locks to avoid key collisions.
+_lock_redis = redis_lib.Redis(host='localhost', port=6379, db=2)
 
 """
 Configuration END
@@ -1815,56 +1820,64 @@ def preview_build_myst_task(self, screening_dict):
     noexec = True if task.screening.binder_hash in ["noexec"] else False
 
     original_owner = task.owner_name
-    if is_prod:
-        task.start("⚡️ Initiating PRODUCTION MyST build.")
-        # Transform the target repo URL to point to the forked version.
-        task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
-        task.owner_name = GH_ORGANIZATION
-        # Enforce the latest commit
-        task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
-        # Enforce latest binder image
-        task.screening.binder_hash = "latest"
-        logging.info(f"Entered PRODUCTION MyST build. Binder hash: {task.screening.binder_hash}, Commit hash: {task.screening.commit_hash}, Owner name: {task.owner_name}, Repo name: {task.repo_name} Target repo url: {task.screening.target_repo_url}")
-        base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
-        prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
-        os.makedirs(prod_path, exist_ok=True)
-    else:
-        task.start("🔎 Initiating PREVIEW MyST build.")
-        template = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/myst_build_started.html.template'))
-        email_content = template.format(
-            owner_name=task.owner_name,
-            repo_name=task.repo_name,
-            task_id=task.task_id,
-            commit_hash=task.screening.commit_hash,
-            binder_hash=task.screening.binder_hash
-        )
-        time.sleep(2) # Avoid rate limiting.
-        logging.info(f"Sending email notification re task start.")
-        task.email_user(email_content)
-        task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
-        base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+
+    # Prevent concurrent builds of the same repo. Two parallel builds would
+    # race on the shared latest/ directory and the Book Theme template dir.
+    # Lock timeout matches the Celery time_limit (6000s) as a safety net.
+    lock_key = f"myst-build-lock:{original_owner}/{task.repo_name}"
+    build_lock = _lock_redis.lock(lock_key, timeout=6000)
+    if not build_lock.acquire(blocking=False):
+        msg = f"⏳ A MyST build for {original_owner}/{task.repo_name} is already in progress. Please wait for it to finish before starting another."
+        logging.warning(msg)
+        task.fail(msg)
+        return
+
     hub = None
     builder = None
 
-    if noexec:
-        # Base runtime.
-        task.screening.binder_hash = NOEXEC_CONTAINER_COMMIT_HASH
-    # else:
-    #     # User defined runtime.
-    #     task.screening.binder_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.binder_hash in [None, "latest"] else task.screening.binder_hash
-
-    if noexec:
-        # Overrides build image to the base
-        binder_image_name_override = NOEXEC_CONTAINER_REPOSITORY
-    else:
-        # Falls back to the repo name to look for the image.
-        binder_image_name_override = None
-
-    all_logs_dict["commit_hash_calculated"] = task.screening.commit_hash
-    all_logs_dict["binder_hash_calculated"] = task.screening.binder_hash
-    all_logs_dict["binder_image_name_override"] = binder_image_name_override
-
     try:
+
+        if is_prod:
+            task.start("⚡️ Initiating PRODUCTION MyST build.")
+            # Transform the target repo URL to point to the forked version.
+            task.screening.target_repo_url = gh_forkify_it(task.screening.target_repo_url)
+            task.owner_name = GH_ORGANIZATION
+            # Enforce the latest commit
+            task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD")
+            # Enforce latest binder image
+            task.screening.binder_hash = "latest"
+            logging.info(f"Entered PRODUCTION MyST build. Binder hash: {task.screening.binder_hash}, Commit hash: {task.screening.commit_hash}, Owner name: {task.owner_name}, Repo name: {task.repo_name} Target repo url: {task.screening.target_repo_url}")
+            base_url = os.path.join("/",DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
+            prod_path = os.path.join(DATA_ROOT_PATH,DOI_PREFIX,f"{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}")
+            os.makedirs(prod_path, exist_ok=True)
+        else:
+            task.start("🔎 Initiating PREVIEW MyST build.")
+            template = load_txt_file(os.path.join(os.path.dirname(__file__),'templates/myst_build_started.html.template'))
+            email_content = template.format(
+                owner_name=task.owner_name,
+                repo_name=task.repo_name,
+                task_id=task.task_id,
+                commit_hash=task.screening.commit_hash,
+                binder_hash=task.screening.binder_hash
+            )
+            time.sleep(2) # Avoid rate limiting.
+            logging.info(f"Sending email notification re task start.")
+            task.email_user(email_content)
+            task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
+            base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
+
+        if noexec:
+            # Base runtime.
+            task.screening.binder_hash = NOEXEC_CONTAINER_COMMIT_HASH
+            # Overrides build image to the base
+            binder_image_name_override = NOEXEC_CONTAINER_REPOSITORY
+        else:
+            # Falls back to the repo name to look for the image.
+            binder_image_name_override = None
+
+        all_logs_dict["commit_hash_calculated"] = task.screening.commit_hash
+        all_logs_dict["binder_hash_calculated"] = task.screening.binder_hash
+        all_logs_dict["binder_image_name_override"] = binder_image_name_override
 
         rees_resources = REES(dict(
             registry_url=BINDER_REGISTRY,
@@ -2027,6 +2040,13 @@ def preview_build_myst_task(self, screening_dict):
         if builder is not None:
             builder.cleanup()
         cleanup_hub(hub)
+        try:
+            build_lock.release()
+        except redis_lib.exceptions.LockNotOwnedError:
+            # Lock expired (build exceeded timeout) and was auto-released.
+            logging.warning(f"Build lock {lock_key} already expired.")
+        except Exception:
+            pass
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
