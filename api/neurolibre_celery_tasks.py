@@ -64,6 +64,11 @@ NOEXEC_CONTAINER_REPOSITORY = common_config['NOEXEC_CONTAINER_REPOSITORY']
 NOEXEC_CONTAINER_COMMIT_HASH = common_config['NOEXEC_CONTAINER_COMMIT_HASH']
 
 PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
+
+CONTAINER_CPU_LIMIT = common_config.get('CONTAINER_CPU_LIMIT')
+CONTAINER_MEMORY_LIMIT = common_config.get('CONTAINER_MEMORY_LIMIT')
+MYST_EXECUTE_PARALLEL = common_config.get('MYST_EXECUTE_PARALLEL', 2)
+
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
 # Global variables from the mix of common, preprint and preview configs
@@ -101,6 +106,12 @@ celery_app.conf.broker_transport_options = {
 
 celery_app.conf.worker_prefetch_multiplier = 1
 celery_app.conf.worker_max_tasks_per_child = 100
+
+# Disable broker heartbeat for gevent workers doing long blocking subprocess
+# calls (myst build). Without this, the gevent event loop can't send heartbeats
+# while blocked on subprocess I/O, causing "missed heartbeat" warnings and
+# potential task re-delivery.
+celery_app.conf.broker_heartbeat = 0
 
 """
 Configuration END
@@ -1872,7 +1883,9 @@ def preview_build_myst_task(self, screening_dict):
                                 host_build_source_parent_dir = task.join_myst_path(),
                                 container_build_source_mount_dir = CONTAINER_MYST_SOURCE_PATH, #default
                                 host_data_parent_dir = DATA_ROOT_PATH, #optional
-                                container_data_mount_dir = CONTAINER_MYST_DATA_PATH)
+                                container_data_mount_dir = CONTAINER_MYST_DATA_PATH,
+                                cpu_limit = CONTAINER_CPU_LIMIT,
+                                memory_limit = CONTAINER_MEMORY_LIMIT)
 
         task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
         try:
@@ -1935,7 +1948,7 @@ def preview_build_myst_task(self, screening_dict):
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
-            myst_logs = builder.build('--execute', '--html', user="ubuntu", group="ubuntu")
+            myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu")
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"

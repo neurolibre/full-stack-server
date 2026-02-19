@@ -89,3 +89,21 @@ NOEXEC_CONTAINER_COMMIT_HASH: "66bba73ee1b8093e2eac2818ecd69f695ff085d6"
 PUBLISH_LICENSE: "CC-BY-4.0"
 
 JOURNAL_TWITTER: "neurolibre"
+
+# ── MyST Build Resources ──────────────────────────────────────────────
+# These control how myst-libre runs notebook execution containers and
+# the mystmd build process. See docs/build-process-architecture.md in
+# the myst-libre repo for the full picture.
+
+# Container resource limits for the JupyterHub notebook execution container.
+# null  = unlimited (Docker default)
+# "max" = auto-detect system resources, reserve some for the host
+# Or set explicit values: cpu_limit: 4, memory_limit: "8g"
+CONTAINER_CPU_LIMIT: "max"
+CONTAINER_MEMORY_LIMIT: "max"
+
+# Maximum number of notebooks mystmd will execute in parallel inside a
+# single build.  mystmd default is (CPU_count - 1) which is aggressive
+# when multiple builds run concurrently.
+# Set to a low number (1-3) to avoid overloading the server.
+MYST_EXECUTE_PARALLEL: 2
