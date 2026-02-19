@@ -1833,6 +1833,7 @@ def preview_build_myst_task(self, screening_dict):
         task.screening.commit_hash = format_commit_hash(task.screening.target_repo_url, "HEAD") if task.screening.commit_hash in [None, "latest"] else task.screening.commit_hash
         base_url = os.path.join("/",MYST_FOLDER,task.owner_name,task.repo_name,task.screening.commit_hash,"_build","html")
     hub = None
+    builder = None
 
     if noexec:
         # Base runtime.
@@ -1891,7 +1892,6 @@ def preview_build_myst_task(self, screening_dict):
         else:
             task.fail(f"⛔️ Source repository {task.owner_name}/{task.repo_name} in latest directory not found.")
             task.email_user(f"⛔️ Source repository {task.owner_name}/{task.repo_name} in latest directory not found.")
-            cleanup_hub(hub)
             return
 
         # Initialize the builder
@@ -1932,8 +1932,6 @@ def preview_build_myst_task(self, screening_dict):
         builder.setenv('BASE_URL', base_url)
         # builder.setenv('CONTENT_CDN_PORT', "3102")
 
-        active_ports_before = get_active_ports()
-
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
@@ -1944,30 +1942,7 @@ def preview_build_myst_task(self, screening_dict):
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ MyST build failed {str(e)}. See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
             task.email_user(f"⛔️ MyST build failed. See logs <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>here</a>")
-            cleanup_hub(hub)
             return
-
-        builder_pid = builder.myst_client.run_pid
-        logging.info(f"MyST builder PID: {builder_pid}")
-
-        try:
-            close_port_by_pid(builder_pid)
-            logging.info(f"Closed builder port by PID {builder_pid}")
-        except Exception as e:
-            all_logs += f"\n ⚠️ Warning: Failed to close builder port by PID {builder_pid}: {str(e)}"
-
-        # WARNING: In case of parallel runs, this may close other's ports
-        # But at that point, the myst built is done, so it is KINDA fine.
-        # Gotta find a more surgical way to do this in the future.
-        # That PID is opened as node process, that is not a child of the myst builder subprocess.
-        # So it is hard to track.
-        active_ports_after = get_active_ports()
-
-        new_active_ports = set(active_ports_after) - set(active_ports_before)
-        logging.info(f"🔌 New active ports: {new_active_ports}")
-
-        for port in new_active_ports:
-            close_port(port)
 
         # CHANGED: After successful build, save_successful_build() has already been called by MystBuilder
         # The commit-specific directory now exists at the commit hash path
@@ -2033,6 +2008,11 @@ def preview_build_myst_task(self, screening_dict):
             )
             task.email_user(email_content)
     finally:
+        # Always clean up the myst process tree (kills the entire process
+        # group: myst node + npm run start + node ./server.js) and the
+        # JupyterHub container, regardless of success or failure.
+        if builder is not None:
+            builder.cleanup()
         cleanup_hub(hub)
 
 @celery_app.task(bind=True)

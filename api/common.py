@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import humanize
 import subprocess
+import signal
 import logging
 import psutil
 import pytz
@@ -577,18 +578,29 @@ def get_active_ports(start=3001, end=3099):
     return active_ports
 
 def close_port_by_pid(target_pid):
-    """Close all listening ports belonging to a given PID."""
-    for conn in psutil.net_connections(kind='inet'):
-        if conn.pid == target_pid and conn.status == psutil.CONN_LISTEN:
-            logging.info(f"Closing port {conn.laddr.port} (PID={target_pid})")
-            try:
-                p = psutil.Process(target_pid)
-                p.terminate()  # or p.kill() if needed
-                p.wait(timeout=5)
-                logging.info(f"Process {target_pid} terminated, port {conn.laddr.port} freed.")
-            except Exception as e:
-                logging.warning(f"Failed to close port {conn.laddr.port}: {e}")
-            break  # usually one port per process
+    """Kill the entire process group rooted at target_pid.
+
+    myst-libre launches the myst subprocess with start_new_session=True,
+    making it a process group leader.  Killing just that PID leaves its
+    children (npm run start → node ./server.js) alive as orphans that
+    hold ports and can interfere with subsequent builds.  Sending the
+    signal to the whole process group cleans up the entire tree.
+    """
+    try:
+        pgid = os.getpgid(target_pid)
+        logging.info(f"Sending SIGTERM to process group {pgid} (root PID={target_pid})")
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, OSError) as e:
+        logging.warning(f"Process group for PID {target_pid} already gone: {e}")
+        return
+
+    # Give the tree a moment to shut down gracefully, then force-kill.
+    time.sleep(3)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+        logging.info(f"Sent SIGKILL to process group {pgid}")
+    except (ProcessLookupError, OSError):
+        pass
 
 def close_port(port):
     """
