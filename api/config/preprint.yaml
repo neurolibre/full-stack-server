@@ -1,8 +1,8 @@
 
 # BINDER_NAME.BINDER_DOMAIN below defines 
 # the binderhub service to be used by the preprint server
-BINDER_NAME: "binder-mcgill"
-BINDER_DOMAIN: "conp.cloud"
+BINDER_NAME: "live"
+BINDER_DOMAIN: "evidencepub.io"
 
 # Binderhub build rate limit (mins)
 RATE_LIMIT: 30

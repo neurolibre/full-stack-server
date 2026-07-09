@@ -46,7 +46,7 @@ PAPERS_PATH: "https://neurolibre.org/papers"
 
 # Private docker registry that hosts docker images 
 # built by repo2docker during a binderhub build.
-BINDER_REGISTRY: "https://binder-registry.conp.cloud"
+BINDER_REGISTRY: "https://registry.evidencepub.io"
 
 # IMPORTANT!
 # Same mount directory is expected to be found 
