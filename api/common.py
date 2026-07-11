@@ -7,8 +7,7 @@ import json
 from flask import abort
 from itertools import chain
 import yaml
-import boto3
-from botocore.exceptions import ClientError
+import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -331,17 +330,12 @@ def parse_front_matter(markdown_string):
     return yaml.safe_load(front_matter)
 
 def send_email(to_email, subject, body):
-    aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
+    smtp_host = os.getenv('SMTP2GO_HOST', 'mail.smtp2go.com')
+    smtp_port = int(os.getenv('SMTP2GO_PORT', '2525'))
+    smtp_username = os.getenv('SMTP2GO_USERNAME')
+    smtp_password = os.getenv('SMTP2GO_PASSWORD')
     sender_email = common_config['SENDER_EMAIL']
     sender_name = "Evidence"
-
-    # Create SESv2 client
-    sesv2_client = boto3.client(
-        'sesv2',
-        region_name=aws_region,
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-    )
 
     # Create MIME message with proper headers for raw email
     msg = MIMEMultipart()
@@ -364,25 +358,16 @@ def send_email(to_email, subject, body):
     # Ensure to_email is a list
     destinations = [to_email] if isinstance(to_email, str) else to_email
 
+    msg['Reply-To'] = sender_email
+
     try:
-        response = sesv2_client.send_email(
-            FromEmailAddress=f"{sender_name} <{sender_email}>",
-            Destination={
-                'ToAddresses': destinations
-            },
-            Content={
-                'Raw': {
-                    'Data': msg.as_bytes()
-                }
-            },
-            ReplyToAddresses=[sender_email]
-        )
-        logging.info(f"Email sent successfully to {to_email}. Message ID: {response['MessageId']}")
-        return response['MessageId']
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        error_message = e.response['Error']['Message']
-        logging.error(f"AWS SES ClientError sending email to {to_email}: [{error_code}] {error_message}")
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.sendmail(sender_email, destinations, msg.as_string())
+        logging.info(f"Email sent successfully to {to_email}.")
+    except smtplib.SMTPException as e:
+        logging.error(f"SMTP2GO error sending email to {to_email}: {type(e).__name__}: {str(e)}")
         raise  # Re-raise to trigger Celery retry
     except Exception as e:
         logging.error(f"Unexpected error sending email to {to_email}: {type(e).__name__}: {str(e)}")
@@ -391,17 +376,12 @@ def send_email(to_email, subject, body):
 
 
 def send_email_with_html_attachment(to_email, subject, body, attachment_path):
-    aws_region = os.getenv('AWS_SES_REGION', 'us-east-1')
+    smtp_host = os.getenv('SMTP2GO_HOST', 'mail.smtp2go.com')
+    smtp_port = int(os.getenv('SMTP2GO_PORT', '2525'))
+    smtp_username = os.getenv('SMTP2GO_USERNAME')
+    smtp_password = os.getenv('SMTP2GO_PASSWORD')
     sender_email = common_config['SENDER_EMAIL']
     sender_name = "Evidence"
-
-    # Create SESv2 client
-    sesv2_client = boto3.client(
-        'sesv2',
-        region_name=aws_region,
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-    )
 
     # Read attachment file
     with open(attachment_path, "rb") as file:
@@ -438,25 +418,16 @@ def send_email_with_html_attachment(to_email, subject, body, attachment_path):
     # Ensure to_email is a list
     destinations = [to_email] if isinstance(to_email, str) else to_email
 
+    msg['Reply-To'] = sender_email
+
     try:
-        response = sesv2_client.send_email(
-            FromEmailAddress=f"{sender_name} <{sender_email}>",
-            Destination={
-                'ToAddresses': destinations
-            },
-            Content={
-                'Raw': {
-                    'Data': msg.as_bytes()
-                }
-            },
-            ReplyToAddresses=[sender_email]
-        )
-        logging.info(f"Email with attachment sent successfully to {to_email}. Message ID: {response['MessageId']}")
-        return response['MessageId']
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        error_message = e.response['Error']['Message']
-        logging.error(f"AWS SES ClientError sending email with attachment to {to_email}: [{error_code}] {error_message}")
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.sendmail(sender_email, destinations, msg.as_string())
+        logging.info(f"Email with attachment sent successfully to {to_email}.")
+    except smtplib.SMTPException as e:
+        logging.error(f"SMTP2GO error sending email with attachment to {to_email}: {type(e).__name__}: {str(e)}")
         raise  # Re-raise to trigger Celery retry
     except FileNotFoundError as e:
         logging.error(f"Attachment file not found: {attachment_path}")

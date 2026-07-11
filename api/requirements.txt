@@ -16,7 +16,6 @@ celery
 redis
 PyGithub
 pytz
-boto3
 nbformat
 markdown
 markdownify==0.11.6
