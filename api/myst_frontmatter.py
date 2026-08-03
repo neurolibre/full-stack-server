@@ -34,6 +34,36 @@ NAME_PARTS = (
 ALIASES = {"institution": "name", "region": "state"}
 
 
+def _is_blank(value):
+    """Is a value absent, or present but carrying nothing?
+
+    A `paper.md` front matter of `title:` parses to `title: None`, not to a
+    missing key. `""`, `[]` and `{}` say the same thing. All of them must count
+    as absent or a key that was merely typed out defeats the myst.yml fallback.
+    Mirrors `is_blank` in inara's myst-frontmatter.lua.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, dict, set)):
+        return len(value) == 0
+    return False
+
+
+def _as_list(value):
+    """Normalise a myst.yml sequence to a list.
+
+    `affiliations: harvard` is legal MyST. Without this, iterating the string
+    would walk its characters. Mirrors `as_list` in myst-frontmatter.lua.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
 def _affiliation_name(affiliation):
     """Join an affiliation's parts into a single display string."""
     parts = []
@@ -71,28 +101,44 @@ def myst_project_metadata(project):
 
     metadata = {}
 
-    if project.get("title") is not None:
+    if not _is_blank(project.get("title")):
         metadata["title"] = project["title"]
-    if project.get("date") is not None:
-        metadata["date"] = project["date"]
-    if project.get("keywords") is not None:
+    if not _is_blank(project.get("date")):
+        # `date: 2024-01-15` -- unquoted ISO, the MyST-canonical form -- is
+        # parsed by yaml.safe_load into a datetime.date. This value is carried
+        # into a Celery task payload, which is serialized as JSON, so a date
+        # object here is an HTTP 500 at enqueue time. Nothing downstream
+        # consumes `date` structurally, so the string form is the right shape.
+        date = project["date"]
+        metadata["date"] = date if isinstance(date, str) else str(date)
+    if not _is_blank(project.get("keywords")):
         metadata["tags"] = project["keywords"]
-    if project.get("bibliography") is not None:
+    if not _is_blank(project.get("bibliography")):
         metadata["bibliography"] = project["bibliography"]
 
     affiliations = []
     index_of = {}
-    for source in project.get("affiliations") or []:
-        if not isinstance(source, dict):
-            continue
+    for source in _as_list(project.get("affiliations")):
         index = len(affiliations) + 1
+        if not isinstance(source, dict):
+            # MyST's validator accepts a bare string where an affiliation
+            # mapping is expected. It becomes an affiliation named after that
+            # string, with no id, and it still consumes its index position --
+            # the Lua filter applies the same rule, so both sides agree on
+            # every author's index.
+            affiliations.append({"index": index, "name": str(source).strip()})
+            continue
         affiliations.append({"index": index, "name": _affiliation_name(source)})
         if source.get("id") is not None:
             index_of[str(source["id"])] = index
 
     authors = []
-    for source in project.get("authors") or []:
+    for source in _as_list(project.get("authors")):
         if not isinstance(source, dict):
+            # Same MyST rule for authors: `authors: [Ada Lovelace]` is valid.
+            # A bare string becomes a named author with no affiliations, still
+            # holding its position in the list.
+            authors.append({"name": str(source).strip()})
             continue
         author = {"name": source.get("name")}
         for target, key in (
@@ -158,12 +204,14 @@ def merge_paper_metadata(front_matter, myst_text):
         # only means something relative to the list that defines it, so mixing
         # the two sources would silently attach authors to the wrong
         # institutions.
-        if "authors" not in metadata or "affiliations" not in metadata:
+        #
+        # A key that is present but empty counts as absent -- see `_is_blank`.
+        if _is_blank(metadata.get("authors")) or _is_blank(metadata.get("affiliations")):
             if fallback.get("authors"):
                 metadata["authors"] = fallback["authors"]
                 metadata["affiliations"] = fallback.get("affiliations", [])
         for key in ("title", "date", "tags", "bibliography"):
-            if key not in metadata and key in fallback:
+            if _is_blank(metadata.get(key)) and key in fallback:
                 metadata[key] = fallback[key]
 
     if not metadata.get("authors"):
@@ -186,8 +234,14 @@ def first_affiliations(authors, affiliations):
     no affiliation (see `test_author_without_affiliations_gets_no_affiliation_key`),
     and a caller should not have the deposit fail just because one author
     lacks one.
+
+    An empty `affiliations` list is legitimate too -- a myst.yml project may name
+    authors and no institutions at all -- and resolves every author to `None`.
     """
-    mapping = {str(affiliation["index"]): affiliation["name"] for affiliation in affiliations}
+    mapping = {
+        str(affiliation["index"]): affiliation["name"]
+        for affiliation in affiliations or []
+    }
 
     resolved = []
     for author in authors:
@@ -200,6 +254,15 @@ def first_affiliations(authors, affiliations):
         else:
             affiliation_indices = [affiliation_index for affiliation_index in str(affiliation).split(",")]
             affiliation_index = affiliation_indices[0]
-        resolved.append(mapping.get(str(affiliation_index)))
+        name = mapping.get(str(affiliation_index))
+        if name is None:
+            # A typo'd index used to crash loudly; now it silently records a
+            # creator with no institution. Say so, so it is diagnosable.
+            logging.warning(
+                f"Affiliation index {affiliation_index!r} for author "
+                f"{author.get('name')!r} is not defined by the affiliation "
+                f"list; recording no affiliation for this author."
+            )
+        resolved.append(name)
 
     return resolved

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from api.myst_frontmatter import myst_project_metadata
@@ -252,3 +254,90 @@ def test_first_affiliations_is_none_for_an_empty_string():
 def test_first_affiliations_is_none_for_an_undeclared_index():
     authors = [{"name": "Ada Lovelace", "affiliation": "9"}]
     assert first_affiliations(authors, AFFILIATIONS) == [None]
+
+
+def test_first_affiliations_warns_about_an_undeclared_index(caplog):
+    authors = [{"name": "Ada Lovelace", "affiliation": "9"}]
+    with caplog.at_level("WARNING"):
+        assert first_affiliations(authors, AFFILIATIONS) == [None]
+    assert "Ada Lovelace" in caplog.text
+    assert "9" in caplog.text
+
+
+def test_first_affiliations_tolerates_an_empty_affiliation_list():
+    # A front matter with authors only, plus a myst.yml project that names no
+    # authors, reaches the deposit task with authors and no affiliations.
+    authors = [{"name": "Ada Lovelace", "affiliation": "1"}, {"name": "Grace Hopper"}]
+    assert first_affiliations(authors, []) == [None, None]
+
+
+UNQUOTED_DATE_MYST_YML = """project:
+  date: 2024-01-15
+  authors:
+    - name: Grace Hopper
+"""
+
+
+def test_unquoted_iso_date_maps_to_a_string():
+    # yaml.safe_load turns an unquoted ISO date into a datetime.date.
+    data = merge_paper_metadata(None, UNQUOTED_DATE_MYST_YML)
+    assert data["date"] == "2024-01-15"
+    assert isinstance(data["date"], str)
+
+
+def test_metadata_from_an_unquoted_date_is_json_serialisable():
+    # The real failure mode: the metadata becomes a Celery task payload, and
+    # Celery serialises tasks as JSON.
+    data = merge_paper_metadata(None, UNQUOTED_DATE_MYST_YML)
+    assert json.loads(json.dumps(data))["date"] == "2024-01-15"
+
+
+@pytest.mark.parametrize("blank", [None, "", [], {}])
+def test_blank_front_matter_keys_are_filled_from_myst_yml(blank):
+    data = merge_paper_metadata(
+        {"title": blank, "authors": blank, "affiliations": blank}, MYST_YML
+    )
+    assert data["title"] == "Myst Title"
+    assert [a["name"] for a in data["authors"]] == ["Grace Hopper"]
+    assert data["affiliations"] == [{"index": 1, "name": "Royal Society"}]
+
+
+def test_bare_string_authors_become_named_authors():
+    project = {"authors": ["Ada Lovelace", "Grace Hopper"]}
+    authors = myst_project_metadata(project)["authors"]
+    assert [a["name"] for a in authors] == ["Ada Lovelace", "Grace Hopper"]
+    assert all("affiliation" not in author for author in authors)
+
+
+MIXED_AFFILIATIONS_PROJECT = {
+    "authors": [{"name": "Ada Lovelace", "affiliations": "b"}],
+    "affiliations": [
+        {"id": "a", "institution": "Alpha University"},
+        "Bare String Institute",
+        {"id": "b", "institution": "Beta University"},
+    ],
+}
+
+
+def test_a_bare_string_affiliation_consumes_its_index_position():
+    result = myst_project_metadata(MIXED_AFFILIATIONS_PROJECT)
+    assert result["affiliations"] == [
+        {"index": 1, "name": "Alpha University"},
+        {"index": 2, "name": "Bare String Institute"},
+        {"index": 3, "name": "Beta University"},
+    ]
+    assert result["authors"][0]["affiliation"] == "3"
+
+
+def test_a_scalar_affiliations_value_is_one_affiliation():
+    # `affiliations: harvard` is legal MyST; iterating the string would yield
+    # one affiliation per character.
+    result = myst_project_metadata(
+        {"authors": [{"name": "Ada Lovelace"}], "affiliations": "Harvard University"}
+    )
+    assert result["affiliations"] == [{"index": 1, "name": "Harvard University"}]
+
+
+def test_a_scalar_authors_value_is_one_author():
+    result = myst_project_metadata({"authors": "Ada Lovelace"})
+    assert [a["name"] for a in result["authors"]] == ["Ada Lovelace"]

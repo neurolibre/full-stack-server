@@ -990,9 +990,10 @@ def zenodo_create_buckets_task(self, payload):
 
     data = payload['paper_data']
 
-    # We need to go through some affiliation mapping here.
-    affiliation_mapping = {str(affiliation['index']): affiliation['name'] for affiliation in data['affiliations']}
-    resolved_affiliations = first_affiliations(data['authors'], data['affiliations'])
+    # We need to go through some affiliation mapping here. The affiliation list
+    # can be absent entirely -- authors in the front matter plus a myst.yml
+    # project that names none -- so do not index it directly.
+    resolved_affiliations = first_affiliations(data['authors'], data.get('affiliations') or [])
 
     for ii in range(len(data['authors'])):
         if resolved_affiliations[ii] is None:
