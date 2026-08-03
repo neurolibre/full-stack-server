@@ -1,6 +1,110 @@
 import pytest
 
 from api.myst_frontmatter import myst_project_metadata
+from api.myst_frontmatter import merge_paper_metadata
+
+FRONT_MATTER_PAPER = """---
+title: Front Matter Title
+authors:
+  - name: Ada Lovelace
+    affiliation: "1"
+affiliations:
+  - name: Analytical Engine Institute
+    index: 1
+---
+
+Body.
+"""
+
+AUTHORS_ONLY_PAPER = """---
+authors:
+  - name: Ada Lovelace
+    affiliation: "1"
+---
+
+Body.
+"""
+
+MYST_YML = """project:
+  title: Myst Title
+  date: "02 February 2022"
+  keywords:
+    - myst keyword
+  authors:
+    - name: Grace Hopper
+      affiliations: society
+  affiliations:
+    - id: society
+      institution: Royal Society
+"""
+
+MALFORMED_MYST_YML = 'project:\n  title: "unterminated\n   authors: [ {\n'
+
+
+def test_front_matter_wins_over_myst_yml():
+    data = merge_paper_metadata(
+        {"title": "Front Matter Title",
+         "authors": [{"name": "Ada Lovelace", "affiliation": "1"}],
+         "affiliations": [{"index": 1, "name": "Analytical Engine Institute"}]},
+        MYST_YML,
+    )
+    assert data["title"] == "Front Matter Title"
+    assert [a["name"] for a in data["authors"]] == ["Ada Lovelace"]
+    assert data["affiliations"] == [{"index": 1, "name": "Analytical Engine Institute"}]
+
+
+def test_myst_yml_fills_a_paper_with_no_front_matter():
+    data = merge_paper_metadata(None, MYST_YML)
+    assert data["title"] == "Myst Title"
+    assert data["authors"][0]["name"] == "Grace Hopper"
+    assert data["authors"][0]["affiliation"] == "1"
+    assert data["affiliations"] == [{"index": 1, "name": "Royal Society"}]
+
+
+def test_scalar_fields_fill_individually():
+    data = merge_paper_metadata({"title": "Kept"}, MYST_YML)
+    assert data["title"] == "Kept"
+    assert data["date"] == "02 February 2022"
+    assert data["tags"] == ["myst keyword"]
+
+
+def test_authors_and_affiliations_are_filled_as_a_pair():
+    # The front matter has authors but no affiliations, so both must come from
+    # myst.yml rather than pairing index 1 with the wrong institution.
+    data = merge_paper_metadata(
+        {"authors": [{"name": "Ada Lovelace", "affiliation": "1"}]}, MYST_YML
+    )
+    assert [a["name"] for a in data["authors"]] == ["Grace Hopper"]
+    assert data["affiliations"] == [{"index": 1, "name": "Royal Society"}]
+
+
+def test_returns_none_when_neither_source_has_authors():
+    assert merge_paper_metadata(None, None) is None
+    assert merge_paper_metadata({"title": "Only a title"}, None) is None
+
+
+def test_tolerates_a_malformed_myst_yml():
+    data = merge_paper_metadata(
+        {"title": "Front Matter Title",
+         "authors": [{"name": "Ada Lovelace", "affiliation": "1"}],
+         "affiliations": [{"index": 1, "name": "Analytical Engine Institute"}]},
+        MALFORMED_MYST_YML,
+    )
+    assert data["title"] == "Front Matter Title"
+    assert [a["name"] for a in data["authors"]] == ["Ada Lovelace"]
+
+
+def test_tolerates_a_myst_yml_with_no_project_key():
+    data = merge_paper_metadata(
+        {"authors": [{"name": "Ada Lovelace"}]}, "site:\n  title: Not a project\n"
+    )
+    assert [a["name"] for a in data["authors"]] == ["Ada Lovelace"]
+
+
+def test_does_not_mutate_the_caller_s_front_matter():
+    front_matter = {"authors": [{"name": "Ada Lovelace", "affiliation": "1"}]}
+    merge_paper_metadata(front_matter, MYST_YML)
+    assert front_matter == {"authors": [{"name": "Ada Lovelace", "affiliation": "1"}]}
 
 
 def test_composes_affiliation_name_from_parts_in_order():

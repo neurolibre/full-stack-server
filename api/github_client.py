@@ -1,9 +1,11 @@
 import os
 import re
-from common import get_time
+import logging
+from common import get_time, parse_front_matter
 import json
 import yaml
 import git
+from myst_frontmatter import merge_paper_metadata
 
 # Name of the GitHub organization where repositories 
 # will be forked into for production. Editorial bot 
@@ -329,6 +331,29 @@ def gh_get_paper_markdown(github_client,repo):
     """
     file_content = gh_get_file_content(github_client,repo,"paper.md")
     return file_content
+
+def gh_get_paper_metadata(github_client, repo):
+    """Paper metadata for a submission, with myst.yml filling any gaps.
+
+    NeuroLibre requires myst.yml at the repository root beside paper.md, so a
+    submission need not repeat its title, authors, and affiliations in the
+    paper.md front matter. Returns None only when neither source names an
+    author.
+
+    This runs before the repository is cloned, so both files are fetched
+    through the GitHub API rather than read from disk.
+    """
+    paper = gh_get_file_content(github_client, repo, "paper.md")
+
+    front_matter = None
+    if paper:
+        try:
+            front_matter = parse_front_matter(paper)
+        except yaml.YAMLError as error:
+            logging.warning(f"Could not parse paper.md front matter: {error}")
+
+    myst = gh_get_file_content(github_client, repo, "myst.yml")
+    return merge_paper_metadata(front_matter, myst)
 
 def gh_read_from_issue_body(github_client,issue_repo,issue_id,tag):
     """

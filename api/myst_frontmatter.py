@@ -9,8 +9,13 @@ indices.
 This module is pure. Fetching files is the caller's job, which keeps the
 mapping testable without a GitHub client. It mirrors
 inara/data/filters/myst-frontmatter.lua; the two share the mapping documented
-in the design spec.
+in the design spec. It also merges a parsed paper.md front matter with a
+myst.yml, filling any gaps the front matter leaves.
 """
+
+import logging
+
+import yaml
 
 # Parts of a myst.yml affiliation, joined into one name string. Department
 # precedes institution to match the convention in existing NeuroLibre front
@@ -122,4 +127,45 @@ def myst_project_metadata(project):
     if affiliations:
         metadata["affiliations"] = affiliations
 
+    return metadata
+
+
+def merge_paper_metadata(front_matter, myst_text):
+    """Paper metadata from paper.md, with myst.yml filling any gaps.
+
+    `front_matter` is the already-parsed paper.md front matter, or None for a
+    paper that has none. `myst_text` is the raw contents of myst.yml, or None.
+    Parsing myst.yml happens here rather than in the caller so that a malformed
+    file is tolerated in one place.
+
+    Returns None when neither source names any author — the same signal the
+    deposit path already treats as "cannot extract metadata".
+    """
+    metadata = dict(front_matter) if isinstance(front_matter, dict) else {}
+
+    if myst_text:
+        try:
+            project = (yaml.safe_load(myst_text) or {}).get("project")
+        except yaml.YAMLError as error:
+            logging.warning(f"Could not parse myst.yml: {error}")
+            project = None
+        except AttributeError:
+            # yaml.safe_load returned something that is not a mapping.
+            project = None
+        fallback = myst_project_metadata(project)
+
+        # Authors and affiliations are filled as a pair. An affiliation index
+        # only means something relative to the list that defines it, so mixing
+        # the two sources would silently attach authors to the wrong
+        # institutions.
+        if "authors" not in metadata or "affiliations" not in metadata:
+            if fallback.get("authors"):
+                metadata["authors"] = fallback["authors"]
+                metadata["affiliations"] = fallback.get("affiliations", [])
+        for key in ("title", "date", "tags", "bibliography"):
+            if key not in metadata and key in fallback:
+                metadata[key] = fallback[key]
+
+    if not metadata.get("authors"):
+        return None
     return metadata

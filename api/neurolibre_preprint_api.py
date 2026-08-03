@@ -328,11 +328,10 @@ def api_zenodo_post(user,id,repository_url):
 
     # We need the list of authors and their ORCID, this will 
     # be fetched from the paper.md in the tarhet repository
-    paper_string = gh_get_paper_markdown(github_client,repository_url)
-    paper_data = parse_front_matter(paper_string)
+    paper_data = gh_get_paper_metadata(github_client,repository_url)
 
     if not paper_data:
-       comment = f"&#128308; Cannot extract metadata from the front-matter of the `paper.md` for {repository_url}."
+       comment = f"&#128308; Cannot extract metadata from the `paper.md` front-matter or the `myst.yml` for {repository_url}."
        gh_create_comment(github_client,REVIEW_REPOSITORY,issue_id,comment)
        return make_response(jsonify(f"Problem with parsing paper.md for {repository_url}"),404)
 
