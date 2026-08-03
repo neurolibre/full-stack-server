@@ -2,6 +2,7 @@ import pytest
 
 from api.myst_frontmatter import myst_project_metadata
 from api.myst_frontmatter import merge_paper_metadata
+from api.myst_frontmatter import first_affiliations
 
 FRONT_MATTER_PAPER = """---
 title: Front Matter Title
@@ -215,3 +216,39 @@ def test_author_without_affiliations_gets_no_affiliation_key():
 @pytest.mark.parametrize("project", [None, {}, "not a mapping", []])
 def test_tolerates_junk_input(project):
     assert myst_project_metadata(project) == {}
+
+
+AFFILIATIONS = [
+    {"index": 1, "name": "Analytical Engine Institute"},
+    {"index": 2, "name": "Royal Society"},
+]
+
+
+def test_first_affiliations_resolves_a_single_index():
+    authors = [{"name": "Ada Lovelace", "affiliation": "1"}]
+    assert first_affiliations(authors, AFFILIATIONS) == ["Analytical Engine Institute"]
+
+
+def test_first_affiliations_takes_the_first_of_a_comma_string():
+    authors = [{"name": "Grace Hopper", "affiliation": "2,1"}]
+    assert first_affiliations(authors, AFFILIATIONS) == ["Royal Society"]
+
+
+def test_first_affiliations_accepts_an_int():
+    authors = [{"name": "Ada Lovelace", "affiliation": 2}]
+    assert first_affiliations(authors, AFFILIATIONS) == ["Royal Society"]
+
+
+def test_first_affiliations_is_none_when_the_key_is_absent():
+    authors = [{"name": "The Analytical Collaboration"}]
+    assert first_affiliations(authors, AFFILIATIONS) == [None]
+
+
+def test_first_affiliations_is_none_for_an_empty_string():
+    authors = [{"name": "The Analytical Collaboration", "affiliation": ""}]
+    assert first_affiliations(authors, AFFILIATIONS) == [None]
+
+
+def test_first_affiliations_is_none_for_an_undeclared_index():
+    authors = [{"name": "Ada Lovelace", "affiliation": "9"}]
+    assert first_affiliations(authors, AFFILIATIONS) == [None]

@@ -7,6 +7,7 @@ import redis as redis_lib
 from celery import states
 from github_client import *
 from screening_client import ScreeningClient
+from myst_frontmatter import first_affiliations
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException, GithubException
@@ -991,18 +992,13 @@ def zenodo_create_buckets_task(self, payload):
 
     # We need to go through some affiliation mapping here.
     affiliation_mapping = {str(affiliation['index']): affiliation['name'] for affiliation in data['affiliations']}
-    first_affiliations = []
-    for author in data['authors']:
-        if isinstance(author['affiliation'],int):
-            affiliation_index = author['affiliation']
-        else:
-            affiliation_indices = [affiliation_index for affiliation_index in author['affiliation'].split(',')]
-            affiliation_index = affiliation_indices[0]
-        first_affiliation = affiliation_mapping[str(affiliation_index)]
-        first_affiliations.append(first_affiliation)
+    resolved_affiliations = first_affiliations(data['authors'], data['affiliations'])
 
     for ii in range(len(data['authors'])):
-        data['authors'][ii]['affiliation'] = first_affiliations[ii]
+        if resolved_affiliations[ii] is None:
+            data['authors'][ii].pop('affiliation', None)
+        else:
+            data['authors'][ii]['affiliation'] = resolved_affiliations[ii]
 
     # To deal with some typos, also with orchid :)
     valid_field_names = {'name', 'orcid', 'affiliation'}

@@ -169,3 +169,37 @@ def merge_paper_metadata(front_matter, myst_text):
     if not metadata.get("authors"):
         return None
     return metadata
+
+
+def first_affiliations(authors, affiliations):
+    """Resolve each author's first affiliation to a display name.
+
+    `authors` is a list of author dicts as produced by `merge_paper_metadata`
+    (or a hand-written paper.md front matter); each may carry an `affiliation`
+    value that is an int, a comma-separated string of indices, an empty
+    string, or absent entirely. `affiliations` is the corresponding list of
+    `{"index": ..., "name": ...}` mappings.
+
+    Returns a list the same length as `authors`. An element is `None` when the
+    author has no affiliation, or names an index the affiliation list does not
+    define -- both are legitimate, not errors: myst.yml permits an author with
+    no affiliation (see `test_author_without_affiliations_gets_no_affiliation_key`),
+    and a caller should not have the deposit fail just because one author
+    lacks one.
+    """
+    mapping = {str(affiliation["index"]): affiliation["name"] for affiliation in affiliations}
+
+    resolved = []
+    for author in authors:
+        affiliation = author.get("affiliation")
+        if not affiliation:
+            resolved.append(None)
+            continue
+        if isinstance(affiliation, int):
+            affiliation_index = affiliation
+        else:
+            affiliation_indices = [affiliation_index for affiliation_index in str(affiliation).split(",")]
+            affiliation_index = affiliation_indices[0]
+        resolved.append(mapping.get(str(affiliation_index)))
+
+    return resolved
