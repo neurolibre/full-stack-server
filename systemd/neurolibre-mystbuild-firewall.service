@@ -1,0 +1,30 @@
+[Unit]
+# Blocks the OpenStack instance metadata service (169.254.169.254) for
+# containers on the myst build network. Build containers execute notebook code
+# from submitted repositories; metadata serves user-data and injected
+# credentials, so it must not be reachable from them.
+#
+# Docker has no per-container egress ACL, hence a host rule. DOCKER-USER is
+# processed before Docker's own chains and matches forwarded traffic only, so
+# the host's own metadata access (cloud-init) is unaffected.
+#
+# Requires the build network to exist with a fixed bridge name:
+#   docker network create --driver bridge \
+#     --opt com.docker.network.bridge.name=br-mystbuild mystbuild
+#
+# Do NOT use iptables-persistent for this. It snapshots the entire ruleset,
+# including Docker's generated rules, and restoring those at boot before Docker
+# starts causes duplicated and conflicting rules.
+Description=Block instance metadata for myst build containers
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# -C tests for the rule first, so restarting the unit cannot stack duplicates
+ExecStart=/bin/sh -c '/sbin/iptables -C DOCKER-USER -i br-mystbuild -d 169.254.0.0/16 -j REJECT 2>/dev/null || /sbin/iptables -I DOCKER-USER -i br-mystbuild -d 169.254.0.0/16 -j REJECT'
+ExecStop=/bin/sh -c '/sbin/iptables -D DOCKER-USER -i br-mystbuild -d 169.254.0.0/16 -j REJECT 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

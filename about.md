@@ -87,6 +87,7 @@ celery -A neurolibre_celery_tasks worker --loglevel=info
 The application runs as systemd services:
 - `neurolibre-preview.service` - Preview server
 - `neurolibre-preprint.service` - Preprint server
+- `neurolibre-mystbuild-firewall.service` - Blocks instance metadata for build containers
 - Celery workers for async tasks
 
 ## Key Directories

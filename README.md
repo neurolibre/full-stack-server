@@ -215,6 +215,39 @@ This should start multiple `gunicorn` workers, each one of them binding our flas
 
 > Reminder: Replace the **`<type>`** in the commands above either with `preprint` or `preview` depending on the server (e.g., `neurolibre-preview.service`) you are configuring. Note that this is not only a naming convention, but also defines a functional separation between the roles of the two servers.
 
+#### Isolate MyST build containers from instance metadata
+
+Build containers execute notebook code from submitted repositories. On the default Docker bridge they can reach the instance metadata service (`169.254.169.254` on OpenStack), which serves user-data and injected credentials.
+
+Create a dedicated network with a fixed bridge name, so the firewall rule has something stable to match:
+
+```
+docker network create --driver bridge \
+  --opt com.docker.network.bridge.name=br-mystbuild mystbuild
+docker pull busybox:latest
+```
+
+Install the service that blocks metadata for that bridge on every boot:
+
+```
+sudo cp ~/full-stack-server/systemd/neurolibre-mystbuild-firewall.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now neurolibre-mystbuild-firewall.service
+```
+
+Verify — this is the only thing that proves the rule is working:
+
+```
+docker run --rm --network mystbuild curlimages/curl \
+  -s -m 3 http://169.254.169.254/openstack/ ; echo "exit=$?"
+```
+
+A non-zero exit (`7` rejected, `28` timeout) means blocked. `exit=0` with a listing of API versions means it is **not** blocked — check that `br-mystbuild` exists (`ip -o link show br-mystbuild`) and that metadata is not a local address (`ip addr | grep 169.254`, which should print nothing).
+
+Then pass `container_network = 'mystbuild'` to `JupyterHubLocalSpawner` in `api/neurolibre_celery_tasks.py` and restart the Celery worker. myst-libre re-checks this before every build session and refuses to spawn if metadata answers, so a rule lost after a reboot fails loudly instead of silently reopening.
+
+> Do not use `iptables-persistent` for this rule. It snapshots the entire ruleset including Docker's generated rules, and restoring those at boot before Docker starts causes duplicated and conflicting rules. The systemd unit is ordered after `docker.service` and re-adds only this rule.
+
 #### Configure Celery as a systemd service
 
 For Celery async task queue manager to work, there are two requirements:
