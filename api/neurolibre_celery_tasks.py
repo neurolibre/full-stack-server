@@ -2065,16 +2065,28 @@ def preview_build_myst_task(self, screening_dict):
         # Always clean up the myst process tree (kills the entire process
         # group: myst node + npm run start + node ./server.js) and the
         # JupyterHub container, regardless of success or failure.
+        #
+        # Each step is guarded independently. Previously an exception in the
+        # first one aborted the rest of this block, leaking the container AND
+        # the build lock - which then blocks every build of that repo until the
+        # 6000s timeout expires. A failed cleanup step must not cost more than
+        # itself.
         if builder is not None:
-            builder.cleanup()
-        cleanup_hub(hub)
+            try:
+                builder.cleanup()
+            except Exception as e:
+                logging.warning(f"builder.cleanup() failed: {e}")
+        try:
+            cleanup_hub(hub)
+        except Exception as e:
+            logging.warning(f"cleanup_hub() failed: {e}")
         try:
             build_lock.release()
         except redis_lib.exceptions.LockNotOwnedError:
             # Lock expired (build exceeded timeout) and was auto-released.
             logging.warning(f"Build lock {lock_key} already expired.")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Could not release build lock {lock_key}: {e}")
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
