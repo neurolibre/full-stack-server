@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import celeryd_after_setup
 import time
 import os
 import json
@@ -23,6 +24,7 @@ from repo2data.repo2data import Repo2Data
 from myst_libre.tools import JupyterHubLocalSpawner
 from myst_libre.rees import REES
 from myst_libre.builders import MystBuilder
+from myst_libre.tools import MystMD
 from celery.schedules import crontab
 import zipfile
 import tempfile
@@ -119,6 +121,34 @@ celery_app.conf.broker_heartbeat = 0
 # Redis client for distributed locks (uses the same broker instance).
 # DB 0 is the Celery broker; we use DB 2 for locks to avoid key collisions.
 _lock_redis = redis_lib.Redis(host='localhost', port=6379, db=2)
+
+
+@celeryd_after_setup.connect
+def reap_myst_orphans(sender, instance, **kwargs):
+    """
+    Clean up myst process groups left behind by a previous worker.
+
+    A crashed or restarted worker leaves myst and its children (npm run start ->
+    node ./server.js) running and holding ports. Normal teardown kills the
+    process group, but that needs a live PID to signal.
+
+    celeryd_after_setup fires once in the main worker process, after setup and
+    before children fork or any task is consumed. worker_process_init would be
+    wrong here: it runs in every prefork child, so N reaps would race.
+
+    Builds running in sibling workers are unaffected - myst-libre only reaps
+    records whose owning process is gone.
+    """
+    try:
+        reaped = MystMD.reap_orphans()
+        if reaped:
+            logging.warning(
+                f"Reaped {len(reaped)} orphaned myst process group(s): "
+                f"{[e.get('build_dir') for e in reaped]}"
+            )
+    except Exception as e:
+        # Never block worker startup over cleanup
+        logging.warning(f"Orphan reaping failed: {e}")
 
 """
 Configuration END
