@@ -1284,16 +1284,22 @@ def zenodo_upload_docker_task(self, screening_dict):
                 binder_image_name = None,
                 dotenv = task.get_dotenv_path()))
 
-            if rees_resources.search_img_by_repo_name():
-                logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-                rees_resources.pull_image()
-            else:
-                # Retained for a myst-libre that still reports absence by
-                # returning False rather than raising.
-                task.fail(f"Failed REES docker image pull for {fork_url}")
-                return
+            # No second lookup: the constructor above already discovered the
+            # image and raises when it is absent, so reaching here means it was
+            # found. search_img_by_repo_name lives on the registry client, not
+            # on REES, and calling it here raised AttributeError.
+            logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
+            rees_resources.pull_image()
         except MystLibreError as exception:
             task.fail(f"Cannot pull the docker image for {fork_url} from {BINDER_REGISTRY}: {exception}")
+            return
+        except Exception as exception:
+            # This task's only channel to the submitter is the issue comment.
+            # Anything unhandled here used to leave it orange forever while
+            # Celery logged a traceback nobody was watching, so report the
+            # class of the error too rather than letting it escape.
+            task.fail(f"Unexpected error preparing the docker image for {fork_url}: "
+                      f"{exception.__class__.__name__}: {exception}")
             return
 
         # except:
