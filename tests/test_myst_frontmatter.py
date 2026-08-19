@@ -341,3 +341,35 @@ def test_a_scalar_affiliations_value_is_one_affiliation():
 def test_a_scalar_authors_value_is_one_author():
     result = myst_project_metadata({"authors": "Ada Lovelace"})
     assert [a["name"] for a in result["authors"]] == ["Ada Lovelace"]
+
+
+def test_first_affiliations_tolerates_a_malformed_affiliation_entry():
+    # A hand-written paper.md may omit `index` or `name` on an entry. That is a
+    # typo in one entry, not a reason to fail the whole deposit.
+    authors = [{"name": "Ada Lovelace", "affiliation": "1"}]
+    affiliations = [{"name": "No Index Institute"}, {"index": 1}]
+    assert first_affiliations(authors, affiliations) == [None]
+
+
+def test_first_affiliations_strips_whitespace_around_an_index():
+    authors = [{"name": "Ada Lovelace", "affiliation": " 1 , 2"}]
+    affiliations = [{"index": 1, "name": "Analytical Engine Institute"}]
+    assert first_affiliations(authors, affiliations) == [
+        "Analytical Engine Institute"
+    ]
+
+
+def test_first_affiliations_tolerates_a_bare_string_author():
+    # `authors: [Ada Lovelace]` is legal in both sources.
+    assert first_affiliations(["Ada Lovelace"], []) == [None]
+
+
+def test_warns_when_myst_yml_authors_replace_front_matter_authors(caplog):
+    # Authors and affiliations are filled as a pair, so a front matter that
+    # names authors but no affiliations loses its author list entirely. Say so.
+    with caplog.at_level("WARNING"):
+        metadata = merge_paper_metadata(
+            {"authors": [{"name": "Ada Lovelace"}]}, MYST_YML
+        )
+    assert metadata["authors"][0]["name"] == "Grace Hopper"
+    assert "replacing" in caplog.text.lower()

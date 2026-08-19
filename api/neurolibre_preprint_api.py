@@ -335,8 +335,19 @@ def api_zenodo_post(user,id,repository_url):
        gh_create_comment(github_client,REVIEW_REPOSITORY,issue_id,comment)
        return make_response(jsonify(f"Problem with parsing paper.md for {repository_url}"),404)
 
+    # `paper_data` is guaranteed to name authors and nothing else. The deposit
+    # needs a title too, so check it here: missing it deeper in the task means a
+    # KeyError inside Celery, which the author never sees.
+    if not paper_data.get('title'):
+       comment = f"&#128308; Cannot determine the title of the submission from the `paper.md` front-matter or the `myst.yml` for {repository_url}."
+       gh_create_comment(github_client,REVIEW_REPOSITORY,issue_id,comment)
+       return make_response(jsonify(f"Missing title for {repository_url}"),404)
+
     task_title = "Reproducibility Assets - Create Zenodo buckets"
-    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id,paper_data['authors'])
+    # No task id yet -- one is stamped onto this comment by the "received" phase
+    # below. It used to be passed the author list, which rendered it as the task
+    # id in the pending comment.
+    comment_id = gh_template_respond(github_client,"pending",task_title,REVIEW_REPOSITORY,issue_id)
 
     celery_payload = dict(task_title = task_title,
                           issue_id= issue_id,

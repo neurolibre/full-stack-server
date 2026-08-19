@@ -1026,37 +1026,18 @@ def zenodo_create_buckets_task(self, payload):
     resolved_affiliations = first_affiliations(data['authors'], data.get('affiliations') or [])
 
     for ii in range(len(data['authors'])):
+        # A bare string author (`authors: [Ada Lovelace]`) is legal in both
+        # sources and carries no affiliation to resolve.
+        if not isinstance(data['authors'][ii], dict):
+            continue
         if resolved_affiliations[ii] is None:
             data['authors'][ii].pop('affiliation', None)
         else:
             data['authors'][ii]['affiliation'] = resolved_affiliations[ii]
 
-    # To deal with some typos, also with orchid :)
-    valid_field_names = {'name', 'orcid', 'affiliation'}
-    for author in data['authors']:
-        invalid_fields = []
-        for field in author:
-            if field not in valid_field_names:
-                invalid_fields.append(field)
-
-        for invalid_field in invalid_fields:
-            valid_field = None
-            for valid_name in valid_field_names:
-                if valid_name.lower() in invalid_field.lower() or (valid_name == 'orcid' and invalid_field.lower() == 'orchid'):
-                    valid_field = valid_name
-                    break
-
-            if valid_field:
-                author[valid_field] = author.pop(invalid_field)
-
-        if 'equal-contrib' in author:
-            author.pop('equal-contrib')
-
-        if 'corresponding' in author:
-            author.pop('corresponding')
-
-        # if author.get('orcid') is None:
-        #     author.pop('orcid')
+    # Author fields are not filtered here: `zenodo_create_bucket` reduces them
+    # to the fields a Zenodo creator accepts (see `zenodo_metadata`), so the
+    # deposit boundary owns that rule and every caller gets it.
 
     collect = {}
     for archive_type in payload['archive_assets']:

@@ -208,6 +208,17 @@ def merge_paper_metadata(front_matter, myst_text):
         # A key that is present but empty counts as absent -- see `_is_blank`.
         if _is_blank(metadata.get("authors")) or _is_blank(metadata.get("affiliations")):
             if fallback.get("authors"):
+                if not _is_blank(metadata.get("authors")):
+                    # The front matter named authors but no affiliations, so its
+                    # author list is discarded rather than merged. Announce it:
+                    # a stale myst.yml silently outranking a current paper.md is
+                    # otherwise indistinguishable from a correct fallback.
+                    logging.warning(
+                        "paper.md names authors but no affiliations; replacing "
+                        "its author list with the one from myst.yml, because an "
+                        "affiliation index only means something relative to the "
+                        "list that defines it."
+                    )
                 metadata["authors"] = fallback["authors"]
                 metadata["affiliations"] = fallback.get("affiliations", [])
         for key in ("title", "date", "tags", "bibliography"):
@@ -238,13 +249,30 @@ def first_affiliations(authors, affiliations):
     An empty `affiliations` list is legitimate too -- a myst.yml project may name
     authors and no institutions at all -- and resolves every author to `None`.
     """
-    mapping = {
-        str(affiliation["index"]): affiliation["name"]
-        for affiliation in affiliations or []
-    }
+    # Built with `.get`, not subscripting: a hand-written paper.md may omit
+    # `index` or `name` on one entry, and that entry alone should be unusable
+    # rather than raising and failing the deposit.
+    mapping = {}
+    for affiliation in affiliations or []:
+        if not isinstance(affiliation, dict):
+            continue
+        index = affiliation.get("index")
+        name = affiliation.get("name")
+        if index is None or name is None:
+            logging.warning(
+                f"Ignoring an affiliation entry missing 'index' or 'name': "
+                f"{affiliation!r}."
+            )
+            continue
+        mapping[str(index).strip()] = name
 
     resolved = []
     for author in authors:
+        if not isinstance(author, dict):
+            # `authors: [Ada Lovelace]` is legal in both sources; a bare string
+            # names no affiliation.
+            resolved.append(None)
+            continue
         affiliation = author.get("affiliation")
         if not affiliation:
             resolved.append(None)
@@ -252,9 +280,9 @@ def first_affiliations(authors, affiliations):
         if isinstance(affiliation, int):
             affiliation_index = affiliation
         else:
-            affiliation_indices = [affiliation_index for affiliation_index in str(affiliation).split(",")]
-            affiliation_index = affiliation_indices[0]
-        name = mapping.get(str(affiliation_index))
+            # `affiliation: "1, 2"` is as common as `"1,2"` in front matter.
+            affiliation_index = str(affiliation).split(",")[0].strip()
+        name = mapping.get(str(affiliation_index).strip())
         if name is None:
             # A typo'd index used to crash loudly; now it silently records a
             # creator with no institution. Say so, so it is diagnosable.
