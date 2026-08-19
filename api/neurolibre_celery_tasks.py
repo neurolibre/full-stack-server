@@ -23,6 +23,7 @@ from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
 from myst_libre.tools import JupyterHubLocalSpawner
 from myst_libre.rees import REES
+from myst_libre.exceptions import MystLibreError
 from myst_libre.builders import MystBuilder
 from myst_libre.tools import MystMD
 from celery.schedules import crontab
@@ -1262,20 +1263,38 @@ def zenodo_upload_docker_task(self, screening_dict):
             task.fail(f"ERROR: Unrecognized archive type.")
     else:
 
-        # try:
-        rees_resources = REES(dict(
-            registry_url=BINDER_REGISTRY,
-            gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
-            gh_repo_commit_hash = commit_fork,
-            binder_image_tag = commit_fork,
-            binder_image_name = None,
-            dotenv = task.get_dotenv_path()))
+        # REES discovers the image in its constructor, and since myst-libre
+        # 0.4.1 a missing one raises ImageNotFoundError instead of reporting
+        # False. Unhandled, that escaped as a bare traceback: Celery marked the
+        # task failed but nothing told GitHub, so the issue comment sat orange
+        # forever with no indication anything had gone wrong.
+        try:
+            rees_resources = REES(dict(
+                registry_url=BINDER_REGISTRY,
+                gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
+                # The registry host doubles as the repository namespace -- the
+                # "registry url entered twice" noted below -- so the image lives
+                # at registry.evidencepub.io/binder-<slug>-<hash>, not at
+                # binder-<slug>-<hash>. bh_project_name is what prepends it.
+                # Without it the tags/list lookup 404s on an image that exists,
+                # which preview_build_myst_task gets right and this did not.
+                bh_project_name = BINDER_REGISTRY.split('https://')[-1],
+                gh_repo_commit_hash = commit_fork,
+                binder_image_tag = commit_fork,
+                binder_image_name = None,
+                dotenv = task.get_dotenv_path()))
 
-        if rees_resources.search_img_by_repo_name():
-            logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
-            rees_resources.pull_image()
-        else:
-            task.fail(f"Failes REES docker image pull for {fork_url}")
+            if rees_resources.search_img_by_repo_name():
+                logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
+                rees_resources.pull_image()
+            else:
+                # Retained for a myst-libre that still reports absence by
+                # returning False rather than raising.
+                task.fail(f"Failed REES docker image pull for {fork_url}")
+                return
+        except MystLibreError as exception:
+            task.fail(f"Cannot pull the docker image for {fork_url} from {BINDER_REGISTRY}: {exception}")
+            return
 
         # except:
 
