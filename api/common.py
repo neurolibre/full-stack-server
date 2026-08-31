@@ -541,13 +541,6 @@ def run_celery_subprocess(command, log_output=True):
         logging.error(f"Command: {' '.join(command)}")
         return -1, str(e)
 
-def get_active_ports(start=3001, end=3099):
-    active_ports = []
-    for conn in psutil.net_connections(kind='inet'):
-        if conn.status == psutil.CONN_LISTEN and start <= conn.laddr.port <= end:
-            active_ports.append(conn.laddr.port)
-    return active_ports
-
 def close_port_by_pid(target_pid):
     """Kill the entire process group rooted at target_pid.
 

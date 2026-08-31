@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import re
 from github import Github
 from github_client import gh_read_from_issue_body
+from zenodo_metadata import zenodo_creators
 import csv
 import subprocess
 import nbformat
@@ -76,7 +77,9 @@ def zenodo_create_bucket(title, archive_type, creators, repository_url, issue_id
     data = {}
     data["metadata"] = {}
     data["metadata"]["title"] = f"({tmp_type}) {title}"
-    data["metadata"]["creators"] = creators
+    # Whatever the submission declared, a creator is only what Zenodo accepts.
+    # Enforced here rather than in the caller so every deposit path is covered.
+    data["metadata"]["creators"] = zenodo_creators(creators)
     data["metadata"]["keywords"] = ["canadian-open-neuroscience-platform","neurolibre"]
     # (A) NeuroLibre artifact is a part of (isPartOf) the NeuroLibre preprint (B 10.55458/NeuroLibre.issue_id)
     data["metadata"]["related_identifiers"] = [{"relation": "isPartOf","identifier": f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}","resource_type": "publication-preprint"}]

@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import celeryd_after_setup
 import time
 import os
 import json
@@ -7,6 +8,7 @@ import redis as redis_lib
 from celery import states
 from github_client import *
 from screening_client import ScreeningClient
+from myst_frontmatter import first_affiliations
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException, GithubException
@@ -21,7 +23,9 @@ from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
 from myst_libre.tools import JupyterHubLocalSpawner
 from myst_libre.rees import REES
+from myst_libre.exceptions import MystLibreError
 from myst_libre.builders import MystBuilder
+from myst_libre.tools import MystMD
 from celery.schedules import crontab
 import zipfile
 import tempfile
@@ -118,6 +122,34 @@ celery_app.conf.broker_heartbeat = 0
 # Redis client for distributed locks (uses the same broker instance).
 # DB 0 is the Celery broker; we use DB 2 for locks to avoid key collisions.
 _lock_redis = redis_lib.Redis(host='localhost', port=6379, db=2)
+
+
+@celeryd_after_setup.connect
+def reap_myst_orphans(sender, instance, **kwargs):
+    """
+    Clean up myst process groups left behind by a previous worker.
+
+    A crashed or restarted worker leaves myst and its children (npm run start ->
+    node ./server.js) running and holding ports. Normal teardown kills the
+    process group, but that needs a live PID to signal.
+
+    celeryd_after_setup fires once in the main worker process, after setup and
+    before children fork or any task is consumed. worker_process_init would be
+    wrong here: it runs in every prefork child, so N reaps would race.
+
+    Builds running in sibling workers are unaffected - myst-libre only reaps
+    records whose owning process is gone.
+    """
+    try:
+        reaped = MystMD.reap_orphans()
+        if reaped:
+            logging.warning(
+                f"Reaped {len(reaped)} orphaned myst process group(s): "
+                f"{[e.get('build_dir') for e in reaped]}"
+            )
+    except Exception as e:
+        # Never block worker startup over cleanup
+        logging.warning(f"Orphan reaping failed: {e}")
 
 """
 Configuration END
@@ -989,47 +1021,24 @@ def zenodo_create_buckets_task(self, payload):
 
     data = payload['paper_data']
 
-    # We need to go through some affiliation mapping here.
-    affiliation_mapping = {str(affiliation['index']): affiliation['name'] for affiliation in data['affiliations']}
-    first_affiliations = []
-    for author in data['authors']:
-        if isinstance(author['affiliation'],int):
-            affiliation_index = author['affiliation']
-        else:
-            affiliation_indices = [affiliation_index for affiliation_index in author['affiliation'].split(',')]
-            affiliation_index = affiliation_indices[0]
-        first_affiliation = affiliation_mapping[str(affiliation_index)]
-        first_affiliations.append(first_affiliation)
+    # We need to go through some affiliation mapping here. The affiliation list
+    # can be absent entirely -- authors in the front matter plus a myst.yml
+    # project that names none -- so do not index it directly.
+    resolved_affiliations = first_affiliations(data['authors'], data.get('affiliations') or [])
 
     for ii in range(len(data['authors'])):
-        data['authors'][ii]['affiliation'] = first_affiliations[ii]
+        # A bare string author (`authors: [Ada Lovelace]`) is legal in both
+        # sources and carries no affiliation to resolve.
+        if not isinstance(data['authors'][ii], dict):
+            continue
+        if resolved_affiliations[ii] is None:
+            data['authors'][ii].pop('affiliation', None)
+        else:
+            data['authors'][ii]['affiliation'] = resolved_affiliations[ii]
 
-    # To deal with some typos, also with orchid :)
-    valid_field_names = {'name', 'orcid', 'affiliation'}
-    for author in data['authors']:
-        invalid_fields = []
-        for field in author:
-            if field not in valid_field_names:
-                invalid_fields.append(field)
-
-        for invalid_field in invalid_fields:
-            valid_field = None
-            for valid_name in valid_field_names:
-                if valid_name.lower() in invalid_field.lower() or (valid_name == 'orcid' and invalid_field.lower() == 'orchid'):
-                    valid_field = valid_name
-                    break
-
-            if valid_field:
-                author[valid_field] = author.pop(invalid_field)
-
-        if 'equal-contrib' in author:
-            author.pop('equal-contrib')
-
-        if 'corresponding' in author:
-            author.pop('corresponding')
-
-        # if author.get('orcid') is None:
-        #     author.pop('orcid')
+    # Author fields are not filtered here: `zenodo_create_bucket` reduces them
+    # to the fields a Zenodo creator accepts (see `zenodo_metadata`), so the
+    # deposit boundary owns that rule and every caller gets it.
 
     collect = {}
     for archive_type in payload['archive_assets']:
@@ -1254,20 +1263,44 @@ def zenodo_upload_docker_task(self, screening_dict):
             task.fail(f"ERROR: Unrecognized archive type.")
     else:
 
-        # try:
-        rees_resources = REES(dict(
-            registry_url=BINDER_REGISTRY,
-            gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
-            gh_repo_commit_hash = commit_fork,
-            binder_image_tag = commit_fork,
-            binder_image_name = None,
-            dotenv = task.get_dotenv_path()))
+        # REES discovers the image in its constructor, and since myst-libre
+        # 0.4.1 a missing one raises ImageNotFoundError instead of reporting
+        # False. Unhandled, that escaped as a bare traceback: Celery marked the
+        # task failed but nothing told GitHub, so the issue comment sat orange
+        # forever with no indication anything had gone wrong.
+        try:
+            rees_resources = REES(dict(
+                registry_url=BINDER_REGISTRY,
+                gh_user_repo_name = f"{GH_ORGANIZATION}/{task.repo_name}",
+                # The registry host doubles as the repository namespace -- the
+                # "registry url entered twice" noted below -- so the image lives
+                # at registry.evidencepub.io/binder-<slug>-<hash>, not at
+                # binder-<slug>-<hash>. bh_project_name is what prepends it.
+                # Without it the tags/list lookup 404s on an image that exists,
+                # which preview_build_myst_task gets right and this did not.
+                bh_project_name = BINDER_REGISTRY.split('https://')[-1],
+                gh_repo_commit_hash = commit_fork,
+                binder_image_tag = commit_fork,
+                binder_image_name = None,
+                dotenv = task.get_dotenv_path()))
 
-        if rees_resources.search_img_by_repo_name():
+            # No second lookup: the constructor above already discovered the
+            # image and raises when it is absent, so reaching here means it was
+            # found. search_img_by_repo_name lives on the registry client, not
+            # on REES, and calling it here raised AttributeError.
             logging.info(f"🐳 FOUND IMAGE... ⬇️ PULLING {rees_resources.found_image_name}")
             rees_resources.pull_image()
-        else:
-            task.fail(f"Failes REES docker image pull for {fork_url}")
+        except MystLibreError as exception:
+            task.fail(f"Cannot pull the docker image for {fork_url} from {BINDER_REGISTRY}: {exception}")
+            return
+        except Exception as exception:
+            # This task's only channel to the submitter is the issue comment.
+            # Anything unhandled here used to leave it orange forever while
+            # Celery logged a traceback nobody was watching, so report the
+            # class of the error too rather than letting it escape.
+            task.fail(f"Unexpected error preparing the docker image for {fork_url}: "
+                      f"{exception.__class__.__name__}: {exception}")
+            return
 
         # except:
 
@@ -2038,16 +2071,28 @@ def preview_build_myst_task(self, screening_dict):
         # Always clean up the myst process tree (kills the entire process
         # group: myst node + npm run start + node ./server.js) and the
         # JupyterHub container, regardless of success or failure.
+        #
+        # Each step is guarded independently. Previously an exception in the
+        # first one aborted the rest of this block, leaking the container AND
+        # the build lock - which then blocks every build of that repo until the
+        # 6000s timeout expires. A failed cleanup step must not cost more than
+        # itself.
         if builder is not None:
-            builder.cleanup()
-        cleanup_hub(hub)
+            try:
+                builder.cleanup()
+            except Exception as e:
+                logging.warning(f"builder.cleanup() failed: {e}")
+        try:
+            cleanup_hub(hub)
+        except Exception as e:
+            logging.warning(f"cleanup_hub() failed: {e}")
         try:
             build_lock.release()
         except redis_lib.exceptions.LockNotOwnedError:
             # Lock expired (build exceeded timeout) and was auto-released.
             logging.warning(f"Build lock {lock_key} already expired.")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Could not release build lock {lock_key}: {e}")
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
