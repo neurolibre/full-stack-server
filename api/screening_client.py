@@ -121,7 +121,12 @@ class ScreeningClient:
         if task_result.task_id is not None:
             self.task_id = task_result.task_id
             message = f"Celery task assigned successfully. Task ID: {self.task_id}"
-            self.respond.RECEIVED(message)
+            # The PENDING comment is only created when notify_target is set, which
+            # happens inside the Celery worker, not here. Without a comment to edit,
+            # RECEIVED raised AssertionError and the endpoint returned 500 even
+            # though the task had already been queued.
+            if self.comment_id is not None:
+                self.respond.RECEIVED(message)
             return make_response(jsonify(message), 200)
         else:
             message = f"Celery task assignment failed. Task Name: {self.task_name}"
