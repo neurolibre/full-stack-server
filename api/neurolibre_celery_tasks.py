@@ -9,6 +9,7 @@ from celery import states
 from github_client import *
 from screening_client import ScreeningClient
 from myst_frontmatter import first_affiliations
+import myst_cdn
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException, GithubException
@@ -1822,11 +1823,41 @@ def rsync_myst_prod_task(self, screening_dict):
         f"[v{ver_num}]({PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi}.v{ver_num})"
         for ver_num in all_versions]
     all_versions_str = ", ".join(all_versions_links)
+    cdn_note = add_to_myst_cdn(task, base_doi, f"v{latest_version_num}")
     task.succeed(
         f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi} \n"
         f"Latest version: v{latest_version_num}.\n"
-        f"All versions: {all_versions_str}\n",
+        f"All versions: {all_versions_str}\n"
+        f"{cdn_note}\n",
         False)
+
+def add_to_myst_cdn(task, doi_name, version):
+    """
+    Copy the site build of the published version from preview and rebuild the
+    combined MyST CDN (see myst_cdn.py). Returns a line for the build comment.
+    A failure here is reported but does not fail the sync: the static page is
+    already live, and readers rely on it.
+    """
+    try:
+        # Same lookup as myst_upload_task: the newest production build of the fork.
+        response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/latest.txt")
+        if response.status_code != 200:
+            return f"⚠️ Not added to the MyST CDN: no latest.txt for {GH_ORGANIZATION}/{task.repo_name} on the preview server."
+        commit = response.text.strip()
+        site_path = os.path.join(DATA_ROOT_PATH, MYST_FOLDER, GH_ORGANIZATION, task.repo_name, commit, "_build", "site")
+        remote_path = os.path.join("neurolibre-preview:", site_path[1:])
+        process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output = process.communicate()[0]
+        if process.wait() != 0:
+            return f"⚠️ Not added to the MyST CDN: could not copy the site build from preview: {output}"
+        report = myst_cdn.add_and_publish(doi_name, version, site_path)
+        note = f"📚 Added to the MyST CDN ({report['projects']} papers), site build at {commit[:7]}."
+        if report["clashes"]:
+            note += f" Figure names already used with different bytes, first kept: {', '.join(report['clashes'])}"
+        return note
+    except Exception as e:
+        logging.exception("MyST CDN update failed")
+        return f"⚠️ Not added to the MyST CDN: {e}"
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout

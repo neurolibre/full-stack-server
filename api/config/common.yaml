@@ -66,6 +66,11 @@ JB_ROOT_FOLDER: "book-artifacts"
 # source code. This is expected to be under the DATA_ROOT_PATH
 MYST_FOLDER: "myst"
 
+# Name of the folder that holds the combined MyST CDN of the published
+# papers (see api/myst_cdn.py). Expected under DATA_ROOT_PATH, on the same
+# filesystem as MYST_FOLDER, because builds hard-link figures from it.
+CDN_FOLDER: "cdn"
+
 # Name of the folder that will contain logs (myst, binder, etc.)
 # This is expected to be under the DATA_ROOT_PATH
 LOGS_FOLDER: "logs"
