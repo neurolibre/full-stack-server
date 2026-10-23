@@ -27,7 +27,9 @@ openai
 # >=0.4.1 for the paginated /v2/_catalog fix: the registry caps a listing at
 # 100 repositories, so an image sorting past that boundary read as missing.
 # Unpinned, pip leaves an already-installed 0.4.0 in place and nothing upgrades.
-myst-libre>=0.4.1
+# >=0.4.2 caps plotext below 6 (6.0 removed the API the usage chart calls),
+# and keeps a failing usage report from skipping the container teardown.
+myst-libre>=0.4.2
 humanize==4.9.0
 psutil
 
