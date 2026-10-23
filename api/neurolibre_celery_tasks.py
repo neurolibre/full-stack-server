@@ -108,7 +108,13 @@ celery_app.conf.result_persistent = True
 # Set to 2 hours to match worker time limit
 celery_app.conf.broker_transport_options = {
     'visibility_timeout': 7200,  # 2 hours
+    # Detect a dead socket rather than blocking on it. A libsystemd0 upgrade
+    # restarts redis-server as collateral, closing every client connection at
+    # once; these let the transport notice and reconnect promptly.
+    'socket_keepalive': True,
+    'health_check_interval': 30,
 }
+celery_app.conf.redis_socket_keepalive = True
 
 celery_app.conf.worker_prefetch_multiplier = 1
 celery_app.conf.worker_max_tasks_per_child = 100
@@ -1913,14 +1919,22 @@ def preview_build_myst_task(self, screening_dict):
         all_logs_dict["binder_hash_calculated"] = task.screening.binder_hash
         all_logs_dict["binder_image_name_override"] = binder_image_name_override
 
-        rees_resources = REES(dict(
-            registry_url=BINDER_REGISTRY,
-            gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
-            bh_project_name = BINDER_REGISTRY.split('https://')[-1],
-            gh_repo_commit_hash = task.screening.commit_hash,
-            binder_image_tag = task.screening.binder_hash,
-            binder_image_name_override = binder_image_name_override,
-            dotenv = task.get_dotenv_path()))
+        # Same as in zenodo_upload_docker_task: image discovery happens in the
+        # constructor and raises when the image is absent. This function's
+        # try/finally cleans up but has no except, so an unguarded raise here
+        # left the build comment orange with no reason given.
+        try:
+            rees_resources = REES(dict(
+                registry_url=BINDER_REGISTRY,
+                gh_user_repo_name = f"{task.owner_name}/{task.repo_name}",
+                bh_project_name = BINDER_REGISTRY.split('https://')[-1],
+                gh_repo_commit_hash = task.screening.commit_hash,
+                binder_image_tag = task.screening.binder_hash,
+                binder_image_name_override = binder_image_name_override,
+                dotenv = task.get_dotenv_path()))
+        except MystLibreError as exception:
+            task.fail(f"Cannot find the binder image for {task.owner_name}/{task.repo_name} in {BINDER_REGISTRY}: {exception}")
+            return
         
         if not preserve_cache:
             all_logs += f"\n ⚠️⚠️⚠️ Warning: MyST build cache preservation disabled. ⚠️⚠️⚠️"
