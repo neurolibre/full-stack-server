@@ -24,6 +24,18 @@ myst-parser==0.18.1
 markdown-it-py==2.0.1
 repo2data
 openai
-myst-libre
+# >=0.4.1 for the paginated /v2/_catalog fix: the registry caps a listing at
+# 100 repositories, so an image sorting past that boundary read as missing.
+# Unpinned, pip leaves an already-installed 0.4.0 in place and nothing upgrades.
+myst-libre>=0.4.1
 humanize==4.9.0
 psutil
+
+# Imported directly but previously undeclared -- both happened to be installed
+# as transitive dependencies, so the app worked while nothing guaranteed they
+# would stay. A dependency dropping either would break the app at import.
+#
+#   yaml        -> neurolibre_api.py, github_client.py, myst_frontmatter.py
+#   marshmallow -> schema.py ("from marshmallow import Schema, fields")
+PyYAML
+marshmallow
