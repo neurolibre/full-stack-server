@@ -108,7 +108,13 @@ celery_app.conf.result_persistent = True
 # Set to 2 hours to match worker time limit
 celery_app.conf.broker_transport_options = {
     'visibility_timeout': 7200,  # 2 hours
+    # Detect a dead socket rather than blocking on it. A libsystemd0 upgrade
+    # restarts redis-server as collateral, closing every client connection at
+    # once; these let the transport notice and reconnect promptly.
+    'socket_keepalive': True,
+    'health_check_interval': 30,
 }
+celery_app.conf.redis_socket_keepalive = True
 
 celery_app.conf.worker_prefetch_multiplier = 1
 celery_app.conf.worker_max_tasks_per_child = 100
