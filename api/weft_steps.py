@@ -16,6 +16,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import yaml
 
 CDN_URL = "https://cdn.evidencepub.io"
+MAX_TERM_LINES = 10
 
 Run = Callable[[List[str]], Tuple[int, str]]
 
@@ -78,13 +79,42 @@ def _crashed(output: str) -> bool:
     return "Traceback (most recent call last)" in output
 
 
-def _sentence(text: str) -> str:
-    text = text.strip()
+def _why(output: str) -> str:
+    """One sentence for a failed command: its last line, and for a crash the exception it ended on."""
+    last = _last_line(output)
+    return f"The command stopped with an error: {last}" if _crashed(output) else last
+
+
+def _failures(output: str) -> List[str]:
+    """The reasons a command refused: its `- ` lines when it lists them, else one sentence."""
+    if _crashed(output):
+        return [_why(output)]
+    listed = [line[2:].strip() for line in output.splitlines() if line.startswith("- ")]
+    return listed or [_why(output)]
+
+
+def _sentence(text: str, lead: str) -> str:
+    """The description as the end of "one row is ..." : without a lead it repeats, and lower case at the start."""
+    text = re.sub(rf"^one {lead} is\s+", "", str(text).strip(), flags=re.IGNORECASE).rstrip(".")
     return text[:1].lower() + text[1:] if text[1:2].islower() else text
 
 
 def _load(path: Path):
     return yaml.safe_load(path.read_text())
+
+
+def _unreadable(weft: Path) -> Optional[str]:
+    """The sentence when the weft cannot be read as YAML, else None."""
+    try:
+        _load(Path(weft))
+    except OSError as e:
+        return f"The weft could not be read: {e}"
+    except yaml.YAMLError as e:
+        problem = str(e).splitlines()[0] if str(e) else "it is not valid YAML"
+        return f"The weft is not valid YAML, so it could not be checked: {problem}."
+    except ValueError:
+        return "The weft could not be read as text, so it could not be checked."
+    return None
 
 
 def _entries(weft) -> list:
@@ -96,7 +126,7 @@ def summary_of(weft_path: Path) -> List[str]:
     """One line per table and per collection, then the terms the weft proposes."""
     try:
         weft = _load(Path(weft_path))
-    except (OSError, yaml.YAMLError):
+    except (OSError, ValueError, yaml.YAMLError):
         return []
     lines = []
     for entry in _entries(weft):
@@ -105,21 +135,32 @@ def summary_of(weft_path: Path) -> List[str]:
             line = f"{entry['collection']}: a collection of {count} files" if count else \
                 f"{entry['collection']}: a collection of files"
             if entry.get("description"):
-                line += f"; one member is {_sentence(str(entry['description'])).rstrip('.')}"
+                line += f"; one member is {_sentence(entry['description'], 'member')}"
         elif "file" in entry:
-            line = f"{entry['file']}: {len(entry.get('fields') or [])} columns"
-            row = entry.get("row")
-            text = row.get("description") if isinstance(row, dict) else row
-            text = text or entry.get("row_description")
-            if text:
-                line += f"; one row is {_sentence(str(text)).rstrip('.')}"
+            fields = entry.get("fields") or []
+            if fields:
+                line = f"{entry['file']}: {len(fields)} columns"
+                row = entry.get("row")
+                text = row.get("description") if isinstance(row, dict) else row
+                text = text or entry.get("row_description")
+                if text:
+                    line += f"; one row is {_sentence(text, 'row')}"
+            else:
+                kind = entry.get("kind")
+                line = f"{entry['file']}: " + (f"a {kind} file" if kind else "a file with no columns described")
+                if entry.get("description"):
+                    line += f"; {str(entry['description']).strip().rstrip('.')}"
         else:
             continue
         lines.append(line)
     new_terms = weft.get("new_terms") if isinstance(weft, dict) else None
-    for term_id, info in (new_terms or {}).items():
+    if not isinstance(new_terms, dict):
+        new_terms = {}
+    for term_id, info in list(new_terms.items())[:MAX_TERM_LINES]:
         label = info.get("label") if isinstance(info, dict) else None
         lines.append(f"proposed new term {term_id}" + (f": {label}" if label else ""))
+    if len(new_terms) > MAX_TERM_LINES:
+        lines.append(f"and {len(new_terms) - MAX_TERM_LINES} more proposed terms")
     return lines
 
 
@@ -145,13 +186,9 @@ def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
           db: Optional[Path] = None) -> CheckResult:
     """Check a weft against the profiles; `unreadable` is the sentence when the file cannot be read."""
     run = run or subprocess_runner(Path(weft).parent)
-    try:
-        _load(Path(weft))
-    except OSError as e:
-        return CheckResult(unreadable=f"The weft could not be read: {e}")
-    except yaml.YAMLError as e:
-        problem = str(e).splitlines()[0] if str(e) else "it is not valid YAML"
-        return CheckResult(unreadable=f"The weft is not valid YAML, so it could not be checked: {problem}.")
+    sentence = _unreadable(weft)
+    if sentence:
+        return CheckResult(unreadable=sentence)
     argv = WEFT + ["check", str(weft), "--profiles", str(profiles), "--data", str(data_dir)]
     if db:
         argv += ["--db", str(db)]
@@ -183,13 +220,13 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
     result = DraftResult(weft=weft, profiles=profiles, drafted_by=backends["draft"], reason=None)
     code, output = run(WEFT + ["profile", str(data_dir), "--doi", doi, "-o", str(profiles)])
     if code != 0:
-        result.problems = [f"The data could not be profiled: {_last_line(output)}"]
+        result.problems = [f"The data could not be profiled: {_why(output)}"]
         return result
 
     failure = None
     code, output = _explore(doi, profiles, weft, backends["draft"], data_dir, repo_dir, lock, run)
     if code != 0:
-        failure = _last_line(output)
+        failure = _why(output)
     else:
         first = check(weft, profiles, data_dir, run)
         if first.unreadable or first.errors:
@@ -200,7 +237,7 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
         result.drafted_by, result.reason = backends["redraft"], failure
         code, output = _explore(doi, profiles, weft, backends["redraft"], data_dir, repo_dir, None, run)
         if code != 0:
-            result.problems = [_last_line(output)]
+            result.problems = [_why(output)]
             return result
         final = check(weft, profiles, data_dir, run)
     result.problems = [final.unreadable] if final.unreadable else final.errors
@@ -213,7 +250,11 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
             data_dir: Path, site: Path, db: Path, run: Optional[Run] = None) -> ConfirmResult:
     """Check, confirm, load, export both documents and publish the static files; stop at the first failure."""
     weft, work = Path(weft), Path(weft).parent
+    given = run is not None
     run = run or subprocess_runner(work)
+    sentence = _unreadable(weft)
+    if sentence:
+        return ConfirmResult(errors=[sentence])
     if not submission:           # with a submission, the confirm command applies it and checks the result
         checked = check(weft, profiles, data_dir, run, db)
         if checked.unreadable:
@@ -227,7 +268,7 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
         argv += ["--submit", str(submission), "--profiles", str(profiles)]
     code, output = run(argv)
     if code != 0:
-        return ConfirmResult(errors=[_last_line(output)])
+        return ConfirmResult(errors=_failures(output))
     found = re.search(r"version (?:is now|stays) (\S+?)[,.]?(?:\s|$)", output)
     steps = [
         WEFT + ["load", str(weft), "--profiles", str(profiles), "--db", str(db), "--data", str(data_dir)],
@@ -235,13 +276,18 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
                   "--data", str(data_dir)] for fmt in ("fair2", "croissant")],
         DATA_CLI + ["publish", "--out", str(site)],
     ]
+    # `publish` has no --db: it reads the default store and the weft folder from the config it finds. The
+    # worker's ~/.evidentron is a link to /DATA/evidentron (the provisioning sets that up), so the default
+    # store and ~/.evidentron/config.yaml are the server's; running it in the store's folder also finds
+    # ./evidentron.yaml there.
+    publish_run = run if given else subprocess_runner(Path(db).parent)
     for step in steps:
-        code, output_step = run(step)
+        code, output_step = (publish_run if step[:3] == DATA_CLI and "publish" in step else run)(step)
         if code != 0:
-            return ConfirmResult(errors=[_last_line(output_step)])
+            return ConfirmResult(errors=_failures(output_step))
     try:
         weft_data = _load(weft)
-    except (OSError, yaml.YAMLError):
+    except (OSError, ValueError, yaml.YAMLError):
         weft_data = {}
     doi = weft_data.get("paper") if isinstance(weft_data, dict) else None
     version = found.group(1) if found else str((weft_data or {}).get("version") or "")

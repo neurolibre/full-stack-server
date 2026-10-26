@@ -272,3 +272,90 @@ def test_summary_of(tmp_path):
 
 def test_summary_of_an_unreadable_file_is_empty(tmp_path):
     assert weft_steps.summary_of(tmp_path / "missing.yaml") == []
+
+
+REAL_SHAPE = """paper: 10.55458/neurolibre.00004
+files:
+- file: repo2data.log
+  kind: binary
+  description: A log written by the data download tool.
+- file: notes.bin
+  kind: binary
+- file: database.xlsx#Details
+  row:
+    term: study
+    description: One row is one published study.
+  fields:
+  - {name: a, term: study}
+- collection: logs
+  description: One member is a log file.
+new_terms:
+""" + "".join(f"  t{i}:\n    label: term {i}\n" for i in range(13))
+
+
+def test_summary_of_a_real_shape(tmp_path):
+    weft = tmp_path / "w.yaml"
+    weft.write_text(REAL_SHAPE)
+    lines = weft_steps.summary_of(weft)
+    assert lines[0] == "repo2data.log: a binary file; A log written by the data download tool"
+    assert lines[1] == "notes.bin: a binary file"
+    assert lines[2] == "database.xlsx#Details: 1 columns; one row is one published study"
+    assert lines[3] == "logs: a collection of files; one member is a log file"
+    assert not any("0 columns" in line for line in lines)
+    terms = [line for line in lines if line.startswith("proposed new term")]
+    assert len(terms) == 10
+    assert lines[-1] == "and 3 more proposed terms"
+
+
+def test_summary_of_new_terms_that_is_not_a_mapping(tmp_path):
+    weft = tmp_path / "w.yaml"
+    weft.write_text("files: []\nnew_terms: [a, b]\n")
+    assert weft_steps.summary_of(weft) == []
+
+
+def test_summary_of_a_binary_file_is_empty(tmp_path):
+    weft = tmp_path / "w.yaml"
+    weft.write_bytes(b"\xff\xfe\x00\x80")
+    assert weft_steps.summary_of(weft) == []
+
+
+def test_confirm_of_an_unreadable_weft_with_a_submission(dirs):
+    work, data, _ = dirs
+    args = confirm_args(work, data, submission=work / "sub.yaml")
+    args["weft"].write_text("files: [unclosed\n  - : :\n")
+    fake = Fake(work)
+    result = weft_steps.confirm(**args, run=fake)
+    assert result.errors and "YAML" in result.errors[0]
+    assert fake.calls == []
+
+
+def test_confirm_with_a_refused_submission_returns_every_error(dirs):
+    work, data, _ = dirs
+    out = ("The submission leaves the weft with errors, so nothing was confirmed:\n"
+           "- a.tsv: no term\n- b.tsv: no description\n")
+    fake = Fake(work, {"confirm": lambda a: (1, out)})
+    result = weft_steps.confirm(**confirm_args(work, data, submission=work / "sub.yaml"), run=fake)
+    assert result.errors == ["a.tsv: no term", "b.tsv: no description"]
+
+
+def test_a_traceback_from_a_later_step_is_one_sentence(dirs):
+    work, data, _ = dirs
+    trace = "Traceback (most recent call last):\n  File x\n    line\nOSError: disk full\n"
+    for step in ("load", "export"):
+        fake = Fake(work, {step: lambda a: (1, trace)})
+        result = weft_steps.confirm(**confirm_args(work, data), run=fake)
+        assert len(result.errors) == 1 and "disk full" in result.errors[0]
+        assert "Traceback" not in result.errors[0]
+    fake = Fake(work, {"confirm": lambda a: (1, trace)})
+    result = weft_steps.confirm(**confirm_args(work, data), run=fake)
+    assert len(result.errors) == 1 and "Traceback" not in result.errors[0]
+
+
+def test_publish_runs_in_the_store_folder(dirs, monkeypatch):
+    work, data, _ = dirs
+    seen = []
+    monkeypatch.setattr(weft_steps, "subprocess_runner", lambda cwd: (lambda argv: seen.append((cwd, argv)) or (0, "")))
+    db = work / "store" / "graph.db"
+    weft_steps.confirm(**confirm_args(work, data, db=db))
+    publishes = [cwd for cwd, argv in seen if "publish" in argv]
+    assert publishes == [work / "store"]
