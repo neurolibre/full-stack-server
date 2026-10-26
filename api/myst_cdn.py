@@ -46,13 +46,15 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 DOI_PREFIX = _config["DOI_PREFIX"]
 CDN_ROOT = Path(_config["DATA_ROOT_PATH"]) / _config["CDN_FOLDER"]
+# Where `evidentron-data publish --out` writes Evidentron's static site.
+EVIDENTRON_SITE = Path(_config["DATA_ROOT_PATH"]) / _config["EVIDENTRON_FOLDER"] / "site"
 
 SITE_ID = "neurolibre"
 
@@ -135,8 +137,21 @@ def add_site(name: str, version: str, src: Path, root: Path = CDN_ROOT,
     return dst
 
 
-def build(sites: Dict[str, Path], out: Path, doi_prefix: str = DOI_PREFIX) -> Dict[str, Any]:
-    """Write the combined CDN of sites ({neurolibre.000NN: site build}) into out (a new folder)."""
+def _place_extras(extras: Path, out: Path) -> None:
+    """Link Evidentron's terms/, wefts/, dois/ and index.json into out at the same paths."""
+    for entry in ("terms", "wefts", "dois", "index.json"):
+        src = extras / entry
+        files = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
+        for f in files:
+            _place(f, out / f.relative_to(extras))
+
+
+def build(sites: Dict[str, Path], out: Path, doi_prefix: str = DOI_PREFIX,
+          extras: Optional[Path] = None) -> Dict[str, Any]:
+    """Write the combined CDN of sites ({neurolibre.000NN: site build}) into out (a new folder).
+
+    extras is Evidentron's static site. When it is a folder, its terms, exports and metadata are
+    linked into out; when it is not there, the build goes on and the report says so."""
     out = Path(out)
     projects, clashes, version = [], [], 0
     for name in sorted(sites):
@@ -177,10 +192,18 @@ def build(sites: Dict[str, Path], out: Path, doi_prefix: str = DOI_PREFIX) -> Di
     out.mkdir(parents=True, exist_ok=True)
     (out / "config.json").write_text(json.dumps(
         {"version": version, "id": SITE_ID, "nav": [], "actions": [], "projects": projects}, indent=1))
-    return {"projects": len(projects), "clashes": clashes}
+    report: Dict[str, Any] = {"projects": len(projects), "clashes": clashes, "extras": False}
+    if extras is not None:
+        if Path(extras).is_dir():
+            _place_extras(Path(extras), out)
+            report["extras"] = True
+        else:
+            report["notes"] = [
+                f"Evidentron's site was not at {extras}, so the CDN carries no terms or exports yet."]
+    return report
 
 
-def publish(root: Path = CDN_ROOT) -> Dict[str, Any]:
+def publish(root: Path = CDN_ROOT, extras: Optional[Path] = None) -> Dict[str, Any]:
     """Build a new CDN of current_sites(root) in root/builds/<timestamp> and point root/current at it.
 
     The new build and the one it replaced are kept; older ones are removed.
@@ -198,7 +221,7 @@ def publish(root: Path = CDN_ROOT) -> Dict[str, Any]:
         out = builds / f"{stamp}-{n}"
         n += 1
     try:
-        report = build(current_sites(root), out)
+        report = build(current_sites(root), out, extras=extras)
     except Exception:
         shutil.rmtree(out, ignore_errors=True)
         raise
@@ -217,19 +240,22 @@ def publish(root: Path = CDN_ROOT) -> Dict[str, Any]:
     return report
 
 
-def add_and_publish(name: str, version: str, src: Path, root: Path = CDN_ROOT) -> Dict[str, Any]:
+def add_and_publish(name: str, version: str, src: Path, root: Path = CDN_ROOT,
+                    extras: Optional[Path] = None) -> Dict[str, Any]:
     """Add one paper's site build and rebuild the CDN, one caller at a time."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     with open(root / ".lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         add_site(name, version, src, root)
-        return publish(root)
+        return publish(root, extras=extras)
 
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", type=Path, default=CDN_ROOT)
+    parser.add_argument("--extras", type=Path, default=EVIDENTRON_SITE,
+                        help="Evidentron's static site (evidentron-data publish --out)")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("rebuild", help="rebuild the CDN from the site builds under sites/")
     add = commands.add_parser("add", help="add one paper's site build, then rebuild")
@@ -239,12 +265,14 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.command == "add":
-        report = add_and_publish(args.name, args.version, args.site, args.root)
+        report = add_and_publish(args.name, args.version, args.site, args.root, args.extras)
     else:
         with open(args.root / ".lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            report = publish(args.root)
+            report = publish(args.root, extras=args.extras)
     logging.info("%d papers in %s", report["projects"], report["build"])
+    for note in report.get("notes", []):
+        logging.warning("%s", note)
     for clash in report["clashes"]:
         logging.warning("figure name used with different bytes, first kept: %s", clash)
 
