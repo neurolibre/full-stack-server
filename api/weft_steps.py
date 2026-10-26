@@ -214,7 +214,6 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
     """Check, confirm, load, export both documents and publish the static files; stop at the first failure."""
     weft, work = Path(weft), Path(weft).parent
     run = run or subprocess_runner(work)
-    doi = None
     if not submission:           # with a submission, the confirm command applies it and checks the result
         checked = check(weft, profiles, data_dir, run, db)
         if checked.unreadable:
