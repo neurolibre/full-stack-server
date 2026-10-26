@@ -128,7 +128,7 @@ def _weft_screening(task_name, id, repository_url, fields=None, by=None, submiss
 @app.route('/api/weft/draft', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Draft the weft (what each data column of the paper holds) and open it for review.", tags=['Production'])
+@doc(description="Draft the weft (what each data column of the paper holds) and open it for review. Takes only id and repository_url; fields, by and submission are for confirm.", tags=['Production'])
 @use_kwargs(WeftSchema())
 def weft_draft_post(user,id,repository_url,**options):
     return _weft_screening("WEFT DRAFT", id, repository_url, **options).start_celery_task(weft_draft_task)
@@ -138,7 +138,7 @@ docs.register(weft_draft_post)
 @app.route('/api/weft/check', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Check the paper's weft, or a submitted one, and report what is missing or wrong.", tags=['Production'])
+@doc(description="Check the paper's weft on the fork and report what is missing or wrong.", tags=['Production'])
 @use_kwargs(WeftSchema())
 def weft_check_post(user,id,repository_url,**options):
     return _weft_screening("WEFT CHECK", id, repository_url, **options).start_celery_task(weft_check_task)

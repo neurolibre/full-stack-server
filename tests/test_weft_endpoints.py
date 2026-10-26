@@ -87,3 +87,16 @@ def test_optional_keys_reach_the_task(client, sent, route):
     assert client.post(route, json=body).status_code == 200
     d = sent[task_name]
     assert (d["fields"], d["by"], d["submission"]) == ("a,b", "octocat", "x: 1\n")
+
+
+def _description(view):
+    return " ".join(str(a.options[0].get("description", "")) for a in view.__apispec__["docs"])
+
+
+def test_the_options_are_described_as_confirms_only():
+    described = {k: api.WeftSchema().fields[k].metadata["description"] for k in ("fields", "by", "submission")}
+    for text in described.values():
+        assert "confirm" in text.lower()
+        assert "draft" not in text.lower() and "check" not in text.lower()
+    assert "submitted" not in _description(api.weft_check_post)
+    assert "fork" in _description(api.weft_check_post)
