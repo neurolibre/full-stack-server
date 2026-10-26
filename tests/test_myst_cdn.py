@@ -184,3 +184,46 @@ def test_add_and_publish_serves_the_new_paper(tmp_path, two_sites):
     report = myst_cdn.add_and_publish("neurolibre.00027", "v1", two_sites["neurolibre.00027"], root)
     assert report["projects"] == 2
     assert (root / "current" / "content" / "neurolibre-00027" / "index.json").exists()
+
+
+def make_extras(root):
+    """Evidentron's static site: terms, exports (under a DOI with a slash), metadata, an index."""
+    extras = root / "site"
+    (extras / "terms").mkdir(parents=True)
+    (extras / "terms" / "index.html").write_text("<html>terms</html>")
+    (extras / "wefts" / "10.55458" / "neurolibre.00004").mkdir(parents=True)
+    (extras / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").write_text("{}")
+    (extras / "dois").mkdir()
+    (extras / "dois" / "x.json").write_text("{}")
+    (extras / "index.json").write_text("[]")
+    return extras
+
+
+def test_the_build_carries_evidentrons_site_at_the_same_paths(tmp_path, two_sites):
+    extras = make_extras(tmp_path)
+    out = tmp_path / "cdn"
+    report = myst_cdn.build(two_sites, out, extras=extras)
+    assert report["extras"] is True
+    assert (out / "terms" / "index.html").read_text() == "<html>terms</html>"
+    assert (out / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
+    assert (out / "dois" / "x.json").exists()
+    assert (out / "index.json").exists()
+
+
+def test_without_evidentrons_site_the_build_goes_on_and_says_so(tmp_path, two_sites):
+    missing = tmp_path / "nowhere"
+    report = myst_cdn.build(two_sites, tmp_path / "cdn", extras=missing)
+    assert report["projects"] == 2
+    assert report["extras"] is False
+    assert report["notes"] == [
+        f"Evidentron's site was not at {missing}, so the CDN carries no terms or exports yet."]
+    assert not (tmp_path / "cdn" / "terms").exists()
+
+
+def test_publish_passes_the_extras_folder_to_the_build(tmp_path, two_sites):
+    root = tmp_path / "cdn-root"
+    for name, site in two_sites.items():
+        myst_cdn.add_site(name, "v1", site, root)
+    report = myst_cdn.publish(root, extras=make_extras(tmp_path))
+    assert report["extras"] is True
+    assert (root / "current" / "terms" / "index.html").exists()
