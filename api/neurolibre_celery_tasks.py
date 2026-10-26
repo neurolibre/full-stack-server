@@ -2605,19 +2605,21 @@ def _weft_paper(task):
 
 
 def _server_weft(task, paper):
-    """The weft and its profiles from the server, in the work folder: a copy of the flat confirmed weft when there
-    is one (so a failed step never touches the confirmed copy), else the draft. Fails with a sentence when either
-    is missing."""
+    """The weft and its profiles from the server, in the work folder: a copy of the flat confirmed weft and its
+    profiles when there is one (so a failed step never touches the confirmed copy), else the draft. Fails with a
+    sentence when the weft or its profiles are missing."""
     weft = os.path.join(paper.work, paper.weft_name)
     profiles = os.path.join(paper.work, paper.profiles_name)
     confirmed = os.path.join(WEFTS_PATH, paper.weft_name)
     if os.path.isfile(confirmed):
-        shutil.copyfile(confirmed, weft)
         confirmed_profiles = os.path.join(WEFTS_PATH, paper.profiles_name)
-        if os.path.isfile(confirmed_profiles):
-            shutil.copyfile(confirmed_profiles, profiles)
+        if not os.path.isfile(confirmed_profiles):
+            task.fail(f"The confirmed weft of {paper.doi} is on the server but its profiles are not, so it cannot be "
+                      "checked; ask for `@roboneuro weft draft` again or restore the profiles beside it.")
+        shutil.copyfile(confirmed, weft)
+        shutil.copyfile(confirmed_profiles, profiles)
     if not os.path.isfile(weft):
-        task.fail(f"No draft of {paper.doi} is on the server; ask for `weft draft` first.")
+        task.fail(f"No draft of {paper.doi} is on the server; ask for `@roboneuro weft draft` first.")
     if not os.path.isfile(profiles):
         task.fail(f"The server has no profiles of the data of {paper.doi}, so the weft cannot be checked: ask for "
                   "`@roboneuro weft draft` first.")

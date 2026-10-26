@@ -22,7 +22,6 @@ from celery.exceptions import Ignore
 DOI = "10.55458/neurolibre.00041"
 REAL_ISDIR = os.path.isdir
 SEEN = {}
-FORK = "https://github.com/roboneurolibre/paper-repo"
 
 
 class FakeTask:
@@ -51,8 +50,8 @@ class FakeTask:
 
 
 class FakeRepo:
-    def __init__(self, files, collaborators):
-        self.files, self.collaborators = files, collaborators
+    def __init__(self, files):
+        self.files = files
         self.default_branch = "main"
 
     def get_contents(self, path):
@@ -61,22 +60,19 @@ class FakeRepo:
             raise UnknownObjectException(404, {"message": "Not Found"}, {})
         return SimpleNamespace(path=path, sha="sha")
 
-    def add_to_collaborators(self, login, permission=None):
-        self.collaborators.append((login, permission))
-
 
 class FakeGitHub:
     current = None
 
     def __init__(self, files=None):
-        self.files, self.collaborators = files if files is not None else {}, []
-        self.large = set()             # files over 1 MB: the contents API gives no content for them
-        self.writes = []
+        self.files = files if files is not None else {}
+        self.writes = []               # files created or updated through gh_create_file and gh_update_file_content
+        self.opened = []               # repositories opened through the client
         FakeGitHub.current = self
 
     def get_repo(self, name):
-        self.writes.append(("get_repo", name))     # the weft tasks have no reason to open a repository
-        return FakeRepo(self.files, self.collaborators)
+        self.opened.append(name)
+        return FakeRepo(self.files)
 
 
 @pytest.fixture
@@ -90,9 +86,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks, "WEFTS_PATH", str(tmp_path / "wefts"))
     monkeypatch.setattr(tasks.os.path, "isdir", lambda p: p == "/DATA_NFS/proj" or REAL_ISDIR(p))
     monkeypatch.setattr(tasks, "gh_get_project_name", lambda client, url: w.project)
-    monkeypatch.setattr(tasks, "gh_forkify_it", lambda url: FORK)
     monkeypatch.setattr(tasks, "gh_read_from_issue_body", lambda c, r, i, tag: w.body.get(tag))
-    monkeypatch.setattr(tasks, "get_default_branch", lambda c, r: "main")
 
     def create(client, repo, path, content, commit_message=None, encoding="utf-8"):
         client.files[path] = content
@@ -106,8 +100,6 @@ def world(tmp_path, monkeypatch):
 
     monkeypatch.setattr(tasks, "gh_create_file", create)
     monkeypatch.setattr(tasks, "gh_update_file_content", update)
-    monkeypatch.setattr(tasks, "gh_get_file_content",
-                        lambda c, repo, path: None if path in c.large else c.files.get(path))
 
     def comment(client, repo, issue_id, comment_id):
         assert (repo, issue_id) == ("neurolibre/reviews", 41)
@@ -173,7 +165,6 @@ def test_draft_comment_shows_the_draft_and_invites_nobody(world, monkeypatch):
     assert "kept on the server" in t.comment and "fork" not in t.comment
     assert (world.work / "00041.weft.yaml").read_text() == f"paper: {DOI}\n"
     assert (world.work / "00041.profiles.json").exists()
-    assert world.gh.collaborators == []
     assert "—" not in t.comment
     # the paper is loaded into the store first
     assert world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"]
@@ -281,7 +272,7 @@ def test_check_clean_and_no_draft(world, monkeypatch):
     (world.work / "00041.weft.yaml").unlink()
     with pytest.raises(Ignore):
         tasks.weft_check_task.run(payload())
-    assert FakeTask.last.failed == f"No draft of {DOI} is on the server; ask for `weft draft` first."
+    assert FakeTask.last.failed == f"No draft of {DOI} is on the server; ask for `@roboneuro weft draft` first."
 
 
 def test_confirm_refused_without_data_archive(world, monkeypatch):
@@ -599,6 +590,17 @@ def test_no_profiles_anywhere_is_a_sentence(world, tmp_path):
     assert str(tmp_path) not in FakeTask.last.failed and "\n" not in FakeTask.last.failed
 
 
+def test_a_flat_weft_without_its_profiles_is_a_sentence(world, monkeypatch):
+    seed_server(world, weft="paper: draft\n", profiles='{"draft": true}')
+    seed_server(world, weft="paper: confirmed\n", profiles=None, where="flat")
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: pytest.fail("check ran"))
+    with pytest.raises(Ignore):
+        tasks.weft_check_task.run(payload())
+    assert FakeTask.last.failed == (
+        f"The confirmed weft of {DOI} is on the server but its profiles are not, so it cannot be checked; ask for "
+        "`@roboneuro weft draft` again or restore the profiles beside it.")
+
+
 def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):
     fake_draft(monkeypatch)
     tasks.weft_draft_task.run(payload())
@@ -607,7 +609,7 @@ def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):
     _recording_confirm(monkeypatch, {})
     tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert FakeTask.last.failed is None
-    assert world.gh.writes == [] and world.gh.files == {} and world.gh.collaborators == []
+    assert world.gh.writes == [] and world.gh.files == {}
 
 
 # I6: a draft never replaces confirmed work.
