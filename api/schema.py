@@ -90,6 +90,6 @@ class BooksyncSchema(Schema):
 class WeftSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
-    by = fields.String(required=False,description="Confirm only: GitHub login of the person who confirms the weft.")
-    submission = fields.String(required=False,description="Confirm only: YAML text of the entries to replace in the weft before it is confirmed.")
+    comment_id = fields.Integer(required=False,description="Id of the review issue comment that issued the command; its last yaml block, if any, holds the corrections, and its author is the one who confirms.")
+    at = fields.Integer(required=False,description="Check and confirm: id of another comment on the review issue whose last yaml block holds the corrections; its author is then the one who confirms.")
     fields = fields.String(required=False,description="Confirm only: comma-separated names of the fields to confirm, when only some are.")  # last: this name hides the fields module inside the class body

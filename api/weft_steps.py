@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import sys
 from dataclasses import dataclass, field
@@ -225,12 +226,15 @@ def _terms_used(weft) -> List[str]:
 
 
 def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
-          db: Optional[Path] = None) -> CheckResult:
-    """Check a weft against the profiles; `unreadable` is the sentence when the file cannot be read."""
+          db: Optional[Path] = None, submission: Optional[Path] = None, by: Optional[str] = None) -> CheckResult:
+    """Check a weft against the profiles; `unreadable` is the sentence when the file cannot be read.
+    With a submission, the weft is checked with it applied (see _check_submission)."""
     run = run or subprocess_runner(Path(weft).parent)
     sentence = _unreadable(weft)
     if sentence:
         return CheckResult(unreadable=sentence)
+    if submission:
+        return _check_submission(Path(weft), Path(profiles), Path(submission), by or "check", run)
     argv = weft_command() + ["check", str(weft), "--profiles", str(profiles), "--data", str(data_dir)]
     if db:
         argv += ["--db", str(db)]
@@ -241,6 +245,27 @@ def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
     if code != 0 and not errors:
         errors = [_last_line(output)]
     return CheckResult(errors=errors, warnings=warnings)
+
+
+def _check_submission(weft: Path, profiles: Path, submission: Path, by: str, run: Run) -> CheckResult:
+    """`weft check` takes no submission, and applying one is Evidentron's work: so `weft confirm --submit` runs
+    on a copy of the weft in a scratch folder, which is then removed, and only what it says is kept. Its
+    errors are its `- ` lines (or its last line), and the notes the merge made are the warnings."""
+    with tempfile.TemporaryDirectory(prefix="weft-check-") as scratch:
+        copy = Path(scratch) / weft.name
+        shutil.copyfile(weft, copy)
+        code, output = run(weft_command() + ["confirm", str(copy), "--by", by, "--submit", str(submission),
+                                             "--profiles", str(profiles)])
+    if _crashed(output):
+        return CheckResult(unreadable=f"The weft could not be checked: {_last_line(output)}")
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    listed = [i for i, line in enumerate(lines) if line.startswith("- ")]
+    # Before the listed errors comes the line that introduces them; without a list, the last line is the outcome.
+    end = listed[0] - 1 if listed else len(lines) - 1
+    notes = [line for line in lines[:max(end, 0)] if not line.startswith("- ")]
+    if code != 0:
+        return CheckResult(errors=_failures(output), warnings=notes)
+    return CheckResult(warnings=notes)
 
 
 def _explore(doi, profiles, weft, backend, data_dir, repo_dir, lock, run) -> Tuple[int, str]:

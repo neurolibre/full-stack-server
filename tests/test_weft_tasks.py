@@ -34,7 +34,7 @@ class FakeTask:
         self.screening = SimpleNamespace(
             issue_id=s["issue_id"], review_repository="neurolibre/reviews",
             target_repo_url=s["target_repo_url"], github_client=FakeGitHub.current,
-            fields=s.get("fields"), by=s.get("by"), submission=s.get("submission"))
+            fields=s.get("fields"), at=s.get("at"), command_comment_id=s.get("command_comment_id"))
         self.owner_name, self.repo_name = "someone", "paper-repo"
         self.started, self.comment, self.failed = [], None, None
         FakeTask.last = self
@@ -51,8 +51,8 @@ class FakeTask:
 
 
 class FakeRepo:
-    def __init__(self, files, collaborators, refuse_invite=False):
-        self.files, self.collaborators, self.refuse_invite = files, collaborators, refuse_invite
+    def __init__(self, files, collaborators):
+        self.files, self.collaborators = files, collaborators
         self.default_branch = "main"
 
     def get_contents(self, path):
@@ -62,31 +62,28 @@ class FakeRepo:
         return SimpleNamespace(path=path, sha="sha")
 
     def add_to_collaborators(self, login, permission=None):
-        if self.refuse_invite:
-            raise RuntimeError("no rights")
         self.collaborators.append((login, permission))
 
 
 class FakeGitHub:
     current = None
 
-    def __init__(self, files=None, refuse_invite=False):
+    def __init__(self, files=None):
         self.files, self.collaborators = files if files is not None else {}, []
         self.large = set()             # files over 1 MB: the contents API gives no content for them
         self.writes = []
-        self.refuse_invite = refuse_invite
         FakeGitHub.current = self
 
     def get_repo(self, name):
-        return FakeRepo(self.files, self.collaborators, self.refuse_invite)
+        return FakeRepo(self.files, self.collaborators)
 
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     """A fake GitHub, a data folder that exists, a work root in tmp_path and recording steps."""
     gh = FakeGitHub()
-    w = SimpleNamespace(gh=gh, calls=[], body={"data-archive": "10.5281/zenodo.1", "author": "ada"},
-                        project="proj")
+    w = SimpleNamespace(gh=gh, calls=[], body={"data-archive": "10.5281/zenodo.1", "author": "ada", "editor": "@eddie"},
+                        project="proj", comments={100: ("ada", "@roboneuro weft confirm")})
     monkeypatch.setattr(tasks, "BaseNeuroLibreTask", FakeTask)
     monkeypatch.setattr(tasks, "WEFTS_PATH", str(tmp_path / "wefts"))
     monkeypatch.setattr(tasks.os.path, "isdir", lambda p: p == "/DATA_NFS/proj" or REAL_ISDIR(p))
@@ -110,13 +107,13 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks, "gh_get_file_content",
                         lambda c, repo, path: None if path in c.large else c.files.get(path))
 
-    def invite(client, repo, login):
-        try:
-            client.get_repo(repo).add_to_collaborators(login, permission="push")
-            return True
-        except Exception:
-            return False
-    monkeypatch.setattr(tasks, "gh_invite_collaborator", invite)
+    def comment(client, repo, issue_id, comment_id):
+        assert (repo, issue_id) == ("neurolibre/reviews", 41)
+        from github import UnknownObjectException
+        if comment_id not in w.comments:
+            raise UnknownObjectException(404, {"message": "Not Found"}, {})
+        return w.comments[comment_id]
+    monkeypatch.setattr(tasks, "gh_get_issue_comment", comment)
 
     def runner(work):
         def run(argv):
@@ -156,18 +153,22 @@ def fake_draft(monkeypatch, problems=None, reason=None, drafted_by="openai-compa
     monkeypatch.setattr(tasks.weft_steps, "draft", draft)
 
 
-def test_draft_comment_files_and_invite(world, monkeypatch):
+def test_draft_comment_shows_the_draft_and_invites_nobody(world, monkeypatch):
     fake_draft(monkeypatch)
     tasks.weft_draft_task.run(payload())
     t = FakeTask.last
     assert "p.tsv: 3 columns" in t.comment
     assert "proposed new term foo: Foo" in t.comment
     assert "a unit is guessed" in t.comment
-    assert f"{FORK}/edit/main/weft/00041.weft.yaml" in t.comment
+    assert "/edit/" not in t.comment and "invited" not in t.comment
+    assert f"<details><summary>The draft</summary>\n\n```yaml\npaper: {DOI}\n```\n\n</details>" in t.comment
+    assert ("Write the entries to change as a ```yaml block in a comment, then `@roboneuro weft check` or "
+            "`@roboneuro weft confirm` (add `at <comment id>` to use a block from another comment, or `fields a, b` "
+            "to confirm only those).") in t.comment
     assert "7 terms" in t.comment
     assert "@roboneuro weft check" in t.comment and "@roboneuro weft confirm" in t.comment
     assert [w[:2] for w in world.gh.writes] == [("create", "weft/00041.weft.yaml"), ("create", "weft/00041.profiles.json")]
-    assert world.gh.collaborators == [("ada", "push")]
+    assert world.gh.collaborators == []
     assert "—" not in t.comment
     # the paper is loaded into the store first
     assert world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"]
@@ -193,12 +194,20 @@ def test_redraft_reason_and_problems_are_said(world, monkeypatch):
     assert "drafted by Claude because the first draft was not valid" in c and "column x has no term" in c
 
 
-def test_invite_failure_is_a_sentence(world, monkeypatch):
-    world.gh.refuse_invite = True
+def test_a_draft_too_long_for_a_comment_names_the_file(world, monkeypatch):
     fake_draft(monkeypatch)
+    real = tasks.weft_steps.draft
+
+    def long_draft(*a, **k):
+        result = real(*a, **k)
+        result.weft.write_text("paper: x\n" + "# padding\n" * 7000)
+        return result
+    monkeypatch.setattr(tasks.weft_steps, "draft", long_draft)
     tasks.weft_draft_task.run(payload())
-    assert "could not be invited" in FakeTask.last.comment
-    assert "ada" in FakeTask.last.comment
+    c = FakeTask.last.comment
+    assert "```yaml" not in c.split("Write the entries")[0]
+    assert "<details><summary>The draft</summary>" in c
+    assert "too long for a comment" in c and "`weft/00041.weft.yaml` on the fork" in c
 
 
 def test_missing_data_folder_fails(world, monkeypatch):
@@ -270,7 +279,7 @@ def test_confirm_refused_without_data_archive(world, monkeypatch):
     seed_fork(world)
     world.body["data-archive"] = None
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(by="ada", fields=""))
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert "data archive" in FakeTask.last.failed
 
 
@@ -278,22 +287,30 @@ def test_confirm_with_errors_writes_nothing(world, monkeypatch):
     seed_fork(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(errors=["bad field", "bad link"]))
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(by="ada", fields=""))
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert "bad field" in FakeTask.last.failed and "bad link" in FakeTask.last.failed
     assert world.gh.writes == []
+
+
+def _recording_confirm(monkeypatch, seen):
+    def confirm(weft, profiles, by, fields, submission, data_dir, site, db, run=None, record=None):
+        seen.update(by=by, fields=fields, submission=submission, data_dir=str(data_dir), site=str(site), db=str(db),
+                    record=str(record), profiles=str(profiles),
+                    text=Path(submission).read_text() if submission else None)
+        Path(weft).write_text("paper: x\nversion: 1.0.0\n")
+        return tasks.weft_steps.ConfirmResult(version="1.0.0", addresses=tasks.weft_steps.addresses_of(DOI, ["age"]))
+    monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
+
+
+BLOCK = "Here is the fix.\n\n```yaml\nfiles: [old]\n```\n\nand then\n\n```yml\nfiles: []\n```\n"
 
 
 def test_confirm_success(world, monkeypatch):
     seed_fork(world)
     seen = {}
-
-    def confirm(weft, profiles, by, fields, submission, data_dir, site, db, run=None, record=None):
-        seen.update(by=by, fields=fields, submission=submission, data_dir=str(data_dir), site=str(site), db=str(db),
-                    record=str(record), profiles=str(profiles))
-        Path(weft).write_text("paper: x\nversion: 1.0.0\n")
-        return tasks.weft_steps.ConfirmResult(version="1.0.0", addresses=tasks.weft_steps.addresses_of(DOI, ["age"]))
-    monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
-    tasks.weft_confirm_task.run(payload(by="ada", fields="a, b", submission="files: []\n"))
+    _recording_confirm(monkeypatch, seen)
+    world.comments[100] = ("ada", "@roboneuro weft confirm fields a, b\n\n" + BLOCK)
+    tasks.weft_confirm_task.run(payload(command_comment_id=100, fields="a, b"))
     c = FakeTask.last.comment
     assert "1.0.0" in c
     for part in ("/wefts/%s/fair2.json" % DOI, "/wefts/%s/croissant.json" % DOI, "/dois/%s.json" % DOI, "/terms/age/"):
@@ -302,21 +319,105 @@ def test_confirm_success(world, monkeypatch):
     assert seen["fields"] == ["a", "b"] and seen["by"] == "ada"
     assert seen["data_dir"] == "/DATA_NFS/proj" and seen["site"] == "/DATA/evidentron/site"
     assert seen["db"] == "/DATA/evidentron/graph.db"
-    assert Path(seen["submission"]).read_text() == "files: []\n"
+    assert seen["text"] == "files: []\n"              # the last yaml block of the comment
     assert seen["record"] == tasks.WEFTS_PATH
     assert world.rebuilds == [True]
+    assert "Confirmed by @ada (corrections from comment 100)." in c
 
 
-def test_confirm_without_by_or_submission(world, monkeypatch):
+def test_confirm_at_a_comment_by_the_author(world, monkeypatch):
+    seed_fork(world)
+    seen = {}
+    _recording_confirm(monkeypatch, seen)
+    world.comments[100] = ("eddie", "@roboneuro weft confirm at 200")
+    world.comments[200] = ("Ada", "My corrections:\n```yaml\nfiles:\n- file: a.tsv\n```")
+    tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed is None
+    assert seen["by"] == "Ada"
+    assert seen["text"] == "files:\n- file: a.tsv\n"
+    assert "Confirmed by @Ada (corrections from comment 200)." in FakeTask.last.comment
+
+
+def test_confirm_at_a_comment_without_a_block_fails(world, monkeypatch):
+    seed_fork(world)
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
+    world.comments[200] = ("ada", "Looks good to me. ```python\nx = 1\n```")
+    with pytest.raises(Ignore):
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed == "The comment 200 holds no yaml block, so there is nothing to apply."
+
+
+def test_confirm_at_a_missing_comment_is_a_sentence(world, monkeypatch):
     seed_fork(world)
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(fields=""))
-    assert "login" in FakeTask.last.failed
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, at=999))
+    f = FakeTask.last.failed
+    assert "999" in f and "\n" not in f and "fork" not in f
+
+
+def test_corrections_by_someone_else_are_refused(world, monkeypatch):
+    seed_fork(world)
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
+    world.comments[200] = ("mallory", "```yaml\nfiles: []\n```")
+    with pytest.raises(Ignore):
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; "
+                                    "the corrections in comment 200 are by @mallory.")
+    assert world.gh.writes == [] and world.calls == []
+
+
+def test_the_editor_may_confirm_as_it_stands(world, monkeypatch):
+    seed_fork(world)
     seen = {}
-    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda weft, profiles, by, fields, submission, *a, **k:
-                        seen.update(fields=fields, submission=submission) or tasks.weft_steps.ConfirmResult(version="1"))
-    tasks.weft_confirm_task.run(payload(by="ada"))
-    assert seen == {"fields": None, "submission": None}
+    _recording_confirm(monkeypatch, seen)
+    world.comments[100] = ("eddie", "@roboneuro weft confirm")
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
+    assert seen["by"] == "eddie" and seen["submission"] is None
+    assert "Confirmed by @eddie as the weft stands." in FakeTask.last.comment
+
+
+def test_confirm_without_a_block_confirms_as_it_stands(world, monkeypatch):
+    seed_fork(world)
+    seen = {}
+    _recording_confirm(monkeypatch, seen)
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
+    assert seen["by"] == "ada" and seen["submission"] is None and seen["fields"] is None
+    assert "Confirmed by @ada as the weft stands." in FakeTask.last.comment
+
+
+def test_confirm_without_the_command_comment_is_refused(world, monkeypatch):
+    seed_fork(world)
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
+    with pytest.raises(Ignore):
+        tasks.weft_confirm_task.run(payload(fields=""))
+    f = FakeTask.last.failed
+    assert "comment" in f and "\n" not in f
+
+
+def test_check_applies_the_block_of_its_own_comment(world, monkeypatch):
+    seed_fork(world)
+    seen = {}
+
+    def check(weft, profiles, data_dir, run=None, db=None, submission=None, by=None):
+        seen.update(text=Path(submission).read_text() if submission else None, by=by)
+        return tasks.weft_steps.CheckResult()
+    monkeypatch.setattr(tasks.weft_steps, "check", check)
+    world.comments[100] = ("mallory", "@roboneuro weft check\n```yaml\nfiles: []\n```")
+    tasks.weft_check_task.run(payload(command_comment_id=100))
+    assert seen == {"text": "files: []\n", "by": "mallory"}      # anyone's block may be checked
+    assert FakeTask.last.failed is None
+    seen.clear()
+    world.comments[100] = ("ada", "@roboneuro weft check")
+    tasks.weft_check_task.run(payload(command_comment_id=100))
+    assert seen["text"] is None
+
+
+def test_check_at_a_comment_without_a_block_fails(world, monkeypatch):
+    seed_fork(world)
+    world.comments[200] = ("ada", "no block here")
+    with pytest.raises(Ignore):
+        tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed == "The comment 200 holds no yaml block, so there is nothing to apply."
 
 
 def test_extra_payload_survives_to_dict_and_from_dict(monkeypatch):
@@ -324,11 +425,11 @@ def test_extra_payload_survives_to_dict_and_from_dict(monkeypatch):
         def __init__(self, *a, **k): pass
     monkeypatch.setattr(screening_client, "Github", G)
     monkeypatch.setattr(screening_client.ScreeningClient, "_init_responder", lambda self: None)
-    client = screening_client.ScreeningClient("t", issue_id=3, fields="a, b", by="ada", submission="x: 1\n")
+    client = screening_client.ScreeningClient("t", issue_id=3, fields="a, b", command_comment_id=100, at=200)
     d = client.to_dict()
-    assert (d["fields"], d["by"], d["submission"]) == ("a, b", "ada", "x: 1\n")
+    assert (d["fields"], d["command_comment_id"], d["at"], d["comment_id"]) == ("a, b", 100, 200, None)
     again = screening_client.ScreeningClient.from_dict(d)
-    assert (again.fields, again.by, again.submission) == ("a, b", "ada", "x: 1\n")
+    assert (again.fields, again.command_comment_id, again.at) == ("a, b", 100, 200)
 
 
 def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
@@ -372,7 +473,7 @@ def test_github_errors_become_a_sentence(world, monkeypatch):
     monkeypatch.setattr(tasks, "gh_get_file_content", boom)
     for task in (tasks.weft_check_task, tasks.weft_confirm_task):
         with pytest.raises(Ignore):
-            task.run(payload(by="ada"))
+            task.run(payload(command_comment_id=100))
         f = FakeTask.last.failed
         assert f == "The fork paper-repo could not be reached on GitHub: 404 Not Found"
 
@@ -471,7 +572,7 @@ def test_confirm_reads_the_profiles_from_the_servers_copy(world, monkeypatch, tm
         seen.update(p=Path(profiles).read_text())
         return tasks.weft_steps.ConfirmResult(version="1.0.0", confirmed=True, addresses={})
     monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
-    tasks.weft_confirm_task.run(payload(by="ada"))
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert seen["p"] == '{"server": true}'
 
 
@@ -560,7 +661,7 @@ def test_confirm_holds_the_store_lock_and_reloads_the_paper_first(world, monkeyp
         return tasks.weft_steps.ConfirmResult(version="1.0.0", confirmed=True, addresses={})
     monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: held.setdefault("rebuild", _busy(tasks.STORE_LOCK_PATH)) and {})
-    tasks.weft_confirm_task.run(payload(by="ada"))
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert held == {"confirm": True, "rebuild": True}
     assert world.calls[0][1:] == ["-m", "evidentron.graph", "/DATA/cdn/current", "--doi", DOI,
                                   "--db", "/DATA/evidentron/graph.db"]
@@ -574,7 +675,7 @@ def test_a_store_kept_busy_is_one_sentence(world, monkeypatch):
     with open(tasks.STORE_LOCK_PATH, "a") as other:
         fcntl.flock(other, fcntl.LOCK_EX)
         with pytest.raises(Ignore):
-            tasks.weft_confirm_task.run(payload(by="ada"))
+            tasks.weft_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
     assert "busy" in f and "\n" not in f and "store.lock" not in f
 
@@ -584,7 +685,7 @@ def test_a_failed_reload_at_confirm_is_one_sentence(world, monkeypatch):
     world.load_result = (1, "Traceback (most recent call last):\n  File x\nValueError: no such site")
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(by="ada"))
+        tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert "no such site" in FakeTask.last.failed and "Traceback" not in FakeTask.last.failed
 
 
@@ -598,9 +699,9 @@ def test_a_failed_cdn_rebuild_is_a_sentence_in_the_comment(world, monkeypatch):
     def boom():
         raise RuntimeError("/DATA/cdn/current is a folder, not a symlink")
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", boom)
-    tasks.weft_confirm_task.run(payload(by="ada"))
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
     c = FakeTask.last.comment
-    assert "confirmed by ada at version 1.0.0" in c
+    assert "confirmed at version 1.0.0" in c and "Confirmed by @ada as the weft stands." in c
     assert "The CDN could not be rebuilt" in c and "/DATA" not in c.replace("/DATA/cdn", "") 
     assert "/DATA/cdn/current" not in c
 
@@ -612,7 +713,7 @@ def test_confirmed_but_not_published_says_so(world, monkeypatch):
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
         version="1.2.0", confirmed=True, errors=["No weft of x is in the server's folder of wefts."]))
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(by="ada"))
+        tasks.weft_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
     assert "confirmed at version 1.2.0" in f and "not published" in f and "No weft of x" in f
     assert world.rebuilds == []
@@ -624,7 +725,7 @@ def test_a_failed_write_back_says_the_weft_is_confirmed_and_asking_again_is_safe
         version="1.0.0", confirmed=True, addresses={}))
     monkeypatch.setattr(tasks, "gh_update_file_content", lambda *a, **k: {"status": False, "message": "409 conflict"})
     with pytest.raises(Ignore):
-        tasks.weft_confirm_task.run(payload(by="ada"))
+        tasks.weft_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
     assert "already confirmed and published" in f and "@roboneuro weft confirm" in f and "safe" in f
 
@@ -640,6 +741,31 @@ def test_a_local_file_error_is_one_sentence(world, monkeypatch):
     for task in (tasks.weft_draft_task, tasks.weft_check_task, tasks.weft_confirm_task):
         fake_draft(monkeypatch)
         with pytest.raises(Ignore):
-            task.run(payload(by="ada"))
+            task.run(payload(command_comment_id=100))
         f = FakeTask.last.failed
         assert "No space left on device" in f and "/DATA" not in f and "\n" not in f
+
+
+def test_a_check_with_corrections_says_they_were_applied_to_a_copy(world, monkeypatch):
+    seed_fork(world)
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult())
+    world.comments[200] = ("ada", "```yaml\nfiles: []\n```")
+    tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
+    c = FakeTask.last.comment
+    assert "corrections in comment 200" in c and "unchanged" in c
+    assert "no errors and no warnings" not in c and "warnings are not" in c
+
+
+def test_a_draft_holding_backticks_gets_a_longer_fence_and_reads_back(world, monkeypatch):
+    fake_draft(monkeypatch)
+    real = tasks.weft_steps.draft
+
+    def draft(*a, **k):
+        result = real(*a, **k)
+        result.weft.write_text("paper: x\nnotes: |\n  ```yaml\n  a: 1\n  ```\n")
+        return result
+    monkeypatch.setattr(tasks.weft_steps, "draft", draft)
+    tasks.weft_draft_task.run(payload())
+    c = FakeTask.last.comment
+    assert "````yaml\npaper: x\n" in c
+    assert tasks._yaml_block(c) == "paper: x\nnotes: |\n  ```yaml\n  a: 1\n  ```\n"

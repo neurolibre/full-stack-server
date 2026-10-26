@@ -539,3 +539,73 @@ def test_link_terms_that_fail_say_why(dirs):
     trace = "Traceback (most recent call last):\n  File x\nOSError: disk full\n"
     count, why = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=Fake(work, {"other": lambda a: (1, trace)}))
     assert count is None and "disk full" in why and "Traceback" not in why
+
+
+# B7: a check with a submission applies it through `weft confirm --submit` on a scratch copy, then discards it.
+
+def test_check_with_a_submission_confirms_a_scratch_copy_and_keeps_the_weft(dirs):
+    work, data, _ = dirs
+    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
+    weft.write_text(WEFT_YAML)
+    profiles.write_text("{}")
+    sub = work / "submission.yaml"
+    sub.write_text("files: []\n")
+    seen = {}
+
+    def confirm(argv):
+        seen["argv"], seen["copy"] = argv, Path(argv[4])
+        seen["copied"] = Path(argv[4]).read_text()
+        return Fake(work)._confirm(argv)
+    fake = Fake(work, {"confirm": confirm})
+    result = weft_steps.check(weft, profiles, data, run=fake, submission=sub, by="ada")
+    assert fake.words() == ["confirm"]
+    argv = seen["argv"]
+    assert argv_value(argv, "--submit") == str(sub) and argv_value(argv, "--by") == "ada"
+    assert argv_value(argv, "--profiles") == str(profiles)
+    assert seen["copy"] != weft and seen["copied"] == WEFT_YAML
+    assert not seen["copy"].exists()                    # the scratch folder is gone
+    assert weft.read_text() == WEFT_YAML                # the weft is not confirmed
+    assert result.errors == [] and result.warnings == [] and result.unreadable is None
+
+
+def test_check_with_a_refused_submission_lists_its_errors_and_notes(dirs):
+    work, data, _ = dirs
+    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
+    weft.write_text(WEFT_YAML)
+    profiles.write_text("{}")
+    sub = work / "submission.yaml"
+    sub.write_text("files: []\n")
+    out = ("There was no field z in participants.tsv to remove.\n"
+           "The submission leaves the weft with errors, so nothing was confirmed:\n"
+           "- participants.tsv: a has no term\n- scans: no description\n")
+    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (1, out)}),
+                              submission=sub, by="ada")
+    assert result.errors == ["participants.tsv: a has no term", "scans: no description"]
+    assert result.warnings == ["There was no field z in participants.tsv to remove."]
+
+
+def test_check_with_a_submission_that_passes_says_its_notes(dirs):
+    work, data, _ = dirs
+    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
+    weft.write_text(WEFT_YAML)
+    profiles.write_text("{}")
+    sub = work / "submission.yaml"
+    sub.write_text("files: []\n")
+    out = "There was no entry for x.tsv to remove.\nThe version is now 1.1.0, dated 2026-10-26.\n"
+    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (0, out)}),
+                              submission=sub, by="ada")
+    assert result.errors == []
+    assert result.warnings == ["There was no entry for x.tsv to remove."]
+
+
+def test_check_with_a_submission_not_applied_is_an_error(dirs):
+    work, data, _ = dirs
+    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
+    weft.write_text(WEFT_YAML)
+    profiles.write_text("{}")
+    sub = work / "submission.yaml"
+    sub.write_text("files: 3\n")
+    out = f"The submission in {sub} was not applied, so nothing was confirmed: it must be one mapping with a files list\n"
+    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (1, out)}),
+                              submission=sub, by="ada")
+    assert result.errors == [out.strip()] and result.warnings == []

@@ -257,18 +257,18 @@ def gh_update_file_content(github_client,repo,file_path,new_content,commit_messa
     except Exception as e:
         return {"status": False, "message": str(e)}
 
-def gh_invite_collaborator(github_client, repo, login):
+def gh_get_issue_comment(github_client, issue_repo, issue_id, comment_id):
     """
-    Invite a GitHub login to a repository with push rights. Never raises:
-    returns True when the invitation was sent, False otherwise, so the
-    caller can say so in its comment.
+    The login of a comment's author and the comment's body, for a comment
+    on the given issue. A comment that does not exist, or that is on
+    another issue, raises UnknownObjectException.
     """
-    try:
-        github_client.get_repo(gh_filter(repo)).add_to_collaborators(login, permission="push")
-        return True
-    except Exception as e:
-        logging.warning(f"Could not invite {login} to {repo}: {e}")
-        return False
+    from github import UnknownObjectException
+    issue = github_client.get_repo(gh_filter(issue_repo)).get_issue(issue_id)
+    comment = issue.get_comment(int(comment_id))
+    if not str(comment.issue_url or "").rstrip("/").endswith(f"/issues/{issue_id}"):
+        raise UnknownObjectException(404, {"message": f"comment {comment_id} is not on issue {issue_id}"}, {})
+    return comment.user.login, comment.body or ""
 
 def gh_get_yaml(github_client, repo, file_path):
     """

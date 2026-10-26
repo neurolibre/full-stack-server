@@ -76,27 +76,39 @@ def test_valid_payload_starts_the_task(client, sent, route):
     assert f"id-{task_name}" in r.get_data(as_text=True)
     d = sent[task_name]
     assert d["task_name"] == label and d["issue_id"] == 41 and d["target_repo_url"] == REPO
-    for key in ("fields", "by", "submission"):
+    for key in ("fields", "at", "command_comment_id", "by", "submission"):
         assert key not in d
+    assert d["comment_id"] is None             # the bot's own reply comment is made by the worker
 
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_optional_keys_reach_the_task(client, sent, route):
     task_name, _ = ROUTES[route]
-    body = {"id": 41, "repository_url": REPO, "fields": "a,b", "by": "octocat", "submission": "x: 1\n"}
+    body = {"id": 41, "repository_url": REPO, "fields": "a,b", "comment_id": 100, "at": 200}
     assert client.post(route, json=body).status_code == 200
     d = sent[task_name]
-    assert (d["fields"], d["by"], d["submission"]) == ("a,b", "octocat", "x: 1\n")
+    assert (d["fields"], d["command_comment_id"], d["at"]) == ("a,b", 100, 200)
+    assert d["comment_id"] is None             # the command's comment is not the comment the bot replies in
+
+
+@pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize("key", ["by", "submission"])
+def test_by_and_submission_are_refused(client, sent, route, key):
+    body = {"id": 41, "repository_url": REPO, key: "ada"}
+    assert client.post(route, json=body).status_code == 422
+    assert sent == {}
 
 
 def _description(view):
     return " ".join(str(a.options[0].get("description", "")) for a in view.__apispec__["docs"])
 
 
-def test_the_options_are_described_as_confirms_only():
-    described = {k: api.WeftSchema().fields[k].metadata["description"] for k in ("fields", "by", "submission")}
-    for text in described.values():
-        assert "confirm" in text.lower()
-        assert "draft" not in text.lower() and "check" not in text.lower()
+def test_the_options_are_described():
+    schema = api.WeftSchema().fields
+    assert set(schema) == {"id", "repository_url", "fields", "comment_id", "at"}
+    assert "confirm" in schema["fields"].metadata["description"].lower()
+    assert "draft" not in schema["fields"].metadata["description"].lower()
+    for key in ("comment_id", "at"):
+        assert "comment" in schema[key].metadata["description"]
     assert "submitted" not in _description(api.weft_check_post)
     assert "fork" in _description(api.weft_check_post)
