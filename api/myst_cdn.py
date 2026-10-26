@@ -58,6 +58,10 @@ EVIDENTRON_SITE = Path(_config["DATA_ROOT_PATH"]) / _config["EVIDENTRON_FOLDER"]
 
 SITE_ID = "neurolibre"
 
+# The default of `extras` in publish, add_and_publish and rebuild: Evidentron's site, read when called.
+# Passing extras=None builds without it.
+EVIDENTRON = object()
+
 
 def project_slug(name: str) -> str:
     """neurolibre.00021 -> neurolibre-00021. MyST's slugToUrl turns dots into
@@ -198,17 +202,23 @@ def build(sites: Dict[str, Path], out: Path, doi_prefix: str = DOI_PREFIX,
             _place_extras(Path(extras), out)
             report["extras"] = True
         else:
-            report["notes"] = [
-                f"Evidentron's site was not at {extras}, so the CDN carries no terms or exports yet."]
+            logging.warning("Evidentron's site was not at %s", extras)
+            report["notes"] = ["Evidentron's site was not found, so the CDN carries no terms or exports yet."]
     return report
 
 
-def publish(root: Path = CDN_ROOT, extras: Optional[Path] = None) -> Dict[str, Any]:
+def _defaults(root, extras):
+    return (Path(CDN_ROOT if root is None else root),
+            EVIDENTRON_SITE if extras is EVIDENTRON else extras)
+
+
+def publish(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, Any]:
     """Build a new CDN of current_sites(root) in root/builds/<timestamp> and point root/current at it.
 
+    root defaults to CDN_ROOT and extras to EVIDENTRON_SITE; extras=None builds without Evidentron's site.
     The new build and the one it replaced are kept; older ones are removed.
     """
-    root = Path(root)
+    root, extras = _defaults(root, extras)
     link = root / "current"
     if link.exists() and not link.is_symlink():
         raise RuntimeError(f"{link} is a folder, not a symlink. Move it away before publishing.")
@@ -240,10 +250,10 @@ def publish(root: Path = CDN_ROOT, extras: Optional[Path] = None) -> Dict[str, A
     return report
 
 
-def add_and_publish(name: str, version: str, src: Path, root: Path = CDN_ROOT,
-                    extras: Optional[Path] = None) -> Dict[str, Any]:
+def add_and_publish(name: str, version: str, src: Path, root: Optional[Path] = None,
+                    extras: Any = EVIDENTRON) -> Dict[str, Any]:
     """Add one paper's site build and rebuild the CDN, one caller at a time."""
-    root = Path(root)
+    root, extras = _defaults(root, extras)
     root.mkdir(parents=True, exist_ok=True)
     with open(root / ".lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -251,10 +261,19 @@ def add_and_publish(name: str, version: str, src: Path, root: Path = CDN_ROOT,
         return publish(root, extras=extras)
 
 
+def rebuild(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, Any]:
+    """Rebuild the CDN from the site builds already there, one caller at a time (as add_and_publish)."""
+    root, extras = _defaults(root, extras)
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return publish(root, extras=extras)
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--root", type=Path, default=CDN_ROOT)
-    parser.add_argument("--extras", type=Path, default=EVIDENTRON_SITE,
+    parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument("--extras", type=Path, default=EVIDENTRON,
                         help="Evidentron's static site (evidentron-data publish --out)")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("rebuild", help="rebuild the CDN from the site builds under sites/")
@@ -267,9 +286,7 @@ def main(argv=None) -> None:
     if args.command == "add":
         report = add_and_publish(args.name, args.version, args.site, args.root, args.extras)
     else:
-        with open(args.root / ".lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            report = publish(args.root, extras=args.extras)
+        report = rebuild(args.root, args.extras)
     logging.info("%d papers in %s", report["projects"], report["build"])
     for note in report.get("notes", []):
         logging.warning("%s", note)

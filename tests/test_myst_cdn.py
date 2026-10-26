@@ -216,7 +216,7 @@ def test_without_evidentrons_site_the_build_goes_on_and_says_so(tmp_path, two_si
     assert report["projects"] == 2
     assert report["extras"] is False
     assert report["notes"] == [
-        f"Evidentron's site was not at {missing}, so the CDN carries no terms or exports yet."]
+        "Evidentron's site was not found, so the CDN carries no terms or exports yet."]
     assert not (tmp_path / "cdn" / "terms").exists()
 
 
@@ -227,3 +227,43 @@ def test_publish_passes_the_extras_folder_to_the_build(tmp_path, two_sites):
     report = myst_cdn.publish(root, extras=make_extras(tmp_path))
     assert report["extras"] is True
     assert (root / "current" / "terms" / "index.html").exists()
+
+
+def test_publish_and_add_carry_evidentrons_site_by_default(tmp_path, two_sites, monkeypatch):
+    monkeypatch.setattr(myst_cdn, "EVIDENTRON_SITE", make_extras(tmp_path))
+    root = tmp_path / "cdn-root"
+    report = myst_cdn.add_and_publish("neurolibre.00021", "v1", two_sites["neurolibre.00021"], root)
+    assert report["extras"] is True
+    assert (root / "current" / "terms" / "index.html").exists()
+    report = myst_cdn.publish(root)
+    assert report["extras"] is True
+
+
+def test_extras_none_means_none(tmp_path, two_sites, monkeypatch):
+    monkeypatch.setattr(myst_cdn, "EVIDENTRON_SITE", make_extras(tmp_path))
+    root = tmp_path / "cdn-root"
+    report = myst_cdn.add_and_publish("neurolibre.00021", "v1", two_sites["neurolibre.00021"], root, extras=None)
+    assert report["extras"] is False and "notes" not in report
+
+
+def test_rebuild_publishes_under_the_lock_with_evidentrons_site(tmp_path, two_sites, monkeypatch):
+    import fcntl
+    monkeypatch.setattr(myst_cdn, "EVIDENTRON_SITE", make_extras(tmp_path))
+    root = tmp_path / "cdn-root"
+    for name, site in two_sites.items():
+        myst_cdn.add_site(name, "v1", site, root)
+    held = []
+    real = myst_cdn.publish
+
+    def publish(r, extras=None):
+        with open(r / ".lock", "w") as other:
+            try:
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held.append(False)
+            except BlockingIOError:
+                held.append(True)
+        return real(r, extras=extras)
+    monkeypatch.setattr(myst_cdn, "publish", publish)
+    report = myst_cdn.rebuild(root)
+    assert held == [True]
+    assert report["projects"] == 2 and report["extras"] is True

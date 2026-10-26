@@ -1854,6 +1854,8 @@ def add_to_myst_cdn(task, doi_name, version):
         note = f"📚 Added to the MyST CDN ({report['projects']} papers), site build at {commit[:7]}."
         if report["clashes"]:
             note += f" Figure names already used with different bytes, first kept: {', '.join(report['clashes'])}"
+        for extra in report.get("notes", []):
+            note += f" {extra}"
         return note
     except Exception as e:
         logging.exception("MyST CDN update failed")

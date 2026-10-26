@@ -370,3 +370,46 @@ def test_a_failed_term_linking_is_said_not_counted(world, monkeypatch):
     c = FakeTask.last.comment
     assert "could not be linked to the vocabulary's terms: The model's answer was not JSON." in c
     assert "linked to 0 terms" not in c and "None" not in c
+
+
+# C1: a paper sync rebuilds the CDN with Evidentron's site, through add_to_myst_cdn's real path.
+
+def _site_build(folder):
+    import json
+    (folder / "content").mkdir(parents=True)
+    (folder / "config.json").write_text(json.dumps({"version": 2, "projects": [{"title": "t", "index": "index"}]}))
+    (folder / "content" / "index.json").write_text(json.dumps({"slug": "index", "mdast": {}}))
+    return folder
+
+
+def _sync(tmp_path, monkeypatch, extras):
+    data = tmp_path / "data"
+    monkeypatch.setattr(tasks, "DATA_ROOT_PATH", str(data))
+    _site_build(data / tasks.MYST_FOLDER / tasks.GH_ORGANIZATION / "paper-repo" / "abc1234def" / "_build" / "site")
+    monkeypatch.setattr(tasks.myst_cdn, "CDN_ROOT", tmp_path / "cdn")
+    monkeypatch.setattr(tasks.myst_cdn, "EVIDENTRON_SITE", extras)
+    monkeypatch.setattr(tasks.requests, "get", lambda url: SimpleNamespace(status_code=200, text="abc1234def\n"))
+
+    class Rsync:
+        def __init__(self, *a, **k): pass
+        def communicate(self): return (b"", None)
+        def wait(self): return 0
+    monkeypatch.setattr(tasks.subprocess, "Popen", Rsync)
+    return tasks.add_to_myst_cdn(SimpleNamespace(repo_name="paper-repo"), "neurolibre.00041", "v1")
+
+
+def test_a_paper_sync_carries_evidentrons_site(tmp_path, monkeypatch):
+    extras = tmp_path / "evidentron-site"
+    (extras / "terms").mkdir(parents=True)
+    (extras / "terms" / "index.html").write_text("terms")
+    (extras / "index.json").write_text("{}")
+    note = _sync(tmp_path, monkeypatch, extras)
+    assert "Added to the MyST CDN (1 papers)" in note
+    assert (tmp_path / "cdn" / "current" / "terms" / "index.html").read_text() == "terms"
+    assert (tmp_path / "cdn" / "current" / "index.json").exists()
+
+
+def test_a_paper_sync_without_evidentrons_site_says_so(tmp_path, monkeypatch):
+    note = _sync(tmp_path, monkeypatch, tmp_path / "nowhere")
+    assert "Evidentron's site was not found, so the CDN carries no terms or exports yet." in note
+    assert str(tmp_path) not in note
