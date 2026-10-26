@@ -1,6 +1,7 @@
 [Unit]
 Description=Neurolibre Task Manager
-After=network.target
+After=network.target redis-server.service
+Wants=redis-server.service
 
 [Service]
 Type=forking
