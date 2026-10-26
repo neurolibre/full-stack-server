@@ -40,4 +40,7 @@ psutil
 #   yaml        -> neurolibre_api.py, github_client.py, myst_frontmatter.py
 #   marshmallow -> schema.py ("from marshmallow import Schema, fields")
 PyYAML
-marshmallow
+# Below 4: flask-apispec (0.11.x) imports marshmallow.__version__ and
+# marshmallow.utils.is_instance_or_subclass, both removed in marshmallow 4,
+# so the API cannot be imported with it.
+marshmallow<4
