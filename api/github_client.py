@@ -257,6 +257,19 @@ def gh_update_file_content(github_client,repo,file_path,new_content,commit_messa
     except Exception as e:
         return {"status": False, "message": str(e)}
 
+def gh_get_issue_comment(github_client, issue_repo, issue_id, comment_id):
+    """
+    The login of a comment's author and the comment's body, for a comment
+    on the given issue. A comment that does not exist, or that is on
+    another issue, raises UnknownObjectException.
+    """
+    from github import UnknownObjectException
+    issue = github_client.get_repo(gh_filter(issue_repo)).get_issue(issue_id)
+    comment = issue.get_comment(int(comment_id))
+    if not str(comment.issue_url or "").rstrip("/").endswith(f"/issues/{issue_id}"):
+        raise UnknownObjectException(404, {"message": f"comment {comment_id} is not on issue {issue_id}"}, {})
+    return comment.user.login, comment.body or ""
+
 def gh_get_yaml(github_client, repo, file_path):
     """
     Get YAML file content from a repository.
@@ -396,14 +409,15 @@ def get_default_branch(github_client,repository):
     default_branch = repo.default_branch
     return default_branch
 
-def gh_clone_repository(repo_url, target_path, depth=1):
+def gh_clone_repository(repo_url, target_path, depth=1, commit=None):
     """
     Shallow clones a GitHub repository to the specified target path with the given depth.
 
     Parameters:
     - repo_url (str): The URL of the GitHub repository.
     - target_path (str): The target directory where the repository will be cloned.
-    - depth (int): The depth of the shallow clone (default: 1).
+    - depth (int): The depth of the shallow clone (default: 1); None clones the whole history.
+    - commit (str): Check out this commit after cloning.
 
     Returns:
     - None
@@ -414,4 +428,6 @@ def gh_clone_repository(repo_url, target_path, depth=1):
         os.makedirs(target_path)
 
     # Clone the repository with the specified depth
-    git.Repo.clone_from(repo_url, target_path, depth=depth)
+    repo = git.Repo.clone_from(repo_url, target_path, depth=depth)
+    if commit:
+        repo.git.checkout(commit)
