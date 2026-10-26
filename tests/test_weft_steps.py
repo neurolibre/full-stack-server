@@ -1,9 +1,11 @@
 """The weft steps: each composes the evidentron commands, tested with a fake that writes what a command would."""
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from api import weft_steps
 
@@ -47,10 +49,31 @@ class Fake:
         key = argv[3] if argv[2] == "evidentron.weft" else "other"
         if key in self.script:
             return self.script[key](argv)
+        if key == "other" and "publish" in argv:
+            return self._publish(argv)
         return {
             "profile": self._profile, "explore": self._explore, "check": self._check,
-            "confirm": lambda a: (0, "The version is now 1.1.0, dated 2026-10-26.\n"),
+            "confirm": self._confirm,
         }.get(key, lambda a: (0, ""))(argv)
+
+    def _confirm(self, argv):
+        """Mark every entry and item confirmed, as the command does when no names are given."""
+        weft = Path(argv[4])
+        data = yaml.safe_load(weft.read_text())
+        for entry in data.get("files") or []:
+            entry["status"] = "confirmed"
+            for name in ("fields", "variables", "parts"):
+                for item in entry.get(name) or []:
+                    item["status"] = "confirmed"
+        weft.write_text(yaml.safe_dump(data, sort_keys=False))
+        return 0, "The version is now 1.1.0, dated 2026-10-26.\n"
+
+    def _publish(self, argv):
+        folder = Path(argv_value(argv, "--out")) / "wefts" / DOI
+        folder.mkdir(parents=True, exist_ok=True)
+        for fmt in ("fair2", "croissant"):
+            (folder / f"{fmt}.json").write_text("{}")
+        return 0, "Wrote 3 term files, metadata for 1 papers, and the FAIR² and Croissant documents of 1 papers.\n"
 
     def _profile(self, argv):
         Path(argv[argv.index("-o") + 1]).write_text("{}")
@@ -247,17 +270,11 @@ def test_confirm_refused_by_the_command_returns_its_sentence(dirs):
 def test_link_terms_counts_the_terms_kept(dirs):
     work, _, _ = dirs
     fake = Fake(work, {"other": lambda a: (0, f"{DOI}: 4 terms, proposed x\n")})
-    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == 4
+    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == (4, None)
     argv = fake.calls[0]
     assert argv[:3] == [sys.executable, "-m", "evidentron.graph"]
     assert argv_value(argv, "--paper") == DOI
     assert argv_value(argv, "--backend") == "anthropic-api"
-
-
-def test_link_terms_without_a_count_is_zero(dirs):
-    work, _, _ = dirs
-    fake = Fake(work, {"other": lambda a: (1, f"{DOI}: The model's answer was not JSON\n")})
-    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == 0
 
 
 def test_summary_of(tmp_path):
@@ -359,3 +376,166 @@ def test_publish_runs_in_the_store_folder(dirs, monkeypatch):
     weft_steps.confirm(**confirm_args(work, data, db=db))
     publishes = [cwd for cwd, argv in seen if "publish" in argv]
     assert publishes == [work / "store"]
+
+
+# R1: the commands run on Evidentron's own Python when the worker names one.
+
+def test_the_commands_run_on_evidentrons_python(dirs, monkeypatch):
+    work, data, lock = dirs
+    monkeypatch.setenv("EVIDENTRON_PYTHON", "/opt/evidentron/bin/python")
+    seen = []
+    weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=lambda argv: seen.append(argv) or (0, ""))
+    assert seen[0][:3] == ["/opt/evidentron/bin/python", "-m", "evidentron.graph"]
+    assert weft_steps.weft_command()[0] == "/opt/evidentron/bin/python"
+    assert weft_steps.data_cli_command() == ["/opt/evidentron/bin/python", "-m", "evidentron.cli.data_cli"]
+    monkeypatch.delenv("EVIDENTRON_PYTHON")
+    assert weft_steps.graph_command() == [sys.executable, "-m", "evidentron.graph"]
+
+
+# I1: why the self-hosted draft failed, from what the explore command really writes.
+
+def failed_explore(problems=None, stdout="", stderr=""):
+    """explore as Evidentron writes it: the weft with # PROBLEM: lines at the top, and the path in its last line."""
+    def explore(argv):
+        out = Path(argv_value(argv, "-o"))
+        if argv_value(argv, "--backend") == "anthropic-api":
+            out.write_text(WEFT_YAML)
+            return 0, "The weft was written.\n"
+        if problems is not None:
+            out.write_text("".join(f"# PROBLEM: {p}\n" for p in problems) + WEFT_YAML)
+        return 1, weft_steps.Output(stdout + stderr, stdout=stdout)
+    return explore
+
+
+def test_the_reason_is_the_problem_at_the_top_of_the_weft(dirs):
+    work, data, lock = dirs
+    stdout = ("step 1\nThe weft was not accepted.\n"
+              f"The weft was written to {work}/00041.weft.yaml, with its 2 problems listed at the top.\n")
+    explore = failed_explore(["The exploration stopped with an error, and nothing was kept: ConnectError: refused.",
+                              "a.tsv has no description."], stdout=stdout)
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.reason == "The exploration stopped with an error, and nothing was kept: ConnectError: refused."
+    assert str(work) not in result.reason
+
+
+def test_a_busy_slot_is_the_reason(dirs):
+    work, data, lock = dirs
+    stdout = "The exploration did not start: the self-hosted model's slot was busy for 3600 s.\n"
+    explore = failed_explore(stdout=stdout, stderr="UserWarning: something about a library\n")
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.reason == "The exploration did not start: the self-hosted model's slot was busy for 3600 s."
+
+
+def test_a_warning_on_stderr_is_not_the_reason(dirs):
+    work, data, lock = dirs
+    explore = failed_explore(stdout="Trying the model\nConnection refused\n", stderr="DeprecationWarning: old api\n")
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.reason == "Connection refused"
+
+
+def test_the_runner_keeps_stdout_apart(tmp_path):
+    run = weft_steps.subprocess_runner(tmp_path)
+    code, output = run([sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr)"])
+    assert code == 0
+    assert "out" in output and "err" in output
+    assert output.stdout.strip() == "out"
+
+
+def test_a_failed_redraft_lists_its_problems_not_its_path(dirs):
+    work, data, lock = dirs
+
+    def explore(argv):
+        out = Path(argv_value(argv, "-o"))
+        out.write_text("# PROBLEM: a.tsv has no term.\n# PROBLEM: b.tsv has no row.\n" + WEFT_YAML)
+        return 1, f"The weft was written to {out}, with its 2 problems listed at the top.\n"
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.problems == ["a.tsv has no term.", "b.tsv has no row."]
+
+
+def test_the_self_hosted_draft_is_kept_beside_the_redraft(dirs):
+    work, data, lock = dirs
+    explore = failed_explore(["a.tsv has no description."])
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    kept = work / "00041.selfhosted.weft.yaml"
+    assert result.selfhosted == kept
+    assert kept.read_text().startswith("# PROBLEM: a.tsv has no description.")
+    assert not result.weft.read_text().startswith("# PROBLEM")
+
+
+# I2: an unreadable weft says where.
+
+def test_unreadable_yaml_says_where(dirs):
+    work, data, _ = dirs
+    weft = work / "00041.weft.yaml"
+    weft.write_text("a: 1\nb: [1, 2\nc: 3\n")
+    result = weft_steps.check(weft, work / "p.json", data, run=Fake(work))
+    assert result.unreadable == ("The weft is not valid YAML, so it could not be checked: "
+                                 "line 3, column 2: expected ',' or ']', but got ':'.")
+
+
+# C2 and I5: the confirmed weft's place of record, and the version measured against it.
+
+def test_confirm_keeps_the_confirmed_weft_in_the_flat_folder(dirs):
+    work, data, _ = dirs
+    record = work.parent / "wefts"
+    record.mkdir()
+    args = confirm_args(work, data)
+    fake = Fake(work)
+    result = weft_steps.confirm(**args, run=fake, record=record)
+    assert result.errors == [] and result.confirmed
+    assert (record / "00041.weft.yaml").read_text() == args["weft"].read_text()
+    assert (record / "00041.profiles.json").read_text() == "{}"
+    assert "--previous" not in fake.calls[1]
+
+
+def test_confirm_measures_against_the_confirmed_copy(dirs):
+    work, data, _ = dirs
+    record = work.parent / "wefts"
+    record.mkdir()
+    (record / "00041.weft.yaml").write_text(WEFT_YAML)
+    fake = Fake(work)
+    weft_steps.confirm(**confirm_args(work, data), run=fake, record=record)
+    confirm = next(c for c in fake.calls if c[3] == "confirm")
+    assert argv_value(confirm, "--previous") == str(record / "00041.weft.yaml")
+
+
+def test_confirm_fails_with_publishs_sentence_when_the_documents_are_not_written(dirs):
+    work, data, _ = dirs
+    refused = f"No weft of {DOI} is in the server's folder of wefts: it looks for 00041.weft.yaml there."
+    fake = Fake(work, {"other": lambda a: (0, "Wrote 3 term files.\n- The terms are published without QUDT units: x\n"
+                                              f"- {refused}\n")})
+    result = weft_steps.confirm(**confirm_args(work, data), run=fake, record=work.parent / "wefts")
+    assert result.errors == [refused]
+    assert result.confirmed and result.version == "1.1.0"
+    assert result.addresses == {}
+
+
+def test_confirm_does_not_take_old_documents_for_new_ones(dirs):
+    work, data, _ = dirs
+    folder = work / "site" / "wefts" / DOI
+    folder.mkdir(parents=True)
+    for fmt in ("fair2", "croissant"):
+        (folder / f"{fmt}.json").write_text("{}")
+        os.utime(folder / f"{fmt}.json", (1, 1))
+    fake = Fake(work, {"other": lambda a: (0, "Wrote 3 term files.\n")})
+    result = weft_steps.confirm(**confirm_args(work, data), run=fake, record=work.parent / "wefts")
+    assert result.errors == [f"The FAIR² and Croissant documents of {DOI} were not written when the site was published."]
+
+
+# Triaged minors.
+
+def test_the_terms_listed_are_those_of_confirmed_items(tmp_path):
+    weft = yaml.safe_load(WEFT_YAML)
+    assert weft_steps._terms_used(weft) == []
+    weft["files"][0]["fields"][0]["status"] = "confirmed"
+    assert weft_steps._terms_used(weft) == ["age", "participant"]
+
+
+def test_link_terms_that_fail_say_why(dirs):
+    work, _, _ = dirs
+    fake = Fake(work, {"other": lambda a: (0, f"{DOI}: The model's answer was not JSON\n")})
+    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == \
+        (None, "The model's answer was not JSON")
+    trace = "Traceback (most recent call last):\n  File x\nOSError: disk full\n"
+    count, why = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=Fake(work, {"other": lambda a: (1, trace)}))
+    assert count is None and "disk full" in why and "Traceback" not in why

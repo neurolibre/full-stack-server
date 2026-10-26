@@ -2697,7 +2697,7 @@ def _weft_draft(task):
             pass
     repo_dir = _published_clone(task, paper)
     run = weft_steps.subprocess_runner(Path(paper.work))
-    code, output = run(weft_steps.GRAPH + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
+    code, output = run(weft_steps.graph_command() + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
     if code != 0:
         task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
 
@@ -2711,7 +2711,7 @@ def _weft_draft(task):
     for name, path in ((paper.weft_name, result.weft), (paper.profiles_name, result.profiles)):
         replaced = _put_on_fork(task, fork, name, Path(path).read_text(), f":robot: [Automated] Draft {name}") or replaced
 
-    linked = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
+    linked, link_failure = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
 
     author = _issue_author(task)
     invited = None
@@ -2730,7 +2730,10 @@ def _weft_draft(task):
         parts.append("Still to fix:\n" + _bullets(result.problems))
     if result.warnings:
         parts.append("Warnings:\n" + _bullets(result.warnings))
-    parts.append(f"The paper's text was linked to {linked} terms.")
+    if linked is None:
+        parts.append(f"The paper's text could not be linked to the vocabulary's terms: {link_failure.rstrip('.')}.")
+    else:
+        parts.append(f"The paper's text was linked to {linked} terms.")
     if author:
         parts.append(f"@{author} was invited to the fork so that the weft can be edited." if invited
                      else f"The author, {author}, could not be invited to the fork, so an editor may need to add them.")

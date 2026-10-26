@@ -124,7 +124,7 @@ def world(tmp_path, monkeypatch):
                         w.clones.append((url, commit)) or w.clone_error and (_ for _ in ()).throw(RuntimeError(w.clone_error)))
     w.clone_error = None
     monkeypatch.setattr(tasks.weft_steps, "subprocess_runner", runner)
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: 7)
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: (7, None))
     return w
 
 
@@ -361,3 +361,12 @@ def test_github_errors_become_a_sentence(world, monkeypatch):
             task.run(payload(by="ada"))
         f = FakeTask.last.failed
         assert f == "The fork paper-repo could not be reached on GitHub: 404 Not Found"
+
+
+def test_a_failed_term_linking_is_said_not_counted(world, monkeypatch):
+    fake_draft(monkeypatch)
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: (None, "The model's answer was not JSON"))
+    tasks.weft_draft_task.run(payload())
+    c = FakeTask.last.comment
+    assert "could not be linked to the vocabulary's terms: The model's answer was not JSON." in c
+    assert "linked to 0 terms" not in c and "None" not in c
