@@ -597,8 +597,9 @@ def test_a_flat_weft_without_its_profiles_is_a_sentence(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed == (
-        f"The confirmed weft of {DOI} is on the server but its profiles are not, so it cannot be checked; ask for "
-        "`@roboneuro weft draft` again or restore the profiles beside it.")
+        f"The confirmed weft of {DOI} is on the server but its profiles are not, so it cannot be checked; restore "
+        "the profiles beside it, or remove the confirmed weft from the server and ask for `@roboneuro weft draft` "
+        "again.")
 
 
 def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):

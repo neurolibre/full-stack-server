@@ -2615,7 +2615,8 @@ def _server_weft(task, paper):
         confirmed_profiles = os.path.join(WEFTS_PATH, paper.profiles_name)
         if not os.path.isfile(confirmed_profiles):
             task.fail(f"The confirmed weft of {paper.doi} is on the server but its profiles are not, so it cannot be "
-                      "checked; ask for `@roboneuro weft draft` again or restore the profiles beside it.")
+                      "checked; restore the profiles beside it, or remove the confirmed weft from the server and ask for "
+                      "`@roboneuro weft draft` again.")
         shutil.copyfile(confirmed, weft)
         shutil.copyfile(confirmed_profiles, profiles)
     if not os.path.isfile(weft):
