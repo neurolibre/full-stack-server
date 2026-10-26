@@ -2550,6 +2550,7 @@ The steps themselves are in weft_steps; the tasks add the places on this
 server, the paper's copy on the fork, and the comment.
 """
 import contextlib
+import fcntl
 import weft_steps
 from pathlib import Path
 from types import SimpleNamespace
@@ -2560,10 +2561,12 @@ GRAPH_DB_PATH = os.path.join(EVIDENTRON_PATH, "graph.db")
 WEFTS_PATH = os.path.join(EVIDENTRON_PATH, "wefts")
 REPOS_PATH = os.path.join(EVIDENTRON_PATH, "repos")
 LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
+# Held around the steps that write the store, the vocabulary and the site, so two weft tasks never write them at once.
+STORE_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "store.lock")
+STORE_LOCK_WAIT = 600
 EVIDENTRON_SITE_PATH = os.path.join(EVIDENTRON_PATH, "site")
 EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
 CDN_CURRENT_PATH = os.path.join(DATA_ROOT_PATH, common_config['CDN_FOLDER'], "current")
-DATA_NFS_ROOT = "/DATA_NFS"
 
 DEFAULT_WEFT_BACKENDS = {"draft": "openai-compatible", "redraft": "anthropic-api", "terms": "anthropic-api"}
 
@@ -2590,7 +2593,7 @@ def _weft_paper(task):
         project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
     except Exception as e:
         task.fail(f"The data requirement of {doi} could not be read, so the paper's data folder is unknown: {e}")
-    data_dir = os.path.join(DATA_NFS_ROOT, project_name)
+    data_dir = os.path.join(DATA_NFS_PATH, project_name)
     if not os.path.isdir(data_dir):
         task.fail(f"The data of {doi} is not at {data_dir}, so there is nothing to describe.")
     work = os.path.join(WEFTS_PATH, stem)
@@ -2599,44 +2602,126 @@ def _weft_paper(task):
                            weft_name=f"weft/{stem}.weft.yaml", profiles_name=f"weft/{stem}.profiles.json")
 
 
-def _put_on_fork(task, fork, path, content, message):
-    """Create the file on the fork, or update it when it is there; returns True when it replaced one."""
+def _on_fork(task, fork, path):
+    """True when the file is on the fork. Asks for the file itself, not its content, which the contents API
+    does not give for a file over 1 MB."""
+    try:
+        task.screening.github_client.get_repo(gh_filter(fork)).get_contents(path)
+    except UnknownObjectException:
+        return False
+    return True
+
+
+def _put_on_fork(task, fork, path, content, message, failure=None):
+    """Create the file on the fork, or update it when it is there; returns True when it replaced one.
+    `failure`, when given, is the sentence for a write that did not go through, with {reason} in it."""
     client = task.screening.github_client
-    exists = gh_get_file_content(client, fork, path) is not None
-    result = (gh_update_file_content(client, fork, path, content, message) if exists
-              else gh_create_file(client, fork, path, content, message))
+    failure = failure or (path + " could not be written to the fork: {reason}")
+    try:
+        exists = _on_fork(task, fork, path)
+        result = (gh_update_file_content(client, fork, path, content, message) if exists
+                  else gh_create_file(client, fork, path, content, message))
+    except (GithubException, requests.RequestException) as e:
+        result = {"status": False, "message": _github_reason(e)}
     if not result["status"]:
-        task.fail(f"{path} could not be written to the fork: {result['message']}")
+        task.fail(failure.format(reason=str(result["message"]).strip().splitlines()[0] if result["message"] else "no reason given"))
     return exists
 
 
+def _weft_of_record(paper):
+    """The confirmed weft's place of record: flat in WEFTS_PATH, where publish reads it."""
+    return os.path.join(WEFTS_PATH, f"{paper.stem}.weft.yaml")
+
+
+def _server_profiles(paper):
+    """The server's own copy of the profiles: the latest draft's in the work folder, else the confirmed one."""
+    for path in (os.path.join(paper.work, f"{paper.stem}.profiles.json"),
+                 os.path.join(WEFTS_PATH, f"{paper.stem}.profiles.json")):
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 def _fetch_from_fork(task, fork, paper):
-    """Copy the weft and the profiles from the fork into the work folder; fail with a sentence when one is missing."""
+    """Copy the weft from the fork into the work folder (the author may have edited it) and find the profiles:
+    the server's own copy, since the contents API does not give a file over 1 MB, else the fork's. Fails with a
+    sentence when one is missing."""
     client = task.screening.github_client
-    paths = {}
-    for name, local in ((paper.weft_name, f"{paper.stem}.weft.yaml"), (paper.profiles_name, f"{paper.stem}.profiles.json")):
-        content = gh_get_file_content(client, fork, name)
+    content = gh_get_file_content(client, fork, paper.weft_name)
+    if content is None:
+        task.fail(f"The fork has no {paper.weft_name}, so there is nothing to work on: ask for `@roboneuro weft draft` first.")
+    weft = os.path.join(paper.work, f"{paper.stem}.weft.yaml")
+    with open(weft, "w") as f:
+        f.write(content)
+    profiles = _server_profiles(paper)
+    if profiles is None:
+        content = gh_get_file_content(client, fork, paper.profiles_name)
         if content is None:
-            task.fail(f"The fork has no {name}, so there is nothing to work on: ask for `@roboneuro weft draft` first.")
-        paths[name] = os.path.join(paper.work, local)
-        with open(paths[name], "w") as f:
+            task.fail(f"The server has no profiles of the paper's data and the fork's {paper.profiles_name} could "
+                      "not be read, so the weft cannot be checked: ask for `@roboneuro weft draft` first.")
+        profiles = os.path.join(paper.work, f"{paper.stem}.profiles.json")
+        with open(profiles, "w") as f:
             f.write(content)
-    return paths[paper.weft_name], paths[paper.profiles_name]
+    return weft, profiles
+
+
+def _github_reason(e):
+    if isinstance(e, GithubException):
+        data = e.data if isinstance(e.data, dict) else {}
+        return f"{e.status} {data.get('message') or ''}".strip()
+    return e.__class__.__name__
 
 
 @contextlib.contextmanager
-def _github_errors(task):
-    """A GitHub or network error inside becomes one sentence on the issue; the task's own failures pass through."""
+def _errors_as_sentences(task):
+    """A GitHub, network or local file error inside becomes one sentence on the issue; the task's own failures
+    pass through."""
     try:
         yield
     except Ignore:
         raise
-    except GithubException as e:
-        data = e.data if isinstance(e.data, dict) else {}
-        reason = f"{e.status} {data.get('message') or ''}".strip()
-        task.fail(f"The fork {task.repo_name} could not be reached on GitHub: {reason}")
-    except requests.RequestException as e:
-        task.fail(f"The fork {task.repo_name} could not be reached on GitHub: {e.__class__.__name__}")
+    except (GithubException, requests.RequestException) as e:
+        task.fail(f"The fork {task.repo_name} could not be reached on GitHub: {_github_reason(e)}")
+    except OSError as e:
+        task.fail(f"The paper's files could not be written on the server: {e.strerror or e.__class__.__name__}.")
+
+
+@contextlib.contextmanager
+def _store_lock(task):
+    """Hold STORE_LOCK_PATH while the store, the vocabulary or the site is written; another weft task waits its
+    turn. A wait beyond STORE_LOCK_WAIT seconds fails the task with one sentence."""
+    os.makedirs(os.path.dirname(STORE_LOCK_PATH), exist_ok=True)
+    with open(STORE_LOCK_PATH, "a") as lock:
+        deadline = time.monotonic() + STORE_LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    task.fail(f"Another weft task kept the paper store busy for more than {STORE_LOCK_WAIT / 60:g} "
+                              "minutes, so nothing was done: ask again in a while.")
+                time.sleep(min(5, STORE_LOCK_WAIT / 10))
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _load_paper(task, run, paper):
+    """Load the paper from the local CDN into the store, so the store has what the issue has now (the data
+    archive DOI minted after a draft among it). Call it with the store lock held."""
+    code, output = run(weft_steps.graph_command() + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
+    if code != 0:
+        task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
+
+
+def _has_confirmed(node):
+    if isinstance(node, dict):
+        return node.get("status") == "confirmed" or any(_has_confirmed(v) for v in node.values())
+    if isinstance(node, list):
+        return any(_has_confirmed(v) for v in node)
+    return False
 
 
 def _published_clone(task, paper):
@@ -2684,36 +2769,45 @@ def _issue_author(task):
 @handle_soft_timeout
 def weft_draft_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
-    with _github_errors(task):
+    with _errors_as_sentences(task):
         return _weft_draft(task)
 
 
 def _weft_draft(task):
     task.start("Describing the paper's data")
     paper = _weft_paper(task)
+    fork = gh_forkify_it(task.screening.target_repo_url)
+    current = gh_get_file_content(task.screening.github_client, fork, paper.weft_name)
+    try:
+        current = yaml.safe_load(current) if current else None
+    except yaml.YAMLError:
+        current = None
+    if _has_confirmed(current):
+        task.fail(f"The fork's {paper.weft_name} has parts that are already confirmed, so a new draft would replace "
+                  "confirmed work: edit that file and ask for `@roboneuro weft check`, or delete it from the fork "
+                  "first to start over.")
     backends = _weft_backends()
-    for name in (f"{paper.stem}.weft.yaml", f"{paper.stem}.profiles.json"):
+    for name in (f"{paper.stem}.weft.yaml", f"{paper.stem}.profiles.json", f"{paper.stem}.selfhosted.weft.yaml"):
         try:
             os.remove(os.path.join(paper.work, name))     # the folder is kept between runs
         except FileNotFoundError:
             pass
     repo_dir = _published_clone(task, paper)
     run = weft_steps.subprocess_runner(Path(paper.work))
-    code, output = run(weft_steps.graph_command() + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
-    if code != 0:
-        task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
+    with _store_lock(task):
+        _load_paper(task, run, paper)
 
     result = weft_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
                               Path(LLM_LOCK_PATH), run)
     if not (result.weft.exists() and result.profiles.exists()) or (result.problems and not result.summary):
         task.fail("The paper's data could not be drafted: " + (" ".join(result.problems) or "no draft was written."))
 
-    fork = gh_forkify_it(task.screening.target_repo_url)
     replaced = False
     for name, path in ((paper.weft_name, result.weft), (paper.profiles_name, result.profiles)):
         replaced = _put_on_fork(task, fork, name, Path(path).read_text(), f":robot: [Automated] Draft {name}") or replaced
 
-    linked, link_failure = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
+    with _store_lock(task):
+        linked, link_failure = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
 
     author = _issue_author(task)
     invited = None
@@ -2749,7 +2843,7 @@ def _weft_draft(task):
 @handle_soft_timeout
 def weft_check_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
-    with _github_errors(task):
+    with _errors_as_sentences(task):
         return _weft_check(task)
 
 
@@ -2779,7 +2873,7 @@ def _weft_check(task):
 @handle_soft_timeout
 def weft_confirm_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
-    with _github_errors(task):
+    with _errors_as_sentences(task):
         return _weft_confirm(task)
 
 
@@ -2802,15 +2896,36 @@ def _weft_confirm(task):
         submission = os.path.join(paper.work, "submission.yaml")
         with open(submission, "w") as f:
             f.write(text)
-    # The data archive DOI is not passed on to the confirm command yet: weft_steps.confirm takes no identifier.
-    result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, Path(submission) if submission else None,
-                                Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH))
-    if result.errors:
-        task.fail("The weft was not confirmed:\n" + _bullets(result.errors))
-    _put_on_fork(task, fork, paper.weft_name, Path(weft).read_text(), f":robot: [Automated] Confirm {paper.weft_name}")
+    rebuilt = None
+    with _store_lock(task):
+        # The store gets the paper as it is now, the data archive DOI minted after the draft among it.
+        _load_paper(task, weft_steps.subprocess_runner(Path(paper.work)), paper)
+        result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, Path(submission) if submission else None,
+                                    Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH),
+                                    record=Path(WEFTS_PATH))
+        if result.errors and result.confirmed:
+            task.fail(f"The weft was confirmed at version {result.version} but not published:\n"
+                      + _bullets(result.errors)
+                      + "\n\nAsking for `@roboneuro weft confirm` again is safe once this is fixed.")
+        if result.errors:
+            task.fail("The weft was not confirmed:\n" + _bullets(result.errors))
+        try:
+            report = myst_cdn.rebuild()
+            rebuilt = " ".join(report.get("notes", [])) or None
+        except Exception as e:
+            logging.exception("MyST CDN rebuild after a weft confirmation failed")
+            rebuilt = (f"The CDN could not be rebuilt ({e.__class__.__name__}), so these addresses go live with "
+                       "the next paper sync.")
+    _put_on_fork(task, fork, paper.weft_name, Path(weft).read_text(), f":robot: [Automated] Confirm {paper.weft_name}",
+                 failure=f"The weft is already confirmed and published at version {result.version}, but the "
+                         "confirmed file could not be written back to the fork ({reason}); asking for "
+                         "`@roboneuro weft confirm` again is safe.")
     a = result.addresses
     lines = [f"{label}: {a[key]}" for label, key in (("FAIR²", "fair2"), ("Croissant", "croissant"), ("Metadata", "metadata")) if a.get(key)]
     lines += [f"Term: {t}" for t in a.get("terms", [])]
-    task.succeed(f"The weft is confirmed by {by} at version {result.version}, and published. Its addresses:\n"
-                 + _bullets(lines), collapsable=False)
+    message = (f"The weft is confirmed by {by} at version {result.version}, and published. Its addresses:\n"
+               + _bullets(lines))
+    if rebuilt:
+        message += "\n\n" + rebuilt
+    task.succeed(message, collapsable=False)
     return f"Confirmed the weft of {paper.doi}"
