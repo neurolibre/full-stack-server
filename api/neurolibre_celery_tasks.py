@@ -2628,11 +2628,6 @@ def _put_on_fork(task, fork, path, content, message, failure=None):
     return exists
 
 
-def _weft_of_record(paper):
-    """The confirmed weft's place of record: flat in WEFTS_PATH, where publish reads it."""
-    return os.path.join(WEFTS_PATH, f"{paper.stem}.weft.yaml")
-
-
 def _server_profiles(paper):
     """The server's own copy of the profiles: the latest draft's in the work folder, else the confirmed one."""
     for path in (os.path.join(paper.work, f"{paper.stem}.profiles.json"),
