@@ -257,6 +257,19 @@ def gh_update_file_content(github_client,repo,file_path,new_content,commit_messa
     except Exception as e:
         return {"status": False, "message": str(e)}
 
+def gh_invite_collaborator(github_client, repo, login):
+    """
+    Invite a GitHub login to a repository with push rights. Never raises:
+    returns True when the invitation was sent, False otherwise, so the
+    caller can say so in its comment.
+    """
+    try:
+        github_client.get_repo(gh_filter(repo)).add_to_collaborators(login, permission="push")
+        return True
+    except Exception as e:
+        logging.warning(f"Could not invite {login} to {repo}: {e}")
+        return False
+
 def gh_get_yaml(github_client, repo, file_path):
     """
     Get YAML file content from a repository.

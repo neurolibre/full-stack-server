@@ -2541,3 +2541,207 @@ def clean_garbage_files(source_path, unwanted_dirs=None, unwanted_files=None):
                     logging.warning(f"Failed to remove {file_path}: {str(e)}")
     
     return removed_count
+
+"""
+The weft of a paper: draft, check and confirm, reported on the review issue.
+The steps themselves are in weft_steps; the tasks add the places on this
+server, the paper's copy on the fork, and the comment.
+"""
+import weft_steps
+from pathlib import Path
+from types import SimpleNamespace
+
+EVIDENTRON_FOLDER = common_config['EVIDENTRON_FOLDER']
+EVIDENTRON_PATH = os.path.join(DATA_ROOT_PATH, EVIDENTRON_FOLDER)
+GRAPH_DB_PATH = os.path.join(EVIDENTRON_PATH, "graph.db")
+WEFTS_PATH = os.path.join(EVIDENTRON_PATH, "wefts")
+LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
+EVIDENTRON_SITE_PATH = os.path.join(EVIDENTRON_PATH, "site")
+EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
+CDN_CURRENT_PATH = os.path.join(DATA_ROOT_PATH, common_config['CDN_FOLDER'], "current")
+DATA_NFS_ROOT = "/DATA_NFS"
+
+DEFAULT_WEFT_BACKENDS = {"draft": "openai-compatible", "redraft": "anthropic-api", "terms": "anthropic-api"}
+
+
+def _weft_backends():
+    """The backends for drafting, redrafting and linking terms, from the evidentron config; defaults when it has none."""
+    backends = dict(DEFAULT_WEFT_BACKENDS)
+    try:
+        with open(EVIDENTRON_CONFIG) as f:
+            found = ((yaml.safe_load(f) or {}).get("weft") or {}).get("backend")
+    except (OSError, yaml.YAMLError, AttributeError):
+        return backends
+    if isinstance(found, dict):
+        backends.update({k: found[k] for k in backends if found.get(k)})
+    return backends
+
+
+def _weft_paper(task):
+    """What every weft task needs: the paper's DOI, its stem, the data folder, the work folder and the fork's file names."""
+    issue_id = task.screening.issue_id
+    doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
+    stem = weft_steps._stem(doi)
+    try:
+        project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
+    except Exception as e:
+        task.fail(f"The data requirement of {doi} could not be read, so the paper's data folder is unknown: {e}")
+    data_dir = os.path.join(DATA_NFS_ROOT, project_name)
+    if not os.path.isdir(data_dir):
+        task.fail(f"The data of {doi} is not at {data_dir}, so there is nothing to describe.")
+    work = os.path.join(WEFTS_PATH, stem)
+    os.makedirs(work, exist_ok=True)
+    return SimpleNamespace(doi=doi, stem=stem, data_dir=data_dir, work=work,
+                           weft_name=f"weft/{stem}.weft.yaml", profiles_name=f"weft/{stem}.profiles.json")
+
+
+def _put_on_fork(task, fork, path, content, message):
+    """Create the file on the fork, or update it when it is there; returns True when it replaced one."""
+    client = task.screening.github_client
+    exists = gh_get_file_content(client, fork, path) is not None
+    result = (gh_update_file_content(client, fork, path, content, message) if exists
+              else gh_create_file(client, fork, path, content, message))
+    if not result["status"]:
+        task.fail(f"{path} could not be written to the fork: {result['message']}")
+    return exists
+
+
+def _fetch_from_fork(task, fork, paper):
+    """Copy the weft and the profiles from the fork into the work folder; fail with a sentence when one is missing."""
+    client = task.screening.github_client
+    paths = {}
+    for name, local in ((paper.weft_name, f"{paper.stem}.weft.yaml"), (paper.profiles_name, f"{paper.stem}.profiles.json")):
+        content = gh_get_file_content(client, fork, name)
+        if content is None:
+            task.fail(f"The fork has no {name}, so there is nothing to work on: ask for `@roboneuro weft draft` first.")
+        paths[name] = os.path.join(paper.work, local)
+        with open(paths[name], "w") as f:
+            f.write(content)
+    return paths[paper.weft_name], paths[paper.profiles_name]
+
+
+def _bullets(items):
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _issue_author(task):
+    for tag in ("author", "author-handle"):
+        login = gh_read_from_issue_body(task.screening.github_client, task.screening.review_repository,
+                                        task.screening.issue_id, tag)
+        if login:
+            return login.strip().lstrip("@")
+    return None
+
+
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
+def weft_draft_task(self, screening_dict):
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("Describing the paper's data")
+    paper = _weft_paper(task)
+    backends = _weft_backends()
+    run = weft_steps.subprocess_runner(Path(paper.work))
+    code, output = run(weft_steps.GRAPH + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
+    if code != 0:
+        task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
+
+    result = weft_steps.draft(paper.doi, Path(paper.data_dir), None, Path(paper.work), backends,
+                              Path(LLM_LOCK_PATH), run)
+    if not (result.weft.exists() and result.profiles.exists()):
+        task.fail("The paper's data could not be drafted: " + (" ".join(result.problems) or "no draft was written."))
+
+    fork = gh_forkify_it(task.screening.target_repo_url)
+    replaced = False
+    for name, path in ((paper.weft_name, result.weft), (paper.profiles_name, result.profiles)):
+        replaced = _put_on_fork(task, fork, name, Path(path).read_text(), f":robot: [Automated] Draft {name}") or replaced
+
+    linked = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
+
+    author = _issue_author(task)
+    invited = None
+    if author:
+        invited = gh_invite_collaborator(task.screening.github_client, fork, author)
+
+    branch = get_default_branch(task.screening.github_client, fork)
+    edit_link = f"{fork}/edit/{branch}/{paper.weft_name}"
+    parts = []
+    if replaced:
+        parts.append("This draft replaced the earlier draft on the fork.")
+    parts.append(f"The paper's data is described in `{paper.weft_name}` on the fork, drafted with {result.drafted_by}.")
+    if result.reason:
+        parts.append(f"The first draft was not used because {result.reason}")
+    if result.summary:
+        parts.append("What the draft says:\n" + _bullets(result.summary))
+    if result.problems:
+        parts.append("Still to fix:\n" + _bullets(result.problems))
+    if result.warnings:
+        parts.append("Warnings:\n" + _bullets(result.warnings))
+    parts.append(f"The paper's text was linked to {linked} terms.")
+    if author:
+        parts.append(f"@{author} was invited to the fork so that the weft can be edited." if invited
+                     else f"The author, {author}, could not be invited to the fork, so an editor may need to add them.")
+    parts.append(f"To proceed, either edit the weft in the browser ({edit_link}) and then ask for "
+                 "`@roboneuro weft check`, or, when it is right as it is, ask for `@roboneuro weft confirm`.")
+    task.succeed("\n\n".join(parts), collapsable=False)
+    return f"Drafted the weft of {paper.doi}"
+
+
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
+def weft_check_task(self, screening_dict):
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("Checking the paper's weft")
+    paper = _weft_paper(task)
+    fork = gh_forkify_it(task.screening.target_repo_url)
+    weft, profiles = _fetch_from_fork(task, fork, paper)
+    result = weft_steps.check(Path(weft), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH))
+    if result.unreadable:
+        task.succeed(result.unreadable, collapsable=False)
+        return f"The weft of {paper.doi} could not be read"
+    parts = []
+    if result.errors:
+        parts.append("The weft has errors:\n" + _bullets(result.errors))
+    if result.warnings:
+        parts.append("Warnings:\n" + _bullets(result.warnings))
+    if not parts:
+        parts.append("The weft passes the check with no errors and no warnings.")
+    elif not result.errors:
+        parts.append("There are no errors, so the weft can be confirmed.")
+    task.succeed("\n\n".join(parts), collapsable=False)
+    return f"Checked the weft of {paper.doi}"
+
+
+@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
+@handle_soft_timeout
+def weft_confirm_task(self, screening_dict):
+    task = BaseNeuroLibreTask(self, screening_dict)
+    task.start("Confirming the paper's weft")
+    screening = task.screening
+    archive = gh_read_from_issue_body(screening.github_client, screening.review_repository, screening.issue_id, "data-archive")
+    if not archive or archive.strip().upper() == "N/A":
+        task.fail("The weft cannot be confirmed yet: the issue has no data archive DOI, and the published description must name the archive that holds the data.")
+    by = (getattr(screening, "by", None) or "").strip().lstrip("@")
+    if not by:
+        task.fail("The weft cannot be confirmed without the GitHub login of the person confirming it.")
+    fields = [f.strip() for f in (getattr(screening, "fields", None) or "").split(",") if f.strip()] or None
+    paper = _weft_paper(task)
+    fork = gh_forkify_it(screening.target_repo_url)
+    weft, profiles = _fetch_from_fork(task, fork, paper)
+    submission = None
+    text = getattr(screening, "submission", None)
+    if text:
+        submission = os.path.join(paper.work, "submission.yaml")
+        with open(submission, "w") as f:
+            f.write(text)
+    # The data archive DOI is not passed on to the confirm command yet: weft_steps.confirm takes no identifier.
+    result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, Path(submission) if submission else None,
+                                Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH))
+    if result.errors:
+        task.fail("The weft was not confirmed:\n" + _bullets(result.errors))
+    _put_on_fork(task, fork, paper.weft_name, Path(weft).read_text(), f":robot: [Automated] Confirm {paper.weft_name}")
+    a = result.addresses
+    lines = [f"{label}: {a[key]}" for label, key in (("FAIR²", "fair2"), ("Croissant", "croissant"), ("Metadata", "metadata")) if a.get(key)]
+    lines += [f"Term: {t}" for t in a.get("terms", [])]
+    task.succeed(f"The weft is confirmed by {by} at version {result.version}, and published. Its addresses:\n"
+                 + _bullets(lines), collapsable=False)
+    return f"Confirmed the weft of {paper.doi}"
