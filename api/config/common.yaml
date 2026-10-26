@@ -71,6 +71,11 @@ MYST_FOLDER: "myst"
 # filesystem as MYST_FOLDER, because builds hard-link figures from it.
 CDN_FOLDER: "cdn"
 
+# Name of the folder that holds Evidentron's files: the graph store, the papers'
+# wefts (wefts/), repositories (repos/), site, artifacts and the vocabulary.
+# Expected under DATA_ROOT_PATH. The celery user's ~/.evidentron links to it.
+EVIDENTRON_FOLDER: "evidentron"
+
 # Name of the folder that will contain logs (myst, binder, etc.)
 # This is expected to be under the DATA_ROOT_PATH
 LOGS_FOLDER: "logs"
