@@ -2547,6 +2547,7 @@ The weft of a paper: draft, check and confirm, reported on the review issue.
 The steps themselves are in weft_steps; the tasks add the places on this
 server, the paper's copy on the fork, and the comment.
 """
+import contextlib
 import weft_steps
 from pathlib import Path
 from types import SimpleNamespace
@@ -2555,6 +2556,7 @@ EVIDENTRON_FOLDER = common_config['EVIDENTRON_FOLDER']
 EVIDENTRON_PATH = os.path.join(DATA_ROOT_PATH, EVIDENTRON_FOLDER)
 GRAPH_DB_PATH = os.path.join(EVIDENTRON_PATH, "graph.db")
 WEFTS_PATH = os.path.join(EVIDENTRON_PATH, "wefts")
+REPOS_PATH = os.path.join(EVIDENTRON_PATH, "repos")
 LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
 EVIDENTRON_SITE_PATH = os.path.join(EVIDENTRON_PATH, "site")
 EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
@@ -2620,6 +2622,49 @@ def _fetch_from_fork(task, fork, paper):
     return paths[paper.weft_name], paths[paper.profiles_name]
 
 
+@contextlib.contextmanager
+def _github_errors(task):
+    """A GitHub or network error inside becomes one sentence on the issue; the task's own failures pass through."""
+    try:
+        yield
+    except Ignore:
+        raise
+    except GithubException as e:
+        data = e.data if isinstance(e.data, dict) else {}
+        reason = f"{e.status} {data.get('message') or ''}".strip()
+        task.fail(f"The fork {task.repo_name} could not be reached on GitHub: {reason}")
+    except requests.RequestException as e:
+        task.fail(f"The fork {task.repo_name} could not be reached on GitHub: {e.__class__.__name__}")
+
+
+def _published_clone(task, paper):
+    """Clone the fork at the commit published on the preview server into REPOS_PATH/<stem>; fail with a sentence if it cannot be."""
+    fork_name = f"{GH_ORGANIZATION}/{task.repo_name}"
+    try:
+        response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{fork_name}/latest.txt")
+    except requests.RequestException as e:
+        task.fail(f"The published commit of {fork_name} could not be read from the preview server: {e.__class__.__name__}")
+    commit = response.text.strip() if response.status_code == 200 else ""
+    if not commit:
+        task.fail(f"There is no published commit of {fork_name} on the preview server, so the paper's repository cannot be read.")
+    target = os.path.join(REPOS_PATH, paper.stem)
+    shutil.rmtree(target, ignore_errors=True)
+    try:
+        gh_clone_repository(f"https://github.com/{fork_name}", target, depth=None, commit=commit)
+    except Exception as e:
+        lines = str(e).strip().splitlines()
+        task.fail(f"The repository {fork_name} could not be cloned at {commit[:7]}: {lines[-1] if lines else e.__class__.__name__}")
+    return target
+
+
+def _drafter(result):
+    if result.reason:
+        reason = result.reason.rstrip(".")
+        reason = reason[:1].lower() + reason[1:] if reason[1:2].islower() else reason
+        return f"Claude because {reason}"
+    return "the self-hosted model"
+
+
 def _bullets(items):
     return "\n".join(f"- {item}" for item in items)
 
@@ -2637,17 +2682,28 @@ def _issue_author(task):
 @handle_soft_timeout
 def weft_draft_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
+    with _github_errors(task):
+        return _weft_draft(task)
+
+
+def _weft_draft(task):
     task.start("Describing the paper's data")
     paper = _weft_paper(task)
     backends = _weft_backends()
+    for name in (f"{paper.stem}.weft.yaml", f"{paper.stem}.profiles.json"):
+        try:
+            os.remove(os.path.join(paper.work, name))     # the folder is kept between runs
+        except FileNotFoundError:
+            pass
+    repo_dir = _published_clone(task, paper)
     run = weft_steps.subprocess_runner(Path(paper.work))
     code, output = run(weft_steps.GRAPH + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
     if code != 0:
         task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
 
-    result = weft_steps.draft(paper.doi, Path(paper.data_dir), None, Path(paper.work), backends,
+    result = weft_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
                               Path(LLM_LOCK_PATH), run)
-    if not (result.weft.exists() and result.profiles.exists()):
+    if not (result.weft.exists() and result.profiles.exists()) or (result.problems and not result.summary):
         task.fail("The paper's data could not be drafted: " + (" ".join(result.problems) or "no draft was written."))
 
     fork = gh_forkify_it(task.screening.target_repo_url)
@@ -2667,9 +2723,7 @@ def weft_draft_task(self, screening_dict):
     parts = []
     if replaced:
         parts.append("This draft replaced the earlier draft on the fork.")
-    parts.append(f"The paper's data is described in `{paper.weft_name}` on the fork, drafted with {result.drafted_by}.")
-    if result.reason:
-        parts.append(f"The first draft was not used because {result.reason}")
+    parts.append(f"The paper's data is described in `{paper.weft_name}` on the fork, drafted by {_drafter(result)}.")
     if result.summary:
         parts.append("What the draft says:\n" + _bullets(result.summary))
     if result.problems:
@@ -2690,6 +2744,11 @@ def weft_draft_task(self, screening_dict):
 @handle_soft_timeout
 def weft_check_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
+    with _github_errors(task):
+        return _weft_check(task)
+
+
+def _weft_check(task):
     task.start("Checking the paper's weft")
     paper = _weft_paper(task)
     fork = gh_forkify_it(task.screening.target_repo_url)
@@ -2715,6 +2774,11 @@ def weft_check_task(self, screening_dict):
 @handle_soft_timeout
 def weft_confirm_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
+    with _github_errors(task):
+        return _weft_confirm(task)
+
+
+def _weft_confirm(task):
     task.start("Confirming the paper's weft")
     screening = task.screening
     archive = gh_read_from_issue_body(screening.github_client, screening.review_repository, screening.issue_id, "data-archive")

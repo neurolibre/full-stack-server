@@ -409,14 +409,15 @@ def get_default_branch(github_client,repository):
     default_branch = repo.default_branch
     return default_branch
 
-def gh_clone_repository(repo_url, target_path, depth=1):
+def gh_clone_repository(repo_url, target_path, depth=1, commit=None):
     """
     Shallow clones a GitHub repository to the specified target path with the given depth.
 
     Parameters:
     - repo_url (str): The URL of the GitHub repository.
     - target_path (str): The target directory where the repository will be cloned.
-    - depth (int): The depth of the shallow clone (default: 1).
+    - depth (int): The depth of the shallow clone (default: 1); None clones the whole history.
+    - commit (str): Check out this commit after cloning.
 
     Returns:
     - None
@@ -427,4 +428,6 @@ def gh_clone_repository(repo_url, target_path, depth=1):
         os.makedirs(target_path)
 
     # Clone the repository with the specified depth
-    git.Repo.clone_from(repo_url, target_path, depth=depth)
+    repo = git.Repo.clone_from(repo_url, target_path, depth=depth)
+    if commit:
+        repo.git.checkout(commit)

@@ -21,6 +21,7 @@ from celery.exceptions import Ignore
 
 DOI = "10.55458/neurolibre.00041"
 REAL_ISDIR = os.path.isdir
+SEEN = {}
 FORK = "https://github.com/roboneurolibre/paper-repo"
 
 
@@ -115,6 +116,13 @@ def world(tmp_path, monkeypatch):
             return w.load_result
         return run
     w.load_result = (0, "loaded")
+    w.clones, w.commit = [], "abc1234def"
+    monkeypatch.setattr(tasks, "REPOS_PATH", str(tmp_path / "repos"))
+    monkeypatch.setattr(tasks.requests, "get", lambda url: SimpleNamespace(
+        status_code=200 if w.commit else 404, text=(w.commit or "") + "\n"))
+    monkeypatch.setattr(tasks, "gh_clone_repository", lambda url, path, depth=1, commit=None:
+                        w.clones.append((url, commit)) or w.clone_error and (_ for _ in ()).throw(RuntimeError(w.clone_error)))
+    w.clone_error = None
     monkeypatch.setattr(tasks.weft_steps, "subprocess_runner", runner)
     monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: 7)
     return w
@@ -126,6 +134,7 @@ def payload(**extra):
 
 def fake_draft(monkeypatch, problems=None, reason=None, drafted_by="openai-compatible", write=True):
     def draft(doi, data_dir, repo_dir, work, backends, lock, run=None):
+        SEEN['repo_dir'] = str(repo_dir)
         weft, profiles = Path(work) / "00041.weft.yaml", Path(work) / "00041.profiles.json"
         if write:
             weft.write_text("paper: " + doi + "\n")
@@ -143,7 +152,6 @@ def test_draft_comment_files_and_invite(world, monkeypatch):
     assert "p.tsv: 3 columns" in t.comment
     assert "proposed new term foo: Foo" in t.comment
     assert "a unit is guessed" in t.comment
-    assert "openai-compatible" in t.comment
     assert f"{FORK}/edit/main/weft/00041.weft.yaml" in t.comment
     assert "7 terms" in t.comment
     assert "@roboneuro weft check" in t.comment and "@roboneuro weft confirm" in t.comment
@@ -151,8 +159,10 @@ def test_draft_comment_files_and_invite(world, monkeypatch):
     assert world.gh.collaborators == [("ada", "push")]
     assert "—" not in t.comment
     # the paper is loaded into the store first
-    assert world.calls[0][-6:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"][-6:] \
-        or world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"]
+    assert world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"]
+    assert "drafted by the self-hosted model" in t.comment
+    assert world.clones == [(f"https://github.com/roboneurolibre/paper-repo", "abc1234def")]
+    assert SEEN['repo_dir'].endswith("/repos/00041")
 
 
 def test_second_draft_updates_and_says_replaced(world, monkeypatch):
@@ -165,11 +175,11 @@ def test_second_draft_updates_and_says_replaced(world, monkeypatch):
 
 
 def test_redraft_reason_and_problems_are_said(world, monkeypatch):
-    fake_draft(monkeypatch, problems=["column x has no term"], reason="the first draft was not valid",
+    fake_draft(monkeypatch, problems=["column x has no term"], reason="The first draft was not valid",
                drafted_by="anthropic-api")
     tasks.weft_draft_task.run(payload())
     c = FakeTask.last.comment
-    assert "anthropic-api" in c and "the first draft was not valid" in c and "column x has no term" in c
+    assert "drafted by Claude because the first draft was not valid" in c and "column x has no term" in c
 
 
 def test_invite_failure_is_a_sentence(world, monkeypatch):
@@ -305,3 +315,49 @@ def test_extra_payload_survives_to_dict_and_from_dict(monkeypatch):
     assert (d["fields"], d["by"], d["submission"]) == ("a, b", "ada", "x: 1\n")
     again = screening_client.ScreeningClient.from_dict(d)
     assert (again.fields, again.by, again.submission) == ("a, b", "ada", "x: 1\n")
+
+
+def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
+    fake_draft(monkeypatch)
+    tasks.weft_draft_task.run(payload())
+    writes = len(world.gh.writes)
+
+    def failing(doi, data_dir, repo_dir, work, backends, lock, run=None):
+        return tasks.weft_steps.DraftResult(weft=Path(work) / "00041.weft.yaml", profiles=Path(work) / "00041.profiles.json",
+                                            drafted_by="anthropic-api", reason="x", problems=["The data could not be profiled: bad"])
+    monkeypatch.setattr(tasks.weft_steps, "draft", failing)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert "could not be profiled" in FakeTask.last.failed
+    assert len(world.gh.writes) == writes
+
+
+def test_no_published_commit_means_no_draft(world, monkeypatch):
+    world.commit = None
+    fake_draft(monkeypatch)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert "no published commit" in FakeTask.last.failed.lower() or "There is no published commit" in FakeTask.last.failed
+    assert world.gh.writes == [] and world.clones == []
+
+
+def test_clone_failure_is_one_sentence(world, monkeypatch):
+    world.clone_error = "fatal: reference is not a tree\nmore"
+    fake_draft(monkeypatch)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert "could not be cloned" in FakeTask.last.failed and "\n" not in FakeTask.last.failed
+
+
+def test_github_errors_become_a_sentence(world, monkeypatch):
+    from github import GithubException
+    seed_fork(world)
+
+    def boom(*a, **k):
+        raise GithubException(404, {"message": "Not Found", "documentation_url": "x"}, {})
+    monkeypatch.setattr(tasks, "gh_get_file_content", boom)
+    for task in (tasks.weft_check_task, tasks.weft_confirm_task):
+        with pytest.raises(Ignore):
+            task.run(payload(by="ada"))
+        f = FakeTask.last.failed
+        assert f == "The fork paper-repo could not be reached on GitHub: 404 Not Found"
