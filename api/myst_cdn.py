@@ -37,6 +37,7 @@ Usage (on the preprint server, from api/):
 """
 
 import argparse
+import contextlib
 import fcntl
 import json
 import logging
@@ -53,6 +54,8 @@ import yaml
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 DOI_PREFIX = _config["DOI_PREFIX"]
 CDN_ROOT = Path(_config["DATA_ROOT_PATH"]) / _config["CDN_FOLDER"]
+# The link to the served CDN, under CDN_ROOT.
+CDN_CURRENT = CDN_ROOT / "current"
 # Where `evidentron-data publish --out` writes Evidentron's static site.
 EVIDENTRON_SITE = Path(_config["DATA_ROOT_PATH"]) / _config["EVIDENTRON_FOLDER"] / "site"
 
@@ -61,6 +64,9 @@ SITE_ID = "neurolibre"
 # The default of `extras` in publish, add_and_publish and rebuild: Evidentron's site, read when called.
 # Passing extras=None builds without it.
 EVIDENTRON = object()
+
+# How long a rebuild waits for another one to finish before it gives up, in seconds.
+LOCK_WAIT = 1800
 
 
 def project_slug(name: str) -> str:
@@ -142,7 +148,10 @@ def add_site(name: str, version: str, src: Path, root: Path = CDN_ROOT,
 
 
 def _place_extras(extras: Path, out: Path) -> None:
-    """Link Evidentron's terms/, wefts/, dois/ and index.json into out at the same paths."""
+    """Link Evidentron's terms/, wefts/, dois/ and index.json into out at the same paths. extras is usually a link
+    to Evidentron's newest build folder, which a publish can swap at any time: it is resolved once, so every file
+    comes from the same build."""
+    extras = Path(os.path.realpath(extras))
     for entry in ("terms", "wefts", "dois", "index.json"):
         src = extras / entry
         files = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
@@ -219,7 +228,7 @@ def publish(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, 
     The new build and the one it replaced are kept; older ones are removed.
     """
     root, extras = _defaults(root, extras)
-    link = root / "current"
+    link = root / CDN_CURRENT.name
     if link.exists() and not link.is_symlink():
         raise RuntimeError(f"{link} is a folder, not a symlink. Move it away before publishing.")
     builds = root / "builds"
@@ -250,13 +259,41 @@ def publish(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, 
     return report
 
 
+def _duration(seconds: float) -> str:
+    return f"{seconds / 60:g} minutes" if seconds >= 60 else f"{seconds:g} seconds"
+
+
+@contextlib.contextmanager
+def held(path: Path, wait: float, busy: str):
+    """Hold an exclusive lock on the file at path, asking for it again every few seconds without blocking. Past
+    `wait` seconds it raises TimeoutError with the sentence "<busy> for more than <wait>"."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as lock:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"{busy} for more than {_duration(wait)}")
+                time.sleep(min(5, wait / 10))
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _rebuild_lock(root: Path):
+    return held(root / ".lock", LOCK_WAIT, "another rebuild kept the CDN busy")
+
+
 def add_and_publish(name: str, version: str, src: Path, root: Optional[Path] = None,
                     extras: Any = EVIDENTRON) -> Dict[str, Any]:
-    """Add one paper's site build and rebuild the CDN, one caller at a time."""
+    """Add one paper's site build and rebuild the CDN, one caller at a time; TimeoutError when another caller
+    holds the CDN longer than LOCK_WAIT."""
     root, extras = _defaults(root, extras)
-    root.mkdir(parents=True, exist_ok=True)
-    with open(root / ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with _rebuild_lock(root):
         add_site(name, version, src, root)
         return publish(root, extras=extras)
 
@@ -264,9 +301,7 @@ def add_and_publish(name: str, version: str, src: Path, root: Optional[Path] = N
 def rebuild(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, Any]:
     """Rebuild the CDN from the site builds already there, one caller at a time (as add_and_publish)."""
     root, extras = _defaults(root, extras)
-    root.mkdir(parents=True, exist_ok=True)
-    with open(root / ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with _rebuild_lock(root):
         return publish(root, extras=extras)
 
 

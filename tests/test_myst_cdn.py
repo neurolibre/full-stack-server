@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -267,3 +268,52 @@ def test_rebuild_publishes_under_the_lock_with_evidentrons_site(tmp_path, two_si
     report = myst_cdn.rebuild(root)
     assert held == [True]
     assert report["projects"] == 2 and report["extras"] is True
+
+
+# B10: a rebuild waits for the lock without blocking, and reads Evidentron's site through its link once.
+
+def test_a_rebuild_kept_waiting_is_one_sentence(tmp_path, two_sites, monkeypatch):
+    import fcntl
+    root = tmp_path / "cdn-root"
+    root.mkdir()
+    monkeypatch.setattr(myst_cdn, "LOCK_WAIT", 0.2)
+    with open(root / ".lock", "w") as other:
+        fcntl.flock(other, fcntl.LOCK_EX)
+        with pytest.raises(TimeoutError) as e:
+            myst_cdn.rebuild(root, extras=None)
+    assert str(e.value) == "another rebuild kept the CDN busy for more than 0.2 seconds"
+    assert not (root / "current").exists()
+
+
+def test_the_lock_wait_is_half_an_hour():
+    assert myst_cdn.LOCK_WAIT == 1800
+
+
+def test_the_extras_link_is_resolved_once(tmp_path, two_sites, monkeypatch):
+    """publish --out is a link to the newest build folder; a swap of the link during the build must not mix two
+    builds, so every file comes from the folder the link named when the build began."""
+    first = make_extras(tmp_path / "a")
+    second = tmp_path / "b" / "site"
+    (second / "terms").mkdir(parents=True)
+    (second / "terms" / "index.html").write_text("<html>second</html>")
+    link = tmp_path / "site"
+    link.symlink_to(first)
+    real = myst_cdn._place
+    swapped = []
+
+    def place(src, dst):
+        if not swapped and "terms" in Path(dst).parts:     # the link moves as the first of its files is placed
+            swapped.append(True)
+            link.unlink()
+            link.symlink_to(second)
+        real(src, dst)
+    monkeypatch.setattr(myst_cdn, "_place", place)
+    out = tmp_path / "cdn"
+    myst_cdn.build(two_sites, out, extras=link)
+    assert (out / "terms" / "index.html").read_text() == "<html>terms</html>"
+    assert (out / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
+    assert (out / "index.json").exists()
+
+
+def test_the_served_cdn_is_named_once():
+    assert myst_cdn.CDN_CURRENT == myst_cdn.CDN_ROOT / "current"
