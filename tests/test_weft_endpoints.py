@@ -1,31 +1,13 @@
 """The three weft endpoints, through Flask's test client, with the htpasswd check replaced and each task's apply_async faked."""
 
-import ast
-import os
-import sys
-from pathlib import Path
+import re
 from types import SimpleNamespace
 
 import pytest
 
-if not hasattr(ast, "Str"):        # Werkzeug 2.0 (pinned with Flask 2.0) builds routes with ast.Str, gone in Python 3.14
-    class _Str(ast.Constant):
-        def __init__(self, s=""):
-            super().__init__(value=s)
-
-        s = property(lambda self: self.value, lambda self, v: setattr(self, "value", v))
-
-    ast.Str = _Str
-
-API = Path(__file__).resolve().parent.parent / "api"
-sys.path.insert(0, str(API))
-_here = os.getcwd()
-os.chdir(API)                      # the modules read config/*.yaml relative to the api folder
-try:
-    import neurolibre_preprint_api as api
-    import screening_client
-finally:
-    os.chdir(_here)
+import neurolibre_preprint_api as api
+import screening_client
+import weft_messages
 
 ROUTES = {
     "/api/weft/draft": ("weft_draft_task", "WEFT DRAFT"),
@@ -112,5 +94,14 @@ def test_the_options_are_described():
         assert "comment" in schema[key].metadata["description"]
     assert "submitted" not in _description(api.weft_check_post)
     for view in (api.weft_draft_post, api.weft_check_post, api.weft_confirm_post):
-        assert "fork" not in _description(view) and "weft" not in _description(view)
-        assert "on the server" in _description(view)
+        text = _description(view)
+        assert "fork" not in text and "weft" not in re.sub(r"`[^`]*`", "", text)    # only in the commands
+        assert "on the server" in text and "—" not in text
+
+
+def test_the_confirm_endpoint_says_who_confirms_in_the_one_sentence():
+    text = _description(api.weft_confirm_post)
+    assert weft_messages.WHO_CONFIRMS in text
+    assert ("The confirmation is recorded under the name of the author of that comment, who must be the paper's "
+            "author or the issue's editor.") in text
+    assert "without `at`" not in text
