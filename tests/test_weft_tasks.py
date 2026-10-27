@@ -815,6 +815,19 @@ def test_a_check_with_corrections_says_they_were_applied_to_a_copy(world, monkey
     tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
     assert "The corrections from comment 200 were applied." in c
+    assert ("The description passes the check. The check's warnings are not listed after corrections; the draft "
+            "comment lists them.") in c
+    assert "no warnings" not in c and "<details>" not in c
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
+        warnings=["The entry b.csv was added."]))
+    tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
+    c = FakeTask.last.comment
+    assert "warning" not in c.split("<details>")[1]
+    assert c.endswith("<details><summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>")
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
+        errors=["E1"], warnings=["The entry b.csv was added."]))
+    tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.comment.endswith("<summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>")
     assert "An editor or reviewer confirms it with `@roboneuro weft confirm at 200`." in c
 
 
@@ -918,6 +931,9 @@ def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch,
                "           evidence_type: identifier\n           term: plot\n   ```")
     assert ", for example:\n\n" + example + "\n\n   To change a column's term, pick an id" in c
     assert "**What the editor or reviewer does**\nWrite `@roboneuro weft check at <comment id>`" in c
+    assert ("the id is the number at the end of the reply's link. The confirmation is recorded under the name of "
+            "the person who wrote that reply. An editor can write `@roboneuro weft confirm` without `at` to confirm "
+            "the draft as it stands. To confirm only some columns, add `fields <name>, <name>`.") in c
     assert "<summary>Warnings from the check</summary>\n\n- The description has a unit that is guessed." in c
     # the draft itself reads back as the weft
     assert tasks._yaml_block(c) == TWO_TABLES
@@ -967,12 +983,21 @@ def test_term_labels_come_from_the_store_read_only(tmp_path, monkeypatch):
 def test_no_linked_terms_means_no_terms_sentence(world, monkeypatch, tmp_path):
     fake_draft(monkeypatch)
     monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db", links=())))
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (0, None))
     tasks.weft_draft_task.run(payload())
     assert "text was linked" not in FakeTask.last.comment
     monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (0, None))
     monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(tmp_path / "none.db"))
     tasks.weft_draft_task.run(payload())
     assert "text was linked" not in FakeTask.last.comment
+
+
+def test_a_count_with_no_labels_for_the_paper_says_the_count(world, monkeypatch, tmp_path):
+    fake_draft(monkeypatch)
+    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db", links=())))
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (3, None))
+    tasks.weft_draft_task.run(payload())
+    assert "\n\nThe paper's text was linked to 3 shared terms.\n\n" in FakeTask.last.comment
 
 
 def test_the_confirm_comment_names_the_terms_by_their_labels(world, monkeypatch, tmp_path):

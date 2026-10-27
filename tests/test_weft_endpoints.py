@@ -111,4 +111,6 @@ def test_the_options_are_described():
     for key in ("comment_id", "at"):
         assert "comment" in schema[key].metadata["description"]
     assert "submitted" not in _description(api.weft_check_post)
-    assert "fork" in _description(api.weft_check_post)
+    for view in (api.weft_draft_post, api.weft_check_post, api.weft_confirm_post):
+        assert "fork" not in _description(view) and "weft" not in _description(view)
+        assert "on the server" in _description(view)

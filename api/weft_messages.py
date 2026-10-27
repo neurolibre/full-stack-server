@@ -30,8 +30,9 @@ REPLACED = "It replaces the earlier draft on the server."
 
 EDITOR = ("Write `@roboneuro weft check at <comment id>` to check the authors' reply, and "
           "`@roboneuro weft confirm at <comment id>` to confirm it; the id is the number at the end of the reply's "
-          "link. The authors' reply is the record of who confirmed. `@roboneuro weft confirm` without `at` confirms "
-          "the draft as it stands. To confirm only some columns, add `fields <name>, <name>`.")
+          "link. The confirmation is recorded under the name of the person who wrote that reply. An editor can write "
+          "`@roboneuro weft confirm` without `at` to confirm the draft as it stands. To confirm only some columns, "
+          "add `fields <name>, <name>`.")
 
 
 # Sentences that come from the steps and the commands.
@@ -83,7 +84,7 @@ def terms_sentence(count: Optional[int], labels: Optional[List[str]], failure: O
     not, the reason when it failed, and nothing when no term was linked."""
     if count is None:
         return f"The paper's text could not be linked to shared terms: {inner(failure or 'no reason was given')}."
-    if labels is not None:
+    if labels:
         count = len(labels)
     if not count:
         return None
@@ -140,18 +141,27 @@ def applied(comment_id) -> str:
     return f"The corrections from comment {comment_id} were applied."
 
 
+NOT_LISTED_AFTER_CORRECTIONS = ("The check's warnings are not listed after corrections; the draft comment "
+                                "lists them.")
+
+
 def check_comment(corrections_id, errors: List[str], warnings: List[str], confirm_at=None) -> str:
     """The comment for a check: whether it passed, and the errors or warnings. `corrections_id` is the comment
-    whose corrections were applied, `confirm_at` the comment a confirmation would name."""
+    whose corrections were applied, `confirm_at` the comment a confirmation would name. After corrections, the
+    check gives only the notes on applying them, not its own warnings, so the comment says so and lists the
+    notes under their own title."""
     parts = [heading("check"), applied(corrections_id)]
     warnings = [plain(w) for w in warnings]
+    title = "Notes on the corrections" if corrections_id is not None else "Warnings"
     if errors:
         parts.append("The description does not pass the check yet. Fix these, then ask for `@roboneuro weft check` "
                      "again:\n" + bullets([plain(e) for e in errors]))
         if warnings:
-            parts.append(details("Warnings", bullets(warnings)))
+            parts.append(details(title, bullets(warnings)))
         return "\n\n".join(parts)
-    if not warnings:
+    if corrections_id is not None:
+        noted = NOT_LISTED_AFTER_CORRECTIONS
+    elif not warnings:
         noted = "There are no warnings."
     elif len(warnings) == 1:
         noted = "There is 1 warning, listed below; it does not block confirmation."
@@ -161,7 +171,7 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
     command = f"`@roboneuro weft confirm at {confirm_at}`" if confirm_at is not None else "`@roboneuro weft confirm`"
     parts.append(f"An editor or reviewer confirms it with {command}.")
     if warnings:
-        parts.append(details("Warnings", bullets(warnings)))
+        parts.append(details(title, bullets(warnings)))
     return "\n\n".join(parts)
 
 
