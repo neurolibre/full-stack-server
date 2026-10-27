@@ -155,7 +155,8 @@ def terms_sentence(count: Optional[int], labels: Optional[List[str]], failure: O
 
 
 def draft_comment(summary: List[str], terms: Optional[str], example: Optional[str], draft: str,
-                  problems: List[str], warnings: List[str], replaced: bool = False) -> str:
+                  problems: List[str], warnings: List[str], replaced: bool = False,
+                  check_failure: Optional[str] = None) -> str:
     """The comment for a draft. `example` is a yaml block of one real entry of this draft (without its fences),
     `draft` the inside of the collapsed block that shows the draft."""
     parts = [heading("draft"), INTRO, PROPOSAL + (" " + REPLACED if replaced else "")]
@@ -186,6 +187,8 @@ def draft_comment(summary: List[str], terms: Optional[str], example: Optional[st
         parts.append(details("Problems the check found", bullets([plain(p) for p in problems])))
     if warnings:
         parts.append(details("Warnings from the check", bullets([plain(w) for w in warnings])))
+    if check_failure:
+        parts.append(check_not_run(check_failure))
     return "\n\n".join(parts)
 
 
@@ -201,11 +204,21 @@ def applied(comment_id) -> str:
     return f"The corrections from comment {comment_id} were applied."
 
 
+def check_not_run(sentence: str) -> str:
+    return f"The check could not be run: {inner(sentence)}. Ask for `@roboneuro weft check` again later."
+
+
+def cannot_confirm(login: str) -> str:
+    return (f"These corrections are by @{login}, who cannot confirm them: the paper's author or the editor replies "
+            "with them, then `@roboneuro weft confirm at` that reply.")
+
+
 def check_comment(corrections_id, errors: List[str], warnings: List[str], confirm_at=None,
-                  notes: Optional[List[str]] = None) -> str:
+                  notes: Optional[List[str]] = None, not_confirmable_by: Optional[str] = None) -> str:
     """The comment for a check: whether it passed, then its errors, its warnings and its notes (with corrections,
     the notes say how they were applied). `corrections_id` is the comment whose corrections were applied,
-    `confirm_at` the comment a confirmation would name."""
+    `confirm_at` the comment a confirmation would name, `not_confirmable_by` the author of corrections who is
+    neither the paper's author nor the editor, so a confirmation cannot name their comment."""
     parts = [heading("check"), applied(corrections_id)]
     warnings = [plain(w) for w in warnings]
     notes = [plain(n) for n in notes or []]
@@ -225,8 +238,11 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
     else:
         noted = f"There are {len(warnings)} warnings, listed below; they do not block confirmation."
     parts.append(f"The description passes the check. {noted}")
-    parts.append(WHO_CONFIRMS + (f" For this reply, that is `@roboneuro weft confirm at {confirm_at}`."
-                                 if confirm_at is not None else ""))
+    if not_confirmable_by:
+        parts.append(WHO_CONFIRMS + " " + cannot_confirm(not_confirmable_by))
+    else:
+        parts.append(WHO_CONFIRMS + (f" For this reply, that is `@roboneuro weft confirm at {confirm_at}`."
+                                     if confirm_at is not None else ""))
     return "\n\n".join(parts + lists)
 
 
@@ -236,22 +252,44 @@ def check_unreadable(corrections_id, sentence: str) -> str:
 
 # The confirmation.
 
-def term_links(term_ids: List[str], terms_url: Optional[str]) -> List[str]:
-    """Each term as a link to its page, under the address publish gave for the terms; the ids alone when it gave
-    none."""
+def term_links(terms: List[dict], terms_url: Optional[str]) -> List[str]:
+    """Each term ({id, label}) as a link to its page under the address publish gave for the terms, named by its
+    label (by its id, as code, when it has none); the names alone when publish gave no address."""
+    names = [(t["id"], str(t.get("label")) if t.get("label") else f"`{t['id']}`") for t in terms]
     if not terms_url:
-        return [f"`{t}`" for t in term_ids]
+        return [name for _, name in names]
     base = terms_url if terms_url.endswith("/") else terms_url + "/"
-    return [f"[`{t}`]({base}{t}/)" for t in term_ids]
+    return [f"[{name}]({base}{term_id}/)" for term_id, name in names]
+
+
+def proposed_terms(block: Optional[str], used: List[dict]) -> List[str]:
+    """The terms a reply's `yaml` block proposes under `new_terms` that the published terms do not include yet
+    (publish lists a proposed term only once a confirmed item uses it): "`id` (label)"."""
+    try:
+        new_terms = (yaml.safe_load(block or "") or {}).get("new_terms")
+    except (yaml.YAMLError, AttributeError):
+        return []
+    if not isinstance(new_terms, dict):
+        return []
+    known = {t["id"] for t in used}
+    out = []
+    for term_id, info in new_terms.items():
+        if str(term_id) in known:
+            continue
+        label = info.get("label") if isinstance(info, dict) else None
+        out.append(f"`{term_id}`" + (f" ({end(str(label))})" if label else ""))
+    return out
 
 
 def confirm_comment(login: str, reply_id, version: str, addresses: dict, term_links: List[str],
-                    note: Optional[str] = None) -> str:
+                    note: Optional[str] = None, proposed: Optional[List[str]] = None) -> str:
     how = f" (reply in comment {reply_id})" if reply_id is not None else " as the draft stood"
     lines = [f"{label}: {addresses[key]}" for label, key in
              (("FAIR²", "fair2"), ("Croissant", "croissant"), ("Metadata", "metadata")) if addresses.get(key)]
     if term_links:
         lines.append("Terms it uses: " + ", ".join(term_links))
+    if proposed:
+        lines.append("Terms it proposes: " + ", ".join(proposed))
     text = (f"Confirmed by @{login}{how}. The description is now version {version} and is published with the "
             "paper:\n\n" + bullets(lines))
     parts = [heading("confirmed"), text]
@@ -291,7 +329,7 @@ NO_DRAFT = ("There is no draft of this paper's data description on the server ye
 
 CONFIRMED_WITHOUT_PROFILES = ("The confirmed description of this paper's data is on the server without its "
                               "profiles, so it cannot be checked. An editor restores the profiles beside it, or "
-                              "runs the reset command on the server and asks for `@roboneuro weft draft` again.")
+                              + RESET[len("an editor "):] + " and asks for `@roboneuro weft draft` again.")
 
 NO_ARCHIVE_DOI = ("The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the "
                   "data has been deposited (`@roboneuro zenodo publish`, or set the archive DOI in the issue).")
@@ -324,14 +362,21 @@ def github_unreachable(what: str, reason: str) -> str:
     return f"GitHub could not be reached for {what} ({reason}). Ask again in a minute."
 
 
-def store_busy(minutes: str) -> str:
-    return (f"Another task kept the paper store busy for more than {minutes} minutes, so nothing was done. Ask "
+def store_busy(how_long: str) -> str:
+    return (f"Another task kept the paper store busy for more than {how_long}, so nothing was done. Ask "
             "again in a while.")
 
 
-def confirmed_not_published(version: str, errors: List[str]) -> str:
+def not_loaded(sentence: str) -> str:
+    return f"The paper could not be loaded into the store: {inner(sentence)}."
+
+
+def confirmed_not_published(version: str, errors: List[str], again_at=None) -> str:
+    """`again_at` is the reply whose corrections were confirmed: a confirmation without it would publish the
+    description as it was before them."""
+    command = f"`@roboneuro weft confirm at {again_at}`" if again_at is not None else "`@roboneuro weft confirm`"
     return listed(f"The description was confirmed at version {version} but not published", errors,
-                  "Asking for `@roboneuro weft confirm` again is safe once this is fixed.")
+                  f"Asking for {command} again is safe once this is fixed.")
 
 
 def not_confirmed(errors: List[str]) -> str:

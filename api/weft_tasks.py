@@ -25,24 +25,19 @@ import myst_cdn
 import weft_messages as say
 import weft_steps
 from github_client import gh_clone_repository, gh_get_issue_comment, gh_get_project_name, gh_read_from_issue_body
-from neurolibre_celery_tasks import (BaseNeuroLibreTask, DATA_NFS_PATH, DATA_ROOT_PATH, DOI_PREFIX, DOI_SUFFIX,
-                                     GH_ORGANIZATION, _published_commit, celery_app, common_config,
-                                     handle_soft_timeout)
+from neurolibre_celery_tasks import (BaseNeuroLibreTask, DATA_NFS_PATH, DOI_PREFIX, DOI_SUFFIX, GH_ORGANIZATION,
+                                     _published_commit, celery_app, handle_soft_timeout)
 
-EVIDENTRON_PATH = os.path.join(DATA_ROOT_PATH, common_config['EVIDENTRON_FOLDER'])
-GRAPH_DB_PATH = os.path.join(EVIDENTRON_PATH, "graph.db")
-WEFTS_PATH = os.path.join(EVIDENTRON_PATH, "wefts")
+# The places on the server are weft_steps' (EVIDENTRON_PATH, WEFTS_PATH, GRAPH_DB_PATH, SITE_PATH, the store's lock).
+EVIDENTRON_PATH = str(weft_steps.EVIDENTRON_PATH)
+GRAPH_DB_PATH = str(weft_steps.GRAPH_DB_PATH)
+WEFTS_PATH = str(weft_steps.WEFTS_PATH)
 REPOS_PATH = os.path.join(EVIDENTRON_PATH, "repos")
 LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
 EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
-EVIDENTRON_SITE_PATH = str(myst_cdn.EVIDENTRON_SITE)
+EVIDENTRON_SITE_PATH = str(weft_steps.SITE_PATH)
 CDN_CURRENT_PATH = str(myst_cdn.CDN_CURRENT)
-# Held around the steps that write the store, the vocabulary and the site, so two of these tasks never write them at
-# once. A confirmation holds it longest: across loading the paper, the check, the confirmation, the load, both
-# exports, the publication of Evidentron's site and the CDN's rebuild, up to about two hours when every step takes
-# its whole time limit. A task waits at most half an hour for it, then says the store was busy.
-STORE_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "store.lock")
-STORE_LOCK_WAIT = 1800
+HARD_MARGIN = 600               # the hard time limit of a task: its soft limit, then this long to say why it stopped
 BACKEND_KEYS = ("draft", "redraft", "terms")
 
 # A fenced block whose info string is yaml or yml, closed by a fence as long as its opening one; the last one
@@ -75,6 +70,8 @@ def _weft_paper(task):
     stem = weft_steps._stem(doi)
     try:
         project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
+    except (GithubException, requests.RequestException) as e:
+        task.fail(say.data_folder_unknown(_github_reason(e)))
     except Exception as e:
         reason = str(e).strip()
         task.fail(say.data_folder_unknown(reason if reason and "\n" not in reason else None))
@@ -128,13 +125,13 @@ def _errors_as_sentences(task):
 
 @contextlib.contextmanager
 def _store_lock(task):
-    """Hold STORE_LOCK_PATH while the store, the vocabulary or the site is written; another task waits its turn.
-    A wait beyond STORE_LOCK_WAIT seconds fails the task with one sentence."""
+    """Hold the store's lock (weft_steps.store_lock) while the store, the vocabulary or the site is written; another
+    task waits its turn. A wait beyond weft_steps.STORE_LOCK_WAIT fails the task with one sentence."""
     with contextlib.ExitStack() as stack:
         try:
-            stack.enter_context(myst_cdn.held(Path(STORE_LOCK_PATH), STORE_LOCK_WAIT, "the store was busy"))
+            stack.enter_context(weft_steps.store_lock())
         except TimeoutError:
-            task.fail(say.store_busy(f"{STORE_LOCK_WAIT / 60:g}"))
+            task.fail(say.store_busy(myst_cdn.duration(weft_steps.STORE_LOCK_WAIT)))
         yield
 
 
@@ -143,7 +140,7 @@ def _load_paper(task, paper, run):
     archive DOI minted after a draft among it). Call it with the store lock held."""
     sentence = weft_steps.load_paper(paper.doi, Path(CDN_CURRENT_PATH), Path(GRAPH_DB_PATH), run)
     if sentence:
-        task.fail(sentence)
+        task.fail(say.not_loaded(sentence))
 
 
 def _published_clone(task, paper):
@@ -160,11 +157,12 @@ def _published_clone(task, paper):
     target = os.path.join(REPOS_PATH, paper.stem)
     shutil.rmtree(target, ignore_errors=True)
     try:
-        gh_clone_repository(f"https://github.com/{fork_name}", target, depth=None, commit=commit)
+        gh_clone_repository(f"https://github.com/{fork_name}", target, depth=None, commit=commit,
+                            timeout=weft_steps.CLONE_TIMEOUT)
     except Exception as e:
-        lines = str(e).strip().splitlines()
-        task.fail(f"The repository {fork_name} could not be cloned at {commit[:7]}: "
-                  f"{lines[-1] if lines else e.__class__.__name__}")
+        lines = [line.strip() for line in str(e).strip().split("\n") if line.strip()]
+        why = say.end(lines[-1] if lines else e.__class__.__name__)
+        task.fail(f"The repository {fork_name} could not be cloned at {commit[:7]}: {why}.")
     return target
 
 
@@ -252,7 +250,7 @@ def draft(task):
 
     def comment(inside):
         return say.draft_comment(result.summary, terms, say.example(text), inside, result.problems,
-                                 result.warnings, replaced=replaced)
+                                 result.warnings, replaced=replaced, check_failure=result.check_failure)
     message = comment(say.draft_block(text))
     if len(message) > MAX_DRAFT_IN_COMMENT:
         message = comment(say.too_long(paper.weft_name))
@@ -269,13 +267,21 @@ def check(task):
     result = weft_steps.check(Path(weft), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH),
                               submission=submission)
     corrections = source if submission else None
+    if result.failure:
+        task.succeed(say.check_unreadable(corrections, say.check_not_run(result.failure)), collapsable=False)
+        return f"The description of the data of {paper.doi} could not be checked"
     if result.unreadable:
         task.succeed(say.check_unreadable(corrections, result.unreadable), collapsable=False)
         return f"The description of the data of {paper.doi} could not be read"
     at = getattr(task.screening, "at", None)
     confirm_at = source if (submission or at is not None) else None
-    task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at, result.notes),
-                 collapsable=False)
+    refused = None
+    if confirm_at is not None and login:
+        # A confirmation at that comment is recorded under its author, who must be the paper's author or the editor.
+        if login.lower() not in {name.lower() for name in (_issue_author(task), _issue_editor(task)) if name}:
+            confirm_at, refused = None, login
+    task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at, result.notes,
+                                   not_confirmable_by=refused), collapsable=False)
     return f"Checked the description of the data of {paper.doi}"
 
 
@@ -301,8 +307,9 @@ def confirm(task):
         result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, submission,
                                     Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH),
                                     record=Path(WEFTS_PATH))
+        reply = source if (submission or getattr(screening, "at", None) is not None) else None
         if result.errors and result.confirmed:
-            task.fail(say.confirmed_not_published(result.version, result.errors))
+            task.fail(say.confirmed_not_published(result.version, result.errors, again_at=reply))
         if result.errors:
             task.fail(say.not_confirmed(result.errors))
         try:
@@ -311,16 +318,17 @@ def confirm(task):
         except Exception as e:
             logging.exception("MyST CDN rebuild after a confirmation failed")
             note = say.cdn_not_rebuilt(str(e) if isinstance(e, TimeoutError) else e.__class__.__name__)
-    reply = source if (submission or getattr(screening, "at", None) is not None) else None
     task.succeed(say.confirm_comment(by, reply, result.version, result.addresses,
-                                     say.term_links(result.terms, result.terms_url), note), collapsable=False)
+                                     say.term_links(result.terms, result.terms_url), note,
+                                     proposed=say.proposed_terms(block, result.terms)), collapsable=False)
     return f"Confirmed the description of the data of {paper.doi}"
 
 
-# The tasks, under the names they had in the celery module. Their time limits cover every step at its own time
-# limit (weft_steps.TIME_LIMITS) plus the waits for the store's lock.
+# The tasks, under the names they had in the celery module. Their soft time limits are the sums of the steps they run
+# at their own limits (weft_steps.DRAFT_SECONDS, CONFIRM_SECONDS); the check runs one step.
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_draft_task", soft_time_limit=23000, time_limit=24000)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_draft_task", soft_time_limit=weft_steps.DRAFT_SECONDS,
+                 time_limit=weft_steps.DRAFT_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def weft_draft_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -336,7 +344,8 @@ def weft_check_task(self, screening_dict):
         return check(task)
 
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_confirm_task", soft_time_limit=11000, time_limit=12000)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_confirm_task",
+                 soft_time_limit=weft_steps.CONFIRM_SECONDS, time_limit=weft_steps.CONFIRM_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def weft_confirm_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)

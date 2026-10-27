@@ -11,7 +11,7 @@ from celery.exceptions import Ignore
 import neurolibre_celery_tasks as celery_tasks
 import screening_client
 import weft_tasks as tasks
-from conftest import DOI, FakeGitHub, FakeTask
+from conftest import DOI, FakeGitHub, FakeTask, said
 
 REAL_ISDIR = os.path.isdir
 SEEN = {}
@@ -20,10 +20,11 @@ ADDRESSES = {"metadata": f"{CDN}/dois/{DOI}.json", "fair2": f"{CDN}/wefts/{DOI}/
              "croissant": f"{CDN}/wefts/{DOI}/croissant.json"}
 
 
-def published(version="1.0.0", terms=("age",)):
+def published(version="1.0.0", terms=(("age", "age"),)):
     """What weft_steps.confirm gives when every step worked."""
     return tasks.weft_steps.ConfirmResult(version=version, confirmed=True, addresses=dict(ADDRESSES),
-                                          terms=list(terms), terms_url=f"{CDN}/terms/")
+                                          terms=[{"id": i, "label": label} for i, label in terms],
+                                          terms_url=f"{CDN}/terms/")
 
 
 @pytest.fixture
@@ -56,17 +57,19 @@ def world(tmp_path, monkeypatch):
             w.calls.append(argv)
             return w.load_result
         return run
-    w.load_result = (0, "loaded")
+    w.load_result = (0, said("graph", papers=[{"doi": DOI, "loaded": True}]))
     w.clones, w.commit = [], "abc1234def"
     monkeypatch.setattr(tasks, "REPOS_PATH", str(tmp_path / "repos"))
     monkeypatch.setattr(tasks, "_published_commit", lambda org, repo: w.commit)
-    monkeypatch.setattr(tasks, "gh_clone_repository", lambda url, path, depth=1, commit=None:
-                        w.clones.append((url, commit)) or w.clone_error and (_ for _ in ()).throw(RuntimeError(w.clone_error)))
+    monkeypatch.setattr(tasks, "gh_clone_repository", lambda url, path, depth=1, commit=None, timeout=None:
+                        w.clones.append((url, commit)) or w.clone_timeouts.append(timeout)
+                        or w.clone_error and (_ for _ in ()).throw(RuntimeError(w.clone_error)))
+    w.clone_timeouts = []
     w.clone_error = None
     monkeypatch.setattr(tasks.weft_steps, "subprocess_runner", runner)
     monkeypatch.setattr(tasks.weft_steps, "link_terms",
                         lambda doi, db, backend, run=None: tasks.weft_steps.LinkResult(linked=7))
-    monkeypatch.setattr(tasks, "STORE_LOCK_PATH", str(tmp_path / "store.lock"))
+    monkeypatch.setattr(tasks.weft_steps, "STORE_LOCK_PATH", tmp_path / "store.lock")
     w.rebuilds = []
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: w.rebuilds.append(True) or {"projects": 3, "clashes": []})
     return w
@@ -109,7 +112,7 @@ def test_draft_comment_shows_the_draft_and_invites_nobody(world, monkeypatch):
     assert (world.work / "00041.profiles.json").exists()
     assert "—" not in t.comment
     # the paper is loaded into the store first
-    assert world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db"]
+    assert world.calls[0][3:] == ["/DATA/cdn/current", "--doi", DOI, "--db", "/DATA/evidentron/graph.db", "--json"]
     assert "A first draft was made with a language model from the files themselves." in t.comment
     assert "openai-compatible" not in t.comment and "self-hosted" not in t.comment
     assert world.clones == [(f"https://github.com/roboneurolibre/paper-repo", "abc1234def")]
@@ -162,12 +165,12 @@ def test_missing_data_folder_fails(world, monkeypatch):
 
 
 def test_load_failure_is_one_sentence(world, monkeypatch):
-    world.load_result = (1, "Traceback (most recent call last):\n  File x\nValueError: no such site")
+    world.load_result = (1, said("graph", errors=["The paper was not loaded from /DATA/cdn/current: no such site."]))
     fake_draft(monkeypatch)
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
-    assert "Traceback" not in FakeTask.last.failed and "\n" not in FakeTask.last.failed
-    assert "no such site" in FakeTask.last.failed
+    assert FakeTask.last.failed == ("The paper could not be loaded into the store: the paper was not loaded from "
+                                    "/DATA/cdn/current: no such site.")
 
 
 def test_draft_that_wrote_nothing_fails_with_the_problem(world, monkeypatch):
@@ -446,7 +449,7 @@ def test_clone_failure_is_one_sentence(world, monkeypatch):
     fake_draft(monkeypatch)
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
-    assert "could not be cloned" in FakeTask.last.failed and "\n" not in FakeTask.last.failed
+    assert FakeTask.last.failed == "The repository roboneurolibre/paper-repo could not be cloned at abc1234: more."
 
 
 def test_github_errors_become_a_sentence(world, monkeypatch):
@@ -648,17 +651,18 @@ def test_draft_holds_the_store_lock_for_the_load_and_the_linking(world, monkeypa
     held = {}
 
     def runner(work):
-        return lambda argv: held.setdefault("load", _busy(tasks.STORE_LOCK_PATH)) and (0, "") or (0, "")
+        loaded = (0, said("graph", papers=[{"doi": DOI, "loaded": True}]))
+        return lambda argv: held.setdefault("load", _busy(tasks.weft_steps.STORE_LOCK_PATH)) and loaded or loaded
     monkeypatch.setattr(tasks.weft_steps, "subprocess_runner", runner)
 
     def draft(*a, **k):
-        held["draft"] = _busy(tasks.STORE_LOCK_PATH)
+        held["draft"] = _busy(tasks.weft_steps.STORE_LOCK_PATH)
         return fake_result(*a)
     fake_draft(monkeypatch)
     fake_result = tasks.weft_steps.draft
     monkeypatch.setattr(tasks.weft_steps, "draft", draft)
     monkeypatch.setattr(tasks.weft_steps, "link_terms",
-                        lambda *a, **k: held.setdefault("link", _busy(tasks.STORE_LOCK_PATH))
+                        lambda *a, **k: held.setdefault("link", _busy(tasks.weft_steps.STORE_LOCK_PATH))
                         and tasks.weft_steps.LinkResult(linked=3) or tasks.weft_steps.LinkResult(linked=3))
     tasks.weft_draft_task.run(payload())
     assert held == {"load": True, "draft": False, "link": True}
@@ -669,22 +673,22 @@ def test_confirm_holds_the_store_lock_and_reloads_the_paper_first(world, monkeyp
     held = {}
 
     def confirm(*a, **k):
-        held["confirm"] = _busy(tasks.STORE_LOCK_PATH)
+        held["confirm"] = _busy(tasks.weft_steps.STORE_LOCK_PATH)
         return tasks.weft_steps.ConfirmResult(version="1.0.0", confirmed=True, addresses={})
     monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
-    monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: held.setdefault("rebuild", _busy(tasks.STORE_LOCK_PATH)) and {})
+    monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: held.setdefault("rebuild", _busy(tasks.weft_steps.STORE_LOCK_PATH)) and {})
     tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert held == {"confirm": True, "rebuild": True}
     assert world.calls[0][1:] == ["-m", "evidentron.graph", "/DATA/cdn/current", "--doi", DOI,
-                                  "--db", "/DATA/evidentron/graph.db"]
+                                  "--db", "/DATA/evidentron/graph.db", "--json"]
     assert "--identifier" not in world.calls[0]
 
 
 def test_a_store_kept_busy_is_one_sentence(world, monkeypatch):
     import fcntl
     seed_server(world)
-    monkeypatch.setattr(tasks, "STORE_LOCK_WAIT", 0.2)
-    with open(tasks.STORE_LOCK_PATH, "a") as other:
+    monkeypatch.setattr(tasks.weft_steps, "STORE_LOCK_WAIT", 0.2)
+    with open(tasks.weft_steps.STORE_LOCK_PATH, "a") as other:
         fcntl.flock(other, fcntl.LOCK_EX)
         with pytest.raises(Ignore):
             tasks.weft_confirm_task.run(payload(command_comment_id=100))
@@ -694,7 +698,7 @@ def test_a_store_kept_busy_is_one_sentence(world, monkeypatch):
 
 def test_a_failed_reload_at_confirm_is_one_sentence(world, monkeypatch):
     seed_server(world)
-    world.load_result = (1, "Traceback (most recent call last):\n  File x\nValueError: no such site")
+    world.load_result = (1, said("graph", errors=["The paper was not loaded: no such site."]))
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
     with pytest.raises(Ignore):
         tasks.weft_confirm_task.run(payload(command_comment_id=100))
@@ -934,7 +938,8 @@ def test_a_count_with_no_labels_says_the_count(world, monkeypatch):
 
 def test_the_confirm_comment_gives_publishs_addresses_and_the_terms(world, monkeypatch):
     seed_server(world)
-    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: published("1.1.0", ["crop-yield", "soil-ph"]))
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: published(
+        "1.1.0", [("crop-yield", "crop yield"), ("soil-ph", None)]))
     tasks.weft_confirm_task.run(payload(command_comment_id=100))
     keep("confirm-comment.md", FakeTask.last.comment)
     assert FakeTask.last.comment == (
@@ -943,7 +948,7 @@ def test_the_confirm_comment_gives_publishs_addresses_and_the_terms(world, monke
         f"- FAIR²: {CDN}/wefts/{DOI}/fair2.json\n"
         f"- Croissant: {CDN}/wefts/{DOI}/croissant.json\n"
         f"- Metadata: {CDN}/dois/{DOI}.json\n"
-        f"- Terms it uses: [`crop-yield`]({CDN}/terms/crop-yield/), [`soil-ph`]({CDN}/terms/soil-ph/)")
+        f"- Terms it uses: [crop yield]({CDN}/terms/crop-yield/), [`soil-ph`]({CDN}/terms/soil-ph/)")
 
 
 # B10: the backends, the clone, failures and timeouts.
@@ -989,7 +994,7 @@ def test_a_failed_clone_leaves_the_earlier_draft(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The repository roboneurolibre/paper-repo could not be cloned at abc1234: "
-                                    "fatal: could not read from remote repository")
+                                    "fatal: could not read from remote repository.")
     assert {p.name: p.read_text() for p in world.work.iterdir()} == earlier
 
 
@@ -1033,7 +1038,7 @@ def test_a_data_folder_that_cannot_be_found_is_one_sentence(world, monkeypatch, 
 
 
 def test_the_store_lock_waits_half_an_hour():
-    assert tasks.STORE_LOCK_WAIT == 1800
+    assert tasks.weft_steps.STORE_LOCK_WAIT == 1800 and not hasattr(tasks, "STORE_LOCK_WAIT")
 
 
 def test_a_cdn_rebuild_kept_waiting_says_why(world, monkeypatch):
@@ -1060,3 +1065,75 @@ def test_the_tasks_keep_their_names_and_are_registered():
     for name in ("weft_draft_task", "weft_check_task", "weft_confirm_task"):
         assert getattr(tasks, name).name == f"neurolibre_celery_tasks.{name}"
         assert f"neurolibre_celery_tasks.{name}" in celery_tasks.celery_app.tasks
+
+
+# B10 review.
+
+def test_the_clone_has_a_time_limit(world, monkeypatch):
+    fake_draft(monkeypatch)
+    tasks.weft_draft_task.run(payload())
+    assert world.clone_timeouts == [tasks.weft_steps.CLONE_TIMEOUT] == [600]
+
+
+def test_the_task_limits_come_from_the_steps():
+    assert tasks.weft_draft_task.soft_time_limit == tasks.weft_steps.DRAFT_SECONDS
+    assert tasks.weft_draft_task.time_limit == tasks.weft_steps.DRAFT_SECONDS + tasks.HARD_MARGIN
+    assert tasks.weft_confirm_task.soft_time_limit == tasks.weft_steps.CONFIRM_SECONDS
+    assert tasks.weft_confirm_task.time_limit == tasks.weft_steps.CONFIRM_SECONDS + tasks.HARD_MARGIN
+
+
+def test_a_github_error_reading_the_data_requirement_is_its_reason(world, monkeypatch):
+    from github import GithubException
+
+    def boom(client, url):
+        raise GithubException(502, {"message": "Bad Gateway"}, {})
+    monkeypatch.setattr(tasks, "gh_get_project_name", boom)
+    fake_draft(monkeypatch)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert FakeTask.last.failed == "The paper's data folder could not be found on the server: 502 Bad Gateway."
+
+
+def test_a_check_that_could_not_run_is_not_a_fault_of_the_description(world, monkeypatch):
+    seed_server(world)
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
+        failure="The check step took longer than 15 minutes and was stopped."))
+    tasks.weft_check_task.run(payload(command_comment_id=100))
+    c = FakeTask.last.comment
+    assert "The check could not be run: the check step took longer than 15 minutes and was stopped." in c
+    assert "Fix these" not in c and "passes" not in c
+
+
+def test_a_block_by_someone_who_cannot_confirm_is_not_offered_for_confirmation(world, monkeypatch):
+    seed_server(world)
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult())
+    world.comments[100] = ("rita", "@roboneuro weft check\n```yaml\nfiles: []\n```")
+    tasks.weft_check_task.run(payload(command_comment_id=100))
+    c = FakeTask.last.comment
+    assert "confirm at 100" not in c
+    assert ("These corrections are by @rita, who cannot confirm them: the paper's author or the editor replies with "
+            "them, then `@roboneuro weft confirm at` that reply.") in c
+    world.comments[100] = ("ada", "@roboneuro weft check\n```yaml\nfiles: []\n```")
+    tasks.weft_check_task.run(payload(command_comment_id=100))
+    assert "For this reply, that is `@roboneuro weft confirm at 100`." in FakeTask.last.comment
+
+
+def test_confirmed_but_not_kept_names_the_reply_to_confirm_again(world, monkeypatch):
+    seed_server(world)
+    world.comments[100] = ("eddie", "@roboneuro weft confirm at 200")
+    world.comments[200] = ("ada", "```yaml\nfiles: []\n```")
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
+        version="1.2.0", confirmed=True, errors=["The disk is full."]))
+    with pytest.raises(Ignore):
+        tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed.endswith("Asking for `@roboneuro weft confirm at 200` again is safe once this is fixed.")
+
+
+def test_the_terms_a_reply_proposes_are_named(world, monkeypatch):
+    seed_server(world)
+    world.comments[100] = ("eddie", "@roboneuro weft confirm at 200")
+    world.comments[200] = ("ada", "```yaml\nfiles: []\nnew_terms:\n  leaf-area: {label: leaf area}\n  soil-ph: {}\n```")
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: published("1.1.0", [("soil-ph", "soil pH")]))
+    tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
+    c = FakeTask.last.comment
+    assert c.endswith(f"- Terms it uses: [soil pH]({CDN}/terms/soil-ph/)\n- Terms it proposes: `leaf-area` (leaf area)")
