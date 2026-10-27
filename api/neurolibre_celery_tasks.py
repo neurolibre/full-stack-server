@@ -229,6 +229,13 @@ def handle_soft_timeout(func):
     
     return wrapper
 
+def _published_commit(org, repo):
+    """The commit of the newest production build of org/repo on the preview server (its latest.txt), or None when
+    it has none. A network failure raises requests.RequestException; the server gets 20 seconds to answer."""
+    response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{org}/{repo}/latest.txt", timeout=20)
+    commit = response.text.strip() if response.status_code == 200 else ""
+    return commit or None
+
 def fast_copytree(src, dst):
     # Create a temporary directory for the zip file
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1663,16 +1670,13 @@ def preprint_build_pdf_draft(self, payload):
 def myst_upload_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     # Check if there is a latest.txt file in the myst build folder of the forked repo on the preview server.
-    response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/latest.txt")
-    latest_commit = None
+    latest_commit = _published_commit(GH_ORGANIZATION, task.repo_name)
     record_name = item_to_record_name("book")
 
     task.start("🔄 Checking if there's a myst build on the preview server.")
 
-    if response.status_code == 200:
+    if latest_commit:
         # If there is, double check that there's a myst website.
-        # Here response.text is the commit hash.
-        latest_commit = response.text
         response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/{latest_commit}/_build/html/index.html")
         
         if response.status_code == 200:
@@ -1716,7 +1720,7 @@ def myst_upload_task(self, screening_dict):
             else:
                 task.fail(f"⛔️ Failed to sync production html/site/execute/template assets to production server: {output}")
     else:
-        task.fail(f"⛔️ Failed to upload MyST build assets to zenodo as none found for {GH_ORGANIZATION}/{task.repo_name} {response.text}")
+        task.fail(f"⛔️ Failed to upload MyST build assets to zenodo as none found for {GH_ORGANIZATION}/{task.repo_name}: the preview server has no latest.txt for it.")
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
@@ -1840,10 +1844,9 @@ def add_to_myst_cdn(task, doi_name, version):
     """
     try:
         # Same lookup as myst_upload_task: the newest production build of the fork.
-        response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{GH_ORGANIZATION}/{task.repo_name}/latest.txt")
-        if response.status_code != 200:
+        commit = _published_commit(GH_ORGANIZATION, task.repo_name)
+        if not commit:
             return f"⚠️ Not added to the MyST CDN: no latest.txt for {GH_ORGANIZATION}/{task.repo_name} on the preview server."
-        commit = response.text.strip()
         site_path = os.path.join(DATA_ROOT_PATH, MYST_FOLDER, GH_ORGANIZATION, task.repo_name, commit, "_build", "site")
         remote_path = os.path.join("neurolibre-preview:", site_path[1:])
         process = subprocess.Popen(["/usr/bin/rsync", "-avzR", remote_path, "/"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -2544,422 +2547,7 @@ def clean_garbage_files(source_path, unwanted_dirs=None, unwanted_files=None):
     
     return removed_count
 
-"""
-The weft of a paper: draft, check and confirm, reported on the review issue.
-The steps themselves are in weft_steps; the tasks add the places on this
-server and the comment. The server is the place of record for wefts: the
-only thing these tasks write on GitHub is the comment on the review issue,
-and the paper's repository is only read, cloned at its published commit.
-"""
-import contextlib
-import fcntl
-import sqlite3
-import weft_messages as say
-import weft_steps
-from pathlib import Path
-from types import SimpleNamespace
 
-EVIDENTRON_FOLDER = common_config['EVIDENTRON_FOLDER']
-EVIDENTRON_PATH = os.path.join(DATA_ROOT_PATH, EVIDENTRON_FOLDER)
-GRAPH_DB_PATH = os.path.join(EVIDENTRON_PATH, "graph.db")
-WEFTS_PATH = os.path.join(EVIDENTRON_PATH, "wefts")
-REPOS_PATH = os.path.join(EVIDENTRON_PATH, "repos")
-LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
-# Held around the steps that write the store, the vocabulary and the site, so two weft tasks never write them at once.
-STORE_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "store.lock")
-STORE_LOCK_WAIT = 600
-EVIDENTRON_SITE_PATH = os.path.join(EVIDENTRON_PATH, "site")
-EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
-CDN_CURRENT_PATH = os.path.join(DATA_ROOT_PATH, common_config['CDN_FOLDER'], "current")
-
-DEFAULT_WEFT_BACKENDS = {"draft": "openai-compatible", "redraft": "anthropic-api", "terms": "anthropic-api"}
-
-
-def _weft_backends():
-    """The backends for drafting, redrafting and linking terms, from the evidentron config; defaults when it has none."""
-    backends = dict(DEFAULT_WEFT_BACKENDS)
-    try:
-        with open(EVIDENTRON_CONFIG) as f:
-            found = ((yaml.safe_load(f) or {}).get("weft") or {}).get("backend")
-    except (OSError, yaml.YAMLError, AttributeError):
-        return backends
-    if isinstance(found, dict):
-        backends.update({k: found[k] for k in backends if found.get(k)})
-    return backends
-
-
-def _weft_paper(task):
-    """What every weft task needs: the paper's DOI, its stem, the data folder, the work folder and the file names."""
-    issue_id = task.screening.issue_id
-    doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
-    stem = weft_steps._stem(doi)
-    try:
-        project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
-    except Exception as e:
-        task.fail(f"The data requirement of {doi} could not be read, so the paper's data folder is unknown: {e}")
-    data_dir = os.path.join(DATA_NFS_PATH, project_name)
-    if not os.path.isdir(data_dir):
-        task.fail(say.data_missing(project_name))
-    work = os.path.join(WEFTS_PATH, stem)
-    os.makedirs(work, exist_ok=True)
-    return SimpleNamespace(doi=doi, stem=stem, data_dir=data_dir, work=work,
-                           weft_name=f"{stem}.weft.yaml", profiles_name=f"{stem}.profiles.json")
-
-
-def _server_weft(task, paper):
-    """The weft and its profiles from the server, in the work folder: a copy of the flat confirmed weft and its
-    profiles when there is one (so a failed step never touches the confirmed copy), else the draft. Fails with a
-    sentence when the weft or its profiles are missing."""
-    weft = os.path.join(paper.work, paper.weft_name)
-    profiles = os.path.join(paper.work, paper.profiles_name)
-    confirmed = os.path.join(WEFTS_PATH, paper.weft_name)
-    if os.path.isfile(confirmed):
-        confirmed_profiles = os.path.join(WEFTS_PATH, paper.profiles_name)
-        if not os.path.isfile(confirmed_profiles):
-            task.fail(say.CONFIRMED_WITHOUT_PROFILES)
-        shutil.copyfile(confirmed, weft)
-        shutil.copyfile(confirmed_profiles, profiles)
-    if not (os.path.isfile(weft) and os.path.isfile(profiles)):
-        task.fail(say.NO_DRAFT)
-    return weft, profiles
-
-
-def _github_reason(e):
-    if isinstance(e, GithubException):
-        data = e.data if isinstance(e.data, dict) else {}
-        return f"{e.status} {data.get('message') or ''}".strip()
-    return e.__class__.__name__
-
-
-@contextlib.contextmanager
-def _errors_as_sentences(task):
-    """A GitHub, network or local file error inside becomes one sentence on the issue; the task's own failures
-    pass through."""
-    try:
-        yield
-    except Ignore:
-        raise
-    except (GithubException, requests.RequestException) as e:
-        task.fail(say.github_unreachable("the review issue", _github_reason(e)))
-    except OSError as e:
-        task.fail(f"The paper's files could not be written on the server: {e.strerror or e.__class__.__name__}.")
-
-
-@contextlib.contextmanager
-def _store_lock(task):
-    """Hold STORE_LOCK_PATH while the store, the vocabulary or the site is written; another weft task waits its
-    turn. A wait beyond STORE_LOCK_WAIT seconds fails the task with one sentence."""
-    os.makedirs(os.path.dirname(STORE_LOCK_PATH), exist_ok=True)
-    with open(STORE_LOCK_PATH, "a") as lock:
-        deadline = time.monotonic() + STORE_LOCK_WAIT
-        while True:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    task.fail(say.store_busy(f"{STORE_LOCK_WAIT / 60:g}"))
-                time.sleep(min(5, STORE_LOCK_WAIT / 10))
-        try:
-            yield
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
-
-
-def _load_paper(task, run, paper):
-    """Load the paper from the local CDN into the store, so the store has what the issue has now (the data
-    archive DOI minted after a draft among it). Call it with the store lock held."""
-    code, output = run(weft_steps.graph_command() + [CDN_CURRENT_PATH, "--doi", paper.doi, "--db", GRAPH_DB_PATH])
-    if code != 0:
-        task.fail(f"The paper could not be loaded into the store: {weft_steps._why(output)}")
-
-
-def _published_clone(task, paper):
-    """Clone the paper's repository at the commit published on the preview server into REPOS_PATH/<stem>, only to
-    read it; fail with a sentence if it cannot be."""
-    fork_name = f"{GH_ORGANIZATION}/{task.repo_name}"
-    try:
-        response = requests.get(f"{PREVIEW_SERVER}/{MYST_FOLDER}/{fork_name}/latest.txt")
-    except requests.RequestException as e:
-        task.fail(f"The published commit of {fork_name} could not be read from the preview server: {e.__class__.__name__}")
-    commit = response.text.strip() if response.status_code == 200 else ""
-    if not commit:
-        task.fail(say.NO_PUBLISHED_BUILD)
-    target = os.path.join(REPOS_PATH, paper.stem)
-    shutil.rmtree(target, ignore_errors=True)
-    try:
-        gh_clone_repository(f"https://github.com/{fork_name}", target, depth=None, commit=commit)
-    except Exception as e:
-        lines = str(e).strip().splitlines()
-        task.fail(f"The repository {fork_name} could not be cloned at {commit[:7]}: {lines[-1] if lines else e.__class__.__name__}")
-    return target
-
-
-def _read_store(query, args):
-    """Rows from the graph store, opened read-only so that a missing store is an error and never a new file."""
-    con = sqlite3.connect(Path(os.path.abspath(GRAPH_DB_PATH)).as_uri() + "?mode=ro", uri=True)
-    try:
-        return con.execute(query, args).fetchall()
-    finally:
-        con.close()
-
-
-def _id_words(term_id):
-    return str(term_id).replace("-", " ")
-
-
-def _paper_term_labels(doi):
-    """The labels of the terms the paper's text is linked to, sorted; the ids in words for a term with no label
-    (or when the vocabulary's table cannot be read); [] when there are none; None when the store cannot be read."""
-    try:
-        rows = _read_store("SELECT DISTINCT pc.concept_id, c.label FROM kg_paper_concept pc LEFT JOIN kg_concept c "
-                           "ON c.id = pc.concept_id WHERE lower(pc.work_id) = lower(?)", (doi,))
-    except sqlite3.Error:
-        try:
-            rows = [(r[0], None) for r in _read_store(
-                "SELECT DISTINCT concept_id FROM kg_paper_concept WHERE lower(work_id) = lower(?)", (doi,))]
-        except sqlite3.Error:
-            return None
-    labels = {label or _id_words(term_id) for term_id, label in rows if term_id}
-    return sorted(labels, key=str.lower)
-
-
-def _term_labels(term_ids):
-    """Each term id's label from the store, or the id in words when it has none or the store cannot be read."""
-    found = {}
-    if term_ids:
-        try:
-            marks = ",".join("?" * len(term_ids))
-            found = dict(_read_store(f"SELECT id, label FROM kg_concept WHERE id IN ({marks})", tuple(term_ids)))
-        except sqlite3.Error:
-            pass
-    return {t: found.get(t) or _id_words(t) for t in term_ids}
-
-
-def _yaml_scalar(value):
-    text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10 ** 9)
-    return text.split("\n...")[0].strip()
-
-
-def _example(weft_path):
-    """A yaml block that changes one real entry of this draft: the first table's first field, else the first
-    collection's first variable, with the keys an author reviews; None when the draft has neither."""
-    try:
-        weft = yaml.safe_load(Path(weft_path).read_text())
-    except (OSError, ValueError, yaml.YAMLError):
-        return None
-    entries = [e for e in (weft.get("files") or [] if isinstance(weft, dict) else []) if isinstance(e, dict)]
-    for owner_keys, items_key in ((("file", "file_pattern"), "fields"), (("collection",), "variables")):
-        for entry in entries:
-            owner = next((k for k in owner_keys if entry.get(k)), None)
-            items = [i for i in entry.get(items_key) or [] if isinstance(i, dict)]
-            if owner is None or "collection" in entry and owner != "collection" or not items:
-                continue
-            item = items[0]
-            name_key = "name" if item.get("name") is not None else "pattern"
-            if item.get(name_key) is None:
-                continue
-            lines = ["files:", f"  - {owner}: {_yaml_scalar(entry[owner])}", f"    {items_key}:",
-                     f"      - {name_key}: {_yaml_scalar(item[name_key])}"]
-            term = item.get("term", item.get("concept"))
-            for key, value in (("description", item.get("description")), ("datatype", item.get("datatype")),
-                               ("evidence_type", item.get("evidence_type")), ("term", term)):
-                if value is not None:
-                    lines.append(f"        {key}: {_yaml_scalar(value)}")
-            return "\n".join(lines)
-    return None
-
-
-def _issue_author(task):
-    for tag in ("author", "author-handle"):
-        login = gh_read_from_issue_body(task.screening.github_client, task.screening.review_repository,
-                                        task.screening.issue_id, tag)
-        if login:
-            return login.strip().lstrip("@")
-    return None
-
-
-def _issue_editor(task):
-    login = gh_read_from_issue_body(task.screening.github_client, task.screening.review_repository,
-                                    task.screening.issue_id, "editor")
-    return login.strip().lstrip("@") if login else None
-
-
-# A fenced block whose info string is yaml or yml, closed by a fence as long as its opening one; the last one
-# in a comment is its corrections.
-YAML_BLOCK = re.compile(r"^[ \t]*(`{3,})[ \t]*(?:yaml|yml)[ \t]*\n(.*?)^[ \t]*\1[ \t]*$", re.MULTILINE | re.DOTALL | re.IGNORECASE)
-MAX_DRAFT_IN_COMMENT = 60000
-
-
-def _yaml_block(body):
-    found = YAML_BLOCK.findall((body or "").replace("\r\n", "\n"))
-    return found[-1][1] if found else None
-
-
-def _corrections(task):
-    """The corrections a weft command brings: (login, yaml text or None, comment id) from the comment `at`
-    names when given, else from the command's own comment; (None, None, None) when the payload names no
-    comment. A comment without a yaml block means the description as it stands. Fails with a sentence when the
-    comment cannot be read, or when its yaml block is not valid YAML."""
-    s = task.screening
-    at, own = getattr(s, "at", None), getattr(s, "command_comment_id", None)
-    source = at if at is not None else own
-    if source is None:
-        return None, None, None
-    try:
-        login, body = gh_get_issue_comment(s.github_client, s.review_repository, s.issue_id, source)
-    except UnknownObjectException:
-        task.fail(say.comment_not_found(source))
-    except (GithubException, requests.RequestException) as e:
-        task.fail(say.github_unreachable(f"comment {source}", _github_reason(e)))
-    block = _yaml_block(body)
-    if block is not None:
-        try:
-            yaml.safe_load(block)
-        except yaml.YAMLError as e:
-            mark, problem = getattr(e, "problem_mark", None), getattr(e, "problem", None)
-            where = f"line {mark.line + 1}, column {mark.column + 1}" if mark is not None else "it is not valid YAML"
-            task.fail(say.unreadable_block(source, f"{where}: {problem}" if problem and mark is not None else where))
-    return login, block, source
-
-
-def _write_submission(paper, text):
-    """The yaml block as a file in the work folder, or None when there is no block."""
-    if text is None:
-        return None
-    path = os.path.join(paper.work, "submission.yaml")
-    with open(path, "w") as f:
-        f.write(text)
-    return Path(path)
-
-
-def _draft_inside(weft_path):
-    """The draft weft as a fenced yaml block, with a fence longer than any run of backticks in it."""
-    text = Path(weft_path).read_text()
-    fence = "```"
-    while fence in text:
-        fence += "`"
-    return f"{fence}yaml\n" + text.rstrip("\n") + f"\n{fence}"
-
-
-@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
-@handle_soft_timeout
-def weft_draft_task(self, screening_dict):
-    task = BaseNeuroLibreTask(self, screening_dict)
-    with _errors_as_sentences(task):
-        return _weft_draft(task)
-
-
-def _weft_draft(task):
-    task.start("Describing the paper's data")
-    paper = _weft_paper(task)
-    if os.path.isfile(os.path.join(WEFTS_PATH, paper.weft_name)):
-        task.fail(say.ALREADY_CONFIRMED)
-    backends = _weft_backends()
-    replaced = os.path.isfile(os.path.join(paper.work, paper.weft_name))
-    for name in (f"{paper.stem}.weft.yaml", f"{paper.stem}.profiles.json", f"{paper.stem}.selfhosted.weft.yaml"):
-        try:
-            os.remove(os.path.join(paper.work, name))     # the folder is kept between runs
-        except FileNotFoundError:
-            pass
-    repo_dir = _published_clone(task, paper)
-    run = weft_steps.subprocess_runner(Path(paper.work))
-    with _store_lock(task):
-        _load_paper(task, run, paper)
-
-    result = weft_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
-                              Path(LLM_LOCK_PATH), run)
-    if not (result.weft.exists() and result.profiles.exists()) or (result.problems and not result.summary):
-        task.fail(say.not_drafted(result.problems))
-    logging.info(f"The data of {paper.doi} was drafted by {result.drafted_by}"
-                 + (f", because {result.reason}" if result.reason else ""))
-
-    with _store_lock(task):
-        linked, link_failure = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
-    labels = _paper_term_labels(paper.doi) if linked else None
-    terms = say.terms_sentence(linked, labels, link_failure)
-
-    def comment(inside):
-        return say.draft_comment(result.summary, terms, _example(result.weft), inside, result.problems,
-                                 result.warnings, replaced=replaced)
-    message = comment(_draft_inside(result.weft))
-    if len(message) > MAX_DRAFT_IN_COMMENT:
-        message = comment(say.too_long(paper.weft_name))
-    task.succeed(message, collapsable=False)
-    return f"Drafted the weft of {paper.doi} with {result.drafted_by}"
-
-
-@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
-@handle_soft_timeout
-def weft_check_task(self, screening_dict):
-    task = BaseNeuroLibreTask(self, screening_dict)
-    with _errors_as_sentences(task):
-        return _weft_check(task)
-
-
-def _weft_check(task):
-    task.start("Checking the description of the paper's data")
-    login, block, source = _corrections(task)          # anyone's block may be checked
-    paper = _weft_paper(task)
-    weft, profiles = _server_weft(task, paper)
-    submission = _write_submission(paper, block)
-    result = weft_steps.check(Path(weft), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH),
-                              submission=submission, by=login if submission else None)
-    corrections = source if submission else None
-    if result.unreadable:
-        task.succeed(say.check_unreadable(corrections, result.unreadable), collapsable=False)
-        return f"The weft of {paper.doi} could not be read"
-    at = getattr(task.screening, "at", None)
-    confirm_at = source if (submission or at is not None) else None
-    task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at), collapsable=False)
-    return f"Checked the weft of {paper.doi}"
-
-
-@celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
-@handle_soft_timeout
-def weft_confirm_task(self, screening_dict):
-    task = BaseNeuroLibreTask(self, screening_dict)
-    with _errors_as_sentences(task):
-        return _weft_confirm(task)
-
-
-def _weft_confirm(task):
-    task.start("Confirming the description of the paper's data")
-    screening = task.screening
-    archive = gh_read_from_issue_body(screening.github_client, screening.review_repository, screening.issue_id, "data-archive")
-    if not archive or archive.strip().upper() == "N/A":
-        task.fail(say.NO_ARCHIVE_DOI)
-    fields = [f.strip() for f in (getattr(screening, "fields", None) or "").split(",") if f.strip()] or None
-    by, block, source = _corrections(task)
-    if not by:
-        task.fail(say.NO_COMMAND_COMMENT)
-    author, editor = _issue_author(task), _issue_editor(task)
-    if by.lower() not in {name.lower() for name in (author, editor) if name}:
-        task.fail(say.not_allowed(author, editor, source, by, corrections=block is not None))
-    paper = _weft_paper(task)
-    weft, profiles = _server_weft(task, paper)
-    submission = _write_submission(paper, block)
-    note = None
-    with _store_lock(task):
-        # The store gets the paper as it is now, the data archive DOI minted after the draft among it.
-        _load_paper(task, weft_steps.subprocess_runner(Path(paper.work)), paper)
-        result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, submission,
-                                    Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH),
-                                    record=Path(WEFTS_PATH))
-        if result.errors and result.confirmed:
-            task.fail(say.confirmed_not_published(result.version, result.errors))
-        if result.errors:
-            task.fail(say.not_confirmed(result.errors))
-        try:
-            report = myst_cdn.rebuild()
-            note = " ".join(report.get("notes", [])) or None
-        except Exception as e:
-            logging.exception("MyST CDN rebuild after a weft confirmation failed")
-            note = say.cdn_not_rebuilt(e.__class__.__name__)
-    a = result.addresses
-    urls = {url.rstrip("/").rsplit("/", 1)[-1]: url for url in a.get("terms", [])}
-    labels = _term_labels(list(urls))
-    links = [f"[{labels[t]}]({url})" for t, url in urls.items()]
-    reply = source if (submission or getattr(screening, "at", None) is not None) else None
-    task.succeed(say.confirm_comment(by, reply, result.version, a, links, note), collapsable=False)
-    return f"Confirmed the weft of {paper.doi}"
+# The tasks that describe a paper's data (draft, check, confirm) are in weft_tasks, which registers them on
+# celery_app; it is imported last, since it uses the names above.
+import weft_tasks  # noqa: E402,F401

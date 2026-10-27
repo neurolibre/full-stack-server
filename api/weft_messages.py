@@ -8,10 +8,12 @@ the paper's data is, why they are asked, and what to do. "weft" appears only in 
 import re
 from typing import List, Optional
 
-from weft_steps import lower_first
+import yaml
 
-DESCRIBING_URL = "https://cdn.evidencepub.io/terms/describing/"
-TERMS_URL = "https://cdn.evidencepub.io/terms/"
+from weft_steps import CDN_URL
+
+DESCRIBING_URL = f"{CDN_URL}/terms/describing/"
+TERMS_URL = f"{CDN_URL}/terms/"
 
 
 def heading(step: str) -> str:
@@ -24,15 +26,21 @@ INTRO = ("NeuroLibre publishes, with each paper, a description of its data: what
          "[FAIR²](https://fair2.ai) and [Croissant](https://mlcommons.org/croissant/) documents.")
 
 PROPOSAL = ("A first draft was made with a language model from the files themselves. It is a proposal: nothing is "
-            "published until the authors have reviewed it and an editor or reviewer has confirmed it.")
+            "published until it is confirmed.")
 
 REPLACED = "It replaces the earlier draft on the server."
 
-EDITOR = ("Write `@roboneuro weft check at <comment id>` to check the authors' reply, and "
-          "`@roboneuro weft confirm at <comment id>` to confirm it; the id is the number at the end of the reply's "
-          "link. The confirmation is recorded under the name of the person who wrote that reply. An editor can write "
-          "`@roboneuro weft confirm` without `at` to confirm the draft as it stands. To confirm only some columns, "
-          "add `fields <name>, <name>`.")
+# Who confirms, said the same way everywhere. The code's rule: the confirmer is the author of the comment the
+# corrections come from (the comment `at` names, else the command's own), who must be the paper's author or the
+# issue's editor.
+WHO_CONFIRMS = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an "
+                "author's reply with `@roboneuro weft confirm at <comment id>`.")
+
+CHECKING = ("Anyone can write `@roboneuro weft check at <comment id>` to check a reply with its corrections applied; "
+            "the id is the number at the end of the reply's link. " + WHO_CONFIRMS + " To confirm only some columns, "
+            "add `fields <name>, <name>`.")
+
+RESET = "an editor runs the reset command on the server"
 
 
 # Sentences that come from the steps and the commands.
@@ -45,6 +53,15 @@ def plain(text: str) -> str:
     """A sentence from a step or a command, with "weft" written as "description", since the comment explains
     the description and never the word."""
     return _WEFT.sub(r"description\1", str(text))
+
+
+def lower_first(text: str) -> str:
+    """The text with its first letter lower-cased, unless its first word is an acronym or a name written with
+    capitals inside it (NOAA, WIPO, iPhone): only when the rest of the first word has no capital letter."""
+    words = text.split(maxsplit=1)
+    if not words or any(c.isupper() for c in words[0][1:]):
+        return text
+    return text[:1].lower() + text[1:]
 
 
 def end(text: str) -> str:
@@ -78,6 +95,49 @@ def listed(lead: str, items: List[str], after: str = "") -> str:
 
 
 # The draft.
+
+def _yaml_scalar(value) -> str:
+    text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10 ** 9)
+    return text.split("\n...")[0].strip()
+
+
+def example(weft_text: str) -> Optional[str]:
+    """A yaml block that changes one real entry of this draft: the first table's first field, else the first
+    collection's first variable, with the keys an author reviews; None when the draft has neither. The weft's
+    shape is Evidentron's published format, so reading its first field here is reading a public document."""
+    try:
+        weft = yaml.safe_load(weft_text)
+    except yaml.YAMLError:
+        return None
+    entries = [e for e in (weft.get("files") or [] if isinstance(weft, dict) else []) if isinstance(e, dict)]
+    for owner_keys, items_key in ((("file", "file_pattern"), "fields"), (("collection",), "variables")):
+        for entry in entries:
+            owner = next((k for k in owner_keys if entry.get(k)), None)
+            items = [i for i in entry.get(items_key) or [] if isinstance(i, dict)]
+            if owner is None or "collection" in entry and owner != "collection" or not items:
+                continue
+            item = items[0]
+            name_key = "name" if item.get("name") is not None else "pattern"
+            if item.get(name_key) is None:
+                continue
+            lines = ["files:", f"  - {owner}: {_yaml_scalar(entry[owner])}", f"    {items_key}:",
+                     f"      - {name_key}: {_yaml_scalar(item[name_key])}"]
+            term = item.get("term", item.get("concept"))
+            for key, value in (("description", item.get("description")), ("datatype", item.get("datatype")),
+                               ("evidence_type", item.get("evidence_type")), ("term", term)):
+                if value is not None:
+                    lines.append(f"        {key}: {_yaml_scalar(value)}")
+            return "\n".join(lines)
+    return None
+
+
+def draft_block(weft_text: str) -> str:
+    """The draft as a fenced yaml block, with a fence longer than any run of backticks in it."""
+    fence = "```"
+    while fence in weft_text:
+        fence += "`"
+    return f"{fence}yaml\n" + weft_text.rstrip("\n") + f"\n{fence}"
+
 
 def terms_sentence(count: Optional[int], labels: Optional[List[str]], failure: Optional[str]) -> Optional[str]:
     """What the term linking did: the labels of the terms when they could be read, the count when they could
@@ -120,7 +180,7 @@ def draft_comment(summary: List[str], terms: Optional[str], example: Optional[st
         step2,
         "3. If the draft is right as it is, reply saying so.",
     ]))
-    parts.append("**What the editor or reviewer does**\n" + EDITOR)
+    parts.append("**Checking and confirming**\n" + CHECKING)
     parts.append(details("The draft", draft))
     if problems:
         parts.append(details("Problems the check found", bullets([plain(p) for p in problems])))
@@ -141,38 +201,33 @@ def applied(comment_id) -> str:
     return f"The corrections from comment {comment_id} were applied."
 
 
-NOT_LISTED_AFTER_CORRECTIONS = ("The check's warnings are not listed after corrections; the draft comment "
-                                "lists them.")
-
-
-def check_comment(corrections_id, errors: List[str], warnings: List[str], confirm_at=None) -> str:
-    """The comment for a check: whether it passed, and the errors or warnings. `corrections_id` is the comment
-    whose corrections were applied, `confirm_at` the comment a confirmation would name. After corrections, the
-    check gives only the notes on applying them, not its own warnings, so the comment says so and lists the
-    notes under their own title."""
+def check_comment(corrections_id, errors: List[str], warnings: List[str], confirm_at=None,
+                  notes: Optional[List[str]] = None) -> str:
+    """The comment for a check: whether it passed, then its errors, its warnings and its notes (with corrections,
+    the notes say how they were applied). `corrections_id` is the comment whose corrections were applied,
+    `confirm_at` the comment a confirmation would name."""
     parts = [heading("check"), applied(corrections_id)]
     warnings = [plain(w) for w in warnings]
-    title = "Notes on the corrections" if corrections_id is not None else "Warnings"
+    notes = [plain(n) for n in notes or []]
+    lists = []
+    if warnings:
+        lists.append(details("Warnings", bullets(warnings)))
+    if notes:
+        lists.append(details("Notes on the corrections" if corrections_id is not None else "Notes", bullets(notes)))
     if errors:
         parts.append("The description does not pass the check yet. Fix these, then ask for `@roboneuro weft check` "
                      "again:\n" + bullets([plain(e) for e in errors]))
-        if warnings:
-            parts.append(details(title, bullets(warnings)))
-        return "\n\n".join(parts)
-    if corrections_id is not None:
-        noted = NOT_LISTED_AFTER_CORRECTIONS
-    elif not warnings:
+        return "\n\n".join(parts + lists)
+    if not warnings:
         noted = "There are no warnings."
     elif len(warnings) == 1:
         noted = "There is 1 warning, listed below; it does not block confirmation."
     else:
         noted = f"There are {len(warnings)} warnings, listed below; they do not block confirmation."
     parts.append(f"The description passes the check. {noted}")
-    command = f"`@roboneuro weft confirm at {confirm_at}`" if confirm_at is not None else "`@roboneuro weft confirm`"
-    parts.append(f"An editor or reviewer confirms it with {command}.")
-    if warnings:
-        parts.append(details(title, bullets(warnings)))
-    return "\n\n".join(parts)
+    parts.append(WHO_CONFIRMS + (f" For this reply, that is `@roboneuro weft confirm at {confirm_at}`."
+                                 if confirm_at is not None else ""))
+    return "\n\n".join(parts + lists)
 
 
 def check_unreadable(corrections_id, sentence: str) -> str:
@@ -180,6 +235,15 @@ def check_unreadable(corrections_id, sentence: str) -> str:
 
 
 # The confirmation.
+
+def term_links(term_ids: List[str], terms_url: Optional[str]) -> List[str]:
+    """Each term as a link to its page, under the address publish gave for the terms; the ids alone when it gave
+    none."""
+    if not terms_url:
+        return [f"`{t}`" for t in term_ids]
+    base = terms_url if terms_url.endswith("/") else terms_url + "/"
+    return [f"[`{t}`]({base}{t}/)" for t in term_ids]
+
 
 def confirm_comment(login: str, reply_id, version: str, addresses: dict, term_links: List[str],
                     note: Optional[str] = None) -> str:
@@ -194,6 +258,15 @@ def confirm_comment(login: str, reply_id, version: str, addresses: dict, term_li
     if note:
         parts.append(note)
     return "\n\n".join(parts)
+
+
+def data_folder_unknown(reason: Optional[str]) -> str:
+    return "The paper's data folder could not be found on the server" + (f": {end(reason)}." if reason else ".")
+
+
+def no_backend(key: str) -> str:
+    return (f"The server's Evidentron config names no `{key}` backend under `weft: backend:`, so nothing was done. "
+            "Ask an editor to set it.")
 
 
 def cdn_not_rebuilt(reason: str) -> str:
@@ -211,16 +284,14 @@ NO_PUBLISHED_BUILD = ("The paper has no published build yet, so its code cannot 
                       "`@roboneuro production sync myst` first.")
 
 ALREADY_CONFIRMED = ("This paper's data description is already confirmed. To change it, reply with the "
-                     "entries to change in a `yaml` code block and ask an editor or reviewer for "
-                     "`@roboneuro weft confirm at <comment id>`; to start over, an editor removes the confirmed "
-                     "description on the server.")
+                     "entries to change in a `yaml` code block. " + WHO_CONFIRMS + " To start over, " + RESET + ".")
 
 NO_DRAFT = ("There is no draft of this paper's data description on the server yet. Ask for "
             "`@roboneuro weft draft` first.")
 
 CONFIRMED_WITHOUT_PROFILES = ("The confirmed description of this paper's data is on the server without its "
                               "profiles, so it cannot be checked. An editor restores the profiles beside it, or "
-                              "removes the confirmed description and asks for `@roboneuro weft draft` again.")
+                              "runs the reset command on the server and asks for `@roboneuro weft draft` again.")
 
 NO_ARCHIVE_DOI = ("The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the "
                   "data has been deposited (`@roboneuro zenodo publish`, or set the archive DOI in the issue).")

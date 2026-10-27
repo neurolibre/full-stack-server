@@ -20,8 +20,8 @@ from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
-     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task, myst_upload_task, \
-     weft_draft_task, weft_check_task, weft_confirm_task
+     preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task, myst_upload_task
+from weft_tasks import weft_draft_task, weft_check_task, weft_confirm_task
 from github import Github
 import yaml
 from screening_client import ScreeningClient

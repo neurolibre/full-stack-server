@@ -1,15 +1,16 @@
-"""The weft steps: each composes the evidentron commands, tested with a fake that writes what a command would."""
+"""The steps of a paper's description: each runs the evidentron commands with --json and reads the one object each
+prints. Tested with a fake that writes what a command would and answers with the command's JSON."""
 
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
-import yaml
 
-from api import weft_steps
+import weft_steps
+from conftest import DOI, said
 
-DOI = "10.55458/neurolibre.00041"
 WEFT_YAML = """paper: 10.55458/neurolibre.00041
 files:
 - file: participants.tsv
@@ -19,18 +20,16 @@ files:
   fields:
   - {name: a, term: age}
   - {name: b, concept: sex}
-- collection: scans
-  member_count: 115
-  description: One image of a participant.
-  term: mri-image
-  variables:
-  - {name: shim, term: rf-shimming}
-new_terms:
-  rf-shimming:
-    label: RF shimming
-    status: proposed
 version: 1.0.0
 """
+SUMMARY = ["`participants.tsv`: a table with 2 columns. One row is one volunteer."]
+CDN = "https://cdn.example.org"
+ADDRESSES = {"metadata": f"{CDN}/dois/{DOI}.json", "fair2": f"{CDN}/wefts/{DOI}/fair2.json",
+             "croissant": f"{CDN}/wefts/{DOI}/croissant.json"}
+
+
+def argv_value(argv, flag):
+    return argv[argv.index(flag) + 1]
 
 
 class Fake:
@@ -41,50 +40,54 @@ class Fake:
         self.calls = []
         self.script = script or {}
 
+    @staticmethod
+    def word(argv):
+        if argv[2] == "evidentron.weft":
+            return argv[3]
+        return "publish" if "publish" in argv else "concepts" if "concepts" in argv else "graph load"
+
     def words(self):
-        return [c[3] if c[2] == "evidentron.weft" else c[2:5] for c in self.calls]
+        return [self.word(c) for c in self.calls]
 
     def __call__(self, argv):
         self.calls.append(argv)
-        key = argv[3] if argv[2] == "evidentron.weft" else "other"
+        key = self.word(argv)
         if key in self.script:
             return self.script[key](argv)
-        if key == "other" and "publish" in argv:
-            return self._publish(argv)
-        return {
-            "profile": self._profile, "explore": self._explore, "check": self._check,
-            "confirm": self._confirm,
-        }.get(key, lambda a: (0, ""))(argv)
-
-    def _confirm(self, argv):
-        """Mark every entry and item confirmed, as the command does when no names are given."""
-        weft = Path(argv[4])
-        data = yaml.safe_load(weft.read_text())
-        for entry in data.get("files") or []:
-            entry["status"] = "confirmed"
-            for name in ("fields", "variables", "parts"):
-                for item in entry.get(name) or []:
-                    item["status"] = "confirmed"
-        weft.write_text(yaml.safe_dump(data, sort_keys=False))
-        return 0, "The version is now 1.1.0, dated 2026-10-26.\n"
-
-    def _publish(self, argv):
-        folder = Path(argv_value(argv, "--out")) / "wefts" / DOI
-        folder.mkdir(parents=True, exist_ok=True)
-        for fmt in ("fair2", "croissant"):
-            (folder / f"{fmt}.json").write_text("{}")
-        return 0, "Wrote 3 term files, metadata for 1 papers, and the FAIR² and Croissant documents of 1 papers.\n"
+        return getattr(self, "_" + key.replace(" ", "_"))(argv)
 
     def _profile(self, argv):
-        Path(argv[argv.index("-o") + 1]).write_text("{}")
-        return 0, "Profiled 2 files.\n"
+        Path(argv_value(argv, "-o")).write_text("{}")
+        return 0, said("profile", profiles=argv_value(argv, "-o"), summary=["`p.tsv`: a table with 2 columns."])
 
     def _explore(self, argv):
-        Path(argv[argv.index("-o") + 1]).write_text(WEFT_YAML)
-        return 0, "The weft was written.\n"
+        Path(argv_value(argv, "-o")).write_text(WEFT_YAML)
+        return 0, said("explore", weft=argv_value(argv, "-o"), summary=SUMMARY,
+                       drafted_by={"backend": argv_value(argv, "--backend"), "model": "a-model"})
 
     def _check(self, argv):
-        return 0, "warning: participants.tsv: a unit is missing\nThe check found 0 errors and 1 warnings.\n"
+        return 0, said("check", warnings=["participants.tsv: a unit is missing"])
+
+    def _confirm(self, argv):
+        return 0, said("confirm", version="1.1.0", modified="2026-10-27", terms=["age", "participant"],
+                       confirmed=[{"entry": "participants.tsv", "name": "a"}])
+
+    def _load(self, argv):
+        return 0, said("load", fields=2, paper=DOI)
+
+    def _export(self, argv):
+        return 0, said("export", written=f"/tmp/x.{argv_value(argv, '--format')}.json")
+
+    def _publish(self, argv):
+        return 0, said("publish", exported=[DOI], metadata=[DOI], addresses={DOI: ADDRESSES},
+                       terms_url=f"{CDN}/terms/", folder="/x/site.1")
+
+    def _concepts(self, argv):
+        return 0, said("graph concepts", linked=2, terms=[{"id": "crop-yield", "label": "crop yield"},
+                                                          {"id": "plot", "label": None}])
+
+    def _graph_load(self, argv):
+        return 0, "Resolved 3 cross-work references\n"
 
 
 @pytest.fixture
@@ -98,27 +101,25 @@ def dirs(tmp_path):
 BACKENDS = {"draft": "openai-compatible", "redraft": "anthropic-api", "terms": "anthropic-api"}
 
 
-def argv_value(argv, flag):
-    return argv[argv.index(flag) + 1]
-
+# Every command is asked for its JSON, and its printed text is never read.
 
 def test_draft_happy_path(dirs):
     work, data, lock = dirs
     fake = Fake(work)
     result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
-    assert result.drafted_by == "openai-compatible"
-    assert result.reason is None
-    assert result.weft == work / "00041.weft.yaml"
-    assert result.profiles == work / "00041.profiles.json"
     assert fake.words() == ["profile", "explore", "check"]
+    assert all("--json" in argv for argv in fake.calls)
     explore = fake.calls[1]
     assert argv_value(explore, "--backend") == "openai-compatible"
     assert argv_value(explore, "--lock") == str(lock)
     assert argv_value(explore, "--data") == str(data)
     assert "--repo" not in explore
+    assert result.drafted_by == "openai-compatible" and result.model == "a-model"
+    assert result.reason is None
+    assert result.weft == work / "00041.weft.yaml" and result.profiles == work / "00041.profiles.json"
     assert result.warnings == ["participants.tsv: a unit is missing"]
     assert result.problems == []
-    assert any(line.startswith("`participants.tsv`: a table with 2 columns.") for line in result.summary)
+    assert result.summary == SUMMARY                     # the command's own summary
 
 
 def test_draft_passes_the_repository(dirs):
@@ -135,16 +136,32 @@ def test_draft_redrafts_when_the_model_server_is_down(dirs):
     def explore(argv):
         explores.append(argv_value(argv, "--backend"))
         if len(explores) == 1:
-            return 1, "Trying the model\nConnection refused\n"
-        Path(argv_value(argv, "-o")).write_text(WEFT_YAML)
-        return 0, "The weft was written.\n"
+            return 1, said("explore", errors=["The exploration did not start: the model server refused the connection."])
+        return Fake(work)._explore(argv)
 
     fake = Fake(work, {"explore": explore})
     result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
     assert explores == ["openai-compatible", "anthropic-api"]
     assert result.drafted_by == "anthropic-api"
-    assert result.reason.endswith("Connection refused")
+    assert result.reason == "The exploration did not start: the model server refused the connection."
     assert "--lock" not in fake.calls[2]
+
+
+def test_the_reason_is_the_first_problem_of_the_draft(dirs):
+    work, data, lock = dirs
+
+    def explore(argv):
+        if argv_value(argv, "--backend") == "anthropic-api":
+            return Fake(work)._explore(argv)
+        Path(argv_value(argv, "-o")).write_text("# PROBLEM: a.tsv has no description.\n" + WEFT_YAML)
+        problems = ["a.tsv has no description.", "b.tsv has no row."]
+        return 1, said("explore", problems=problems, errors=["another error"] + problems)
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.reason == "a.tsv has no description."
+    kept = work / "00041.selfhosted.weft.yaml"
+    assert result.selfhosted == kept
+    assert kept.read_text().startswith("# PROBLEM: a.tsv has no description.")
+    assert result.weft.read_text() == WEFT_YAML
 
 
 def test_draft_redrafts_when_the_check_finds_errors(dirs):
@@ -154,63 +171,118 @@ def test_draft_redrafts_when_the_check_finds_errors(dirs):
     def check(argv):
         checks.append(1)
         if len(checks) == 1:
-            return 1, "error: a.tsv: no term\nThe check found 1 errors and 0 warnings.\n"
-        return 0, "The check found 0 errors and 0 warnings.\n"
+            return 1, said("check", errors=["a.tsv: no term"])
+        return 0, said("check")
 
     result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"check": check}))
     assert result.drafted_by == "anthropic-api"
-    assert "no term" in result.reason
+    assert result.reason == "a.tsv: no term"
     assert result.problems == []
 
 
 def test_draft_reports_when_both_backends_fail(dirs):
     work, data, lock = dirs
-    fake = Fake(work, {"explore": lambda a: (1, "Connection refused\n")})
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
-    assert result.problems == ["Connection refused"]
+    explore = lambda a: (1, said("explore", problems=["a.tsv has no term."], errors=["a.tsv has no term."]))
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.problems == ["a.tsv has no term."]
     assert result.summary == []
 
 
-def test_check_lists_errors_and_warnings(dirs):
-    work, data, _ = dirs
+def test_a_profile_that_fails_says_why_and_leaves_the_earlier_draft(dirs):
+    work, data, lock = dirs
+    (work / "00041.weft.yaml").write_text("the earlier draft")
+    fake = Fake(work, {"profile": lambda a: (1, said("profile", errors=["The folder is empty."]))})
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
+    assert result.problems == ["The data could not be profiled: The folder is empty."]
+    assert fake.words() == ["profile"]
+    assert (work / "00041.weft.yaml").read_text() == "the earlier draft"
+
+
+def test_the_earlier_draft_is_removed_right_before_explore(dirs):
+    work, data, lock = dirs
+    (work / "00041.weft.yaml").write_text("the earlier draft")
+    (work / "00041.selfhosted.weft.yaml").write_text("the earlier self-hosted draft")
+    seen = {}
+
+    def explore(argv):
+        seen["weft"] = (work / "00041.weft.yaml").exists()
+        seen["selfhosted"] = (work / "00041.selfhosted.weft.yaml").exists()
+        return Fake(work)._explore(argv)
+
+    def profile(argv):
+        seen["at profile"] = (work / "00041.weft.yaml").read_text()
+        return Fake(work)._profile(argv)
+    weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore, "profile": profile}))
+    assert seen == {"at profile": "the earlier draft", "weft": False, "selfhosted": False}
+
+
+def test_a_command_that_prints_no_json_is_one_sentence(dirs):
+    work, data, lock = dirs
+    crash = weft_steps.Output("", "Traceback (most recent call last):\n  File x\nModuleNotFoundError: No module named 'yaml'\n")
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"profile": lambda a: (1, crash)}))
+    assert result.problems == ["The data could not be profiled: The command gave no result: "
+                               "ModuleNotFoundError: No module named 'yaml'."]
+    silent = weft_steps.Output("", "")
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"profile": lambda a: (1, silent)}))
+    assert result.problems == ["The data could not be profiled: The command gave no result and wrote nothing."]
+
+
+# The check.
+
+def seed(work):
     weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
     weft.write_text(WEFT_YAML)
     profiles.write_text("{}")
-    out = "error: a.tsv: no term\nwarning: b.tsv: no unit\nThe check found 1 errors and 1 warnings.\n"
-    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"check": lambda a: (1, out)}))
+    return weft, profiles
+
+
+def test_check_lists_errors_warnings_and_notes(dirs):
+    work, data, _ = dirs
+    weft, profiles = seed(work)
+    out = said("check", errors=["a.tsv: no term"], warnings=["b.tsv: no unit"],
+               notes=["The paper's text was not found, so the cited blocks were not checked."])
+    fake = Fake(work, {"check": lambda a: (1, out)})
+    result = weft_steps.check(weft, profiles, data, run=fake, db=work / "graph.db")
     assert result.errors == ["a.tsv: no term"]
     assert result.warnings == ["b.tsv: no unit"]
+    assert result.notes == ["The paper's text was not found, so the cited blocks were not checked."]
     assert result.unreadable is None
+    argv = fake.calls[0]
+    assert argv[3:5] == ["check", str(weft)] and "--json" in argv
+    assert argv_value(argv, "--profiles") == str(profiles) and argv_value(argv, "--data") == str(data)
+    assert argv_value(argv, "--db") == str(work / "graph.db") and "--submit" not in argv
 
 
-def test_check_of_an_unreadable_file(dirs):
+def test_check_of_an_unreadable_weft_is_the_commands_sentence(dirs):
     work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text("files: [unclosed\n  - : :\n")
-    profiles.write_text("{}")
-    fake = Fake(work)
-    result = weft_steps.check(weft, profiles, data, run=fake)
-    assert result.errors == []
-    assert result.unreadable
-    assert "Traceback" not in result.unreadable
-    assert fake.calls == []
-
-
-def test_check_of_a_traceback_is_unreadable(dirs):
-    work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
-    out = "Traceback (most recent call last):\n  File x\nValueError: bad weft\n"
+    weft, profiles = seed(work)
+    sentence = "The weft is not valid YAML, so it could not be checked: line 3, column 2: expected ',' or ']'."
+    out = said("check", unreadable=sentence, errors=[sentence])
     result = weft_steps.check(weft, profiles, data, run=Fake(work, {"check": lambda a: (1, out)}))
-    assert result.errors == []
-    assert "bad weft" in result.unreadable
+    assert result.unreadable == sentence and result.errors == []
 
+
+def test_check_with_corrections_runs_the_full_check_with_them(dirs):
+    work, data, _ = dirs
+    weft, profiles = seed(work)
+    sub = work / "submission.yaml"
+    sub.write_text("files: []\n")
+    out = said("check", warnings=["participants.tsv: a unit is missing"], notes=["There was no entry for x.tsv to remove."])
+    fake = Fake(work, {"check": lambda a: (0, out)})
+    result = weft_steps.check(weft, profiles, data, run=fake, db=work / "graph.db", submission=sub)
+    assert fake.words() == ["check"]
+    argv = fake.calls[0]
+    assert argv_value(argv, "--submit") == str(sub) and argv_value(argv, "--data") == str(data)
+    assert argv_value(argv, "--db") == str(work / "graph.db") and "--json" in argv
+    assert result.warnings == ["participants.tsv: a unit is missing"]
+    assert result.notes == ["There was no entry for x.tsv to remove."]
+    assert weft.read_text() == WEFT_YAML
+
+
+# The confirmation.
 
 def confirm_args(work, data, **kw):
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
+    weft, profiles = seed(work)
     args = dict(weft=weft, profiles=profiles, by="An Author", fields=None, submission=None, data_dir=data,
                 site=work / "site", db=work / "graph.db")
     args.update(kw)
@@ -219,11 +291,10 @@ def confirm_args(work, data, **kw):
 
 def test_confirm_with_errors_stops_before_loading(dirs):
     work, data, _ = dirs
-    out = "error: a.tsv: no term\nThe check found 1 errors and 0 warnings.\n"
-    fake = Fake(work, {"check": lambda a: (1, out)})
+    fake = Fake(work, {"check": lambda a: (1, said("check", errors=["a.tsv: no term"]))})
     result = weft_steps.confirm(**confirm_args(work, data), run=fake)
     assert result.errors == ["a.tsv: no term"]
-    assert result.addresses == {}
+    assert result.addresses == {} and not result.confirmed
     assert fake.words() == ["check"]
 
 
@@ -231,277 +302,81 @@ def test_confirm_happy_path(dirs):
     work, data, _ = dirs
     fake = Fake(work)
     result = weft_steps.confirm(**confirm_args(work, data, fields=["a", "b"]), run=fake)
-    assert result.errors == []
+    assert result.errors == [] and result.confirmed
     assert result.version == "1.1.0"
-    assert fake.words() == ["check", "confirm", "load", "export", "export", ["evidentron.cli.data_cli", "publish", "--out"]]
+    assert fake.words() == ["check", "confirm", "load", "export", "export", "publish"]
+    assert all("--json" in argv for argv in fake.calls)
     confirm = fake.calls[1]
     assert argv_value(confirm, "--by") == "An Author"
     assert argv_value(confirm, "--fields") == "a,b"
     assert [argv_value(c, "--format") for c in fake.calls[3:5]] == ["fair2", "croissant"]
     assert all("--offline" not in c for c in fake.calls[3:5])
+    assert fake.calls[5][1:4] == ["-m", "evidentron.cli.data_cli", "publish"]
     assert argv_value(fake.calls[5], "--out") == str(work / "site")
-    base = "https://cdn.evidencepub.io"
-    assert result.addresses["fair2"] == f"{base}/wefts/{DOI}/fair2.json"
-    assert result.addresses["croissant"] == f"{base}/wefts/{DOI}/croissant.json"
-    assert result.addresses["metadata"] == f"{base}/dois/{DOI}.json"
-    assert result.addresses["terms"] == [f"{base}/terms/{t}/" for t in
-                                         ["age", "mri-image", "participant", "rf-shimming", "sex"]]
+    assert result.addresses == ADDRESSES                  # publish's own addresses
+    assert result.terms == ["age", "participant"]         # confirm's own terms
+    assert result.terms_url == f"{CDN}/terms/"
 
 
-def test_confirm_with_a_submission_applies_it_in_the_confirm_command(dirs):
+def test_confirm_with_a_submission_checks_it_in_full_then_applies_it(dirs):
     work, data, _ = dirs
     sub = work / "sub.yaml"
     sub.write_text("files: []\n")
     fake = Fake(work)
     weft_steps.confirm(**confirm_args(work, data, submission=sub), run=fake)
-    confirm = next(c for c in fake.calls if c[3] == "confirm")
+    check, confirm = fake.calls[0], fake.calls[1]
+    assert argv_value(check, "--submit") == str(sub) and argv_value(check, "--data") == str(data)
     assert argv_value(confirm, "--submit") == str(sub)
-    assert "--profiles" in confirm
+    assert argv_value(confirm, "--profiles") == str(work / "00041.profiles.json")
 
 
-def test_confirm_refused_by_the_command_returns_its_sentence(dirs):
+def test_confirm_refused_by_the_command_returns_its_sentences(dirs):
     work, data, _ = dirs
-    fake = Fake(work, {"confirm": lambda a: (1, "Nothing was confirmed: no such field.\n")})
+    out = said("confirm", errors=["a.tsv: no term", "b.tsv: no description"])
+    fake = Fake(work, {"confirm": lambda a: (1, out)})
     result = weft_steps.confirm(**confirm_args(work, data), run=fake)
-    assert result.errors == ["Nothing was confirmed: no such field."]
+    assert result.errors == ["a.tsv: no term", "b.tsv: no description"]
+    assert not result.confirmed
     assert fake.words() == ["check", "confirm"]
 
 
-def test_link_terms_counts_the_terms_kept(dirs):
-    work, _, _ = dirs
-    fake = Fake(work, {"other": lambda a: (0, f"{DOI}: 4 terms, proposed x\n")})
-    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == (4, None)
-    argv = fake.calls[0]
-    assert argv[:3] == [sys.executable, "-m", "evidentron.graph"]
-    assert argv_value(argv, "--paper") == DOI
-    assert argv_value(argv, "--backend") == "anthropic-api"
-
-
-def test_summary_of(tmp_path):
-    weft = tmp_path / "w.yaml"
-    weft.write_text(WEFT_YAML)
-    assert weft_steps.summary_of(weft) == [
-        "`participants.tsv`: a table with 2 columns. One row is one volunteer.",
-        "`scans`: a collection of 115 files. One member is one image of a participant.",
-        "Proposed new term `rf-shimming`: RF shimming.",
-    ]
-
-
-def test_summary_of_an_unreadable_file_is_empty(tmp_path):
-    assert weft_steps.summary_of(tmp_path / "missing.yaml") == []
-
-
-REAL_SHAPE = """paper: 10.55458/neurolibre.00004
-files:
-- file: repo2data.log
-  kind: binary
-  description: A log written by the data download tool.
-- file: notes.bin
-  kind: binary
-- file: database.xlsx#Details
-  row:
-    term: study
-    description: One row is one published study.
-  fields:
-  - {name: a, term: study}
-- collection: logs
-  description: One member is a log file.
-new_terms:
-""" + "".join(f"  t{i}:\n    label: term {i}\n" for i in range(13))
-
-
-def test_summary_of_a_real_shape(tmp_path):
-    weft = tmp_path / "w.yaml"
-    weft.write_text(REAL_SHAPE)
-    lines = weft_steps.summary_of(weft)
-    assert lines[0] == "`repo2data.log`: not a table; a log written by the data download tool."
-    assert lines[1] == "`notes.bin`: not a table."
-    assert lines[2] == "`database.xlsx#Details`: a table with 1 column. One row is one published study."
-    assert lines[3] == "`logs`: a collection of files. One member is a log file."
-    assert not any("0 columns" in line for line in lines)
-    terms = [line for line in lines if line.startswith("Proposed new term")]
-    assert len(terms) == 10
-    assert lines[-1] == "3 more proposed terms."
-
-
-def test_summary_of_writes_each_description_as_a_sentence(tmp_path):
-    weft = tmp_path / "w.yaml"
-    weft.write_text("""files:
-- file: pat.csv
-  row: {description: 'A single patent record from the WIPO PatentScope database, scraped between 1910 and 2023.'}
-  fields: [{name: a}, {name: b}, {name: c}, {name: d}, {name: e}, {name: f}, {name: g}, {name: h}, {name: i}]
-- file: repo2data_cache_record.json
-  kind: binary
-  description: A cache record written by repo2data..
-- file: sites.csv
-  row: {description: NOAA station that recorded the sample.}
-  fields: [{name: a}]
-- file_pattern: 'plot_*.csv'
-  row: {description: One row is one harvest.}
-  fields: [{name: a}, {name: b}]
-- file: scene.las
-  kind: point cloud
-""")
-    assert weft_steps.summary_of(weft) == [
-        "`pat.csv`: a table with 9 columns. One row is a single patent record from the WIPO PatentScope database, "
-        "scraped between 1910 and 2023.",
-        "`repo2data_cache_record.json`: not a table; a cache record written by repo2data.",
-        "`sites.csv`: a table with 1 column. One row is NOAA station that recorded the sample.",
-        "`plot_*.csv`: a table with 2 columns. One row is one harvest.",
-        "`scene.las`: a point cloud file.",
-    ]
-
-
-def test_summary_of_new_terms_that_is_not_a_mapping(tmp_path):
-    weft = tmp_path / "w.yaml"
-    weft.write_text("files: []\nnew_terms: [a, b]\n")
-    assert weft_steps.summary_of(weft) == []
-
-
-def test_summary_of_a_binary_file_is_empty(tmp_path):
-    weft = tmp_path / "w.yaml"
-    weft.write_bytes(b"\xff\xfe\x00\x80")
-    assert weft_steps.summary_of(weft) == []
-
-
-def test_confirm_of_an_unreadable_weft_with_a_submission(dirs):
+@pytest.mark.parametrize("step", ["load", "export", "publish"])
+def test_a_later_step_that_fails_is_its_sentence(dirs, step):
     work, data, _ = dirs
-    args = confirm_args(work, data, submission=work / "sub.yaml")
-    args["weft"].write_text("files: [unclosed\n  - : :\n")
-    fake = Fake(work)
-    result = weft_steps.confirm(**args, run=fake)
-    assert result.errors and "YAML" in result.errors[0]
-    assert fake.calls == []
+    out = said(step, errors=[f"The {step} command stopped with an error, OSError: disk full."])
+    result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {step: lambda a: (1, out)}))
+    assert result.errors == [f"The {step} command stopped with an error, OSError: disk full."]
+    assert result.confirmed and result.version == "1.1.0"
 
 
-def test_confirm_with_a_refused_submission_returns_every_error(dirs):
+def test_a_later_step_that_prints_no_json_is_one_sentence(dirs):
     work, data, _ = dirs
-    out = ("The submission leaves the weft with errors, so nothing was confirmed:\n"
-           "- a.tsv: no term\n- b.tsv: no description\n")
-    fake = Fake(work, {"confirm": lambda a: (1, out)})
-    result = weft_steps.confirm(**confirm_args(work, data, submission=work / "sub.yaml"), run=fake)
-    assert result.errors == ["a.tsv: no term", "b.tsv: no description"]
-
-
-def test_a_traceback_from_a_later_step_is_one_sentence(dirs):
-    work, data, _ = dirs
-    trace = "Traceback (most recent call last):\n  File x\n    line\nOSError: disk full\n"
-    for step in ("load", "export"):
-        fake = Fake(work, {step: lambda a: (1, trace)})
-        result = weft_steps.confirm(**confirm_args(work, data), run=fake)
-        assert len(result.errors) == 1 and "disk full" in result.errors[0]
-        assert "Traceback" not in result.errors[0]
-    fake = Fake(work, {"confirm": lambda a: (1, trace)})
-    result = weft_steps.confirm(**confirm_args(work, data), run=fake)
-    assert len(result.errors) == 1 and "Traceback" not in result.errors[0]
+    crash = weft_steps.Output("", "Traceback (most recent call last):\n  File x\nOSError: disk full\n")
+    result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {"load": lambda a: (1, crash)}))
+    assert result.errors == ["The command gave no result: OSError: disk full."]
 
 
 def test_publish_runs_in_the_store_folder(dirs, monkeypatch):
     work, data, _ = dirs
     seen = []
-    monkeypatch.setattr(weft_steps, "subprocess_runner", lambda cwd: (lambda argv: seen.append((cwd, argv)) or (0, "")))
+    fake = Fake(work)
+    monkeypatch.setattr(weft_steps, "subprocess_runner", lambda cwd: (lambda argv: seen.append(cwd) or fake(argv)))
     db = work / "store" / "graph.db"
     weft_steps.confirm(**confirm_args(work, data, db=db))
-    publishes = [cwd for cwd, argv in seen if "publish" in argv]
-    assert publishes == [work / "store"]
+    assert [cwd for cwd, word in zip(seen, fake.words()) if word == "publish"] == [work / "store"]
 
-
-# R1: the commands run on Evidentron's own Python when the worker names one.
 
 def test_the_commands_run_on_evidentrons_python(dirs, monkeypatch):
     work, data, lock = dirs
     monkeypatch.setenv("EVIDENTRON_PYTHON", "/opt/evidentron/bin/python")
-    seen = []
-    weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=lambda argv: seen.append(argv) or (0, ""))
-    assert seen[0][:3] == ["/opt/evidentron/bin/python", "-m", "evidentron.graph"]
+    fake = Fake(work)
+    weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake)
+    assert fake.calls[0][:3] == ["/opt/evidentron/bin/python", "-m", "evidentron.graph"]
     assert weft_steps.weft_command()[0] == "/opt/evidentron/bin/python"
     assert weft_steps.data_cli_command() == ["/opt/evidentron/bin/python", "-m", "evidentron.cli.data_cli"]
     monkeypatch.delenv("EVIDENTRON_PYTHON")
     assert weft_steps.graph_command() == [sys.executable, "-m", "evidentron.graph"]
 
-
-# I1: why the self-hosted draft failed, from what the explore command really writes.
-
-def failed_explore(problems=None, stdout="", stderr=""):
-    """explore as Evidentron writes it: the weft with # PROBLEM: lines at the top, and the path in its last line."""
-    def explore(argv):
-        out = Path(argv_value(argv, "-o"))
-        if argv_value(argv, "--backend") == "anthropic-api":
-            out.write_text(WEFT_YAML)
-            return 0, "The weft was written.\n"
-        if problems is not None:
-            out.write_text("".join(f"# PROBLEM: {p}\n" for p in problems) + WEFT_YAML)
-        return 1, weft_steps.Output(stdout + stderr, stdout=stdout)
-    return explore
-
-
-def test_the_reason_is_the_problem_at_the_top_of_the_weft(dirs):
-    work, data, lock = dirs
-    stdout = ("step 1\nThe weft was not accepted.\n"
-              f"The weft was written to {work}/00041.weft.yaml, with its 2 problems listed at the top.\n")
-    explore = failed_explore(["The exploration stopped with an error, and nothing was kept: ConnectError: refused.",
-                              "a.tsv has no description."], stdout=stdout)
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
-    assert result.reason == "The exploration stopped with an error, and nothing was kept: ConnectError: refused."
-    assert str(work) not in result.reason
-
-
-def test_a_busy_slot_is_the_reason(dirs):
-    work, data, lock = dirs
-    stdout = "The exploration did not start: the self-hosted model's slot was busy for 3600 s.\n"
-    explore = failed_explore(stdout=stdout, stderr="UserWarning: something about a library\n")
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
-    assert result.reason == "The exploration did not start: the self-hosted model's slot was busy for 3600 s."
-
-
-def test_a_warning_on_stderr_is_not_the_reason(dirs):
-    work, data, lock = dirs
-    explore = failed_explore(stdout="Trying the model\nConnection refused\n", stderr="DeprecationWarning: old api\n")
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
-    assert result.reason == "Connection refused"
-
-
-def test_the_runner_keeps_stdout_apart(tmp_path):
-    run = weft_steps.subprocess_runner(tmp_path)
-    code, output = run([sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr)"])
-    assert code == 0
-    assert "out" in output and "err" in output
-    assert output.stdout.strip() == "out"
-
-
-def test_a_failed_redraft_lists_its_problems_not_its_path(dirs):
-    work, data, lock = dirs
-
-    def explore(argv):
-        out = Path(argv_value(argv, "-o"))
-        out.write_text("# PROBLEM: a.tsv has no term.\n# PROBLEM: b.tsv has no row.\n" + WEFT_YAML)
-        return 1, f"The weft was written to {out}, with its 2 problems listed at the top.\n"
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
-    assert result.problems == ["a.tsv has no term.", "b.tsv has no row."]
-
-
-def test_the_self_hosted_draft_is_kept_beside_the_redraft(dirs):
-    work, data, lock = dirs
-    explore = failed_explore(["a.tsv has no description."])
-    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
-    kept = work / "00041.selfhosted.weft.yaml"
-    assert result.selfhosted == kept
-    assert kept.read_text().startswith("# PROBLEM: a.tsv has no description.")
-    assert not result.weft.read_text().startswith("# PROBLEM")
-
-
-# I2: an unreadable weft says where.
-
-def test_unreadable_yaml_says_where(dirs):
-    work, data, _ = dirs
-    weft = work / "00041.weft.yaml"
-    weft.write_text("a: 1\nb: [1, 2\nc: 3\n")
-    result = weft_steps.check(weft, work / "p.json", data, run=Fake(work))
-    assert result.unreadable == ("The weft is not valid YAML, so it could not be checked: "
-                                 "line 3, column 2: expected ',' or ']', but got ':'.")
-
-
-# C2 and I5: the confirmed weft's place of record, and the version measured against it.
 
 def test_confirm_keeps_the_confirmed_weft_in_the_flat_folder(dirs):
     work, data, _ = dirs
@@ -516,124 +391,152 @@ def test_confirm_keeps_the_confirmed_weft_in_the_flat_folder(dirs):
     assert "--previous" not in fake.calls[1]
 
 
-def test_confirm_measures_against_the_confirmed_copy(dirs):
+def test_confirm_measures_against_the_confirmed_copy_or_the_one_a_reset_kept(dirs):
     work, data, _ = dirs
     record = work.parent / "wefts"
     record.mkdir()
-    (record / "00041.weft.yaml").write_text(WEFT_YAML)
+    (record / "00041.weft.yaml.previous").write_text(WEFT_YAML)
     fake = Fake(work)
     weft_steps.confirm(**confirm_args(work, data), run=fake, record=record)
-    confirm = next(c for c in fake.calls if c[3] == "confirm")
-    assert argv_value(confirm, "--previous") == str(record / "00041.weft.yaml")
+    assert argv_value(fake.calls[1], "--previous") == str(record / "00041.weft.yaml.previous")
+    fake = Fake(work)
+    weft_steps.confirm(**confirm_args(work, data), run=fake, record=record)     # now the flat copy is there
+    assert argv_value(fake.calls[1], "--previous") == str(record / "00041.weft.yaml")
 
 
 def test_confirm_fails_with_publishs_sentence_when_the_documents_are_not_written(dirs):
     work, data, _ = dirs
     refused = f"No weft of {DOI} is in the server's folder of wefts: it looks for 00041.weft.yaml there."
-    fake = Fake(work, {"other": lambda a: (0, "Wrote 3 term files.\n- The terms are published without QUDT units: x\n"
-                                              f"- {refused}\n")})
-    result = weft_steps.confirm(**confirm_args(work, data), run=fake, record=work.parent / "wefts")
+    out = said("publish", refused=["No weft of 10.55458/neurolibre.00099 is in the server's folder of wefts.", refused],
+               exported=["10.55458/neurolibre.00099"], terms_url=f"{CDN}/terms/")
+    result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {"publish": lambda a: (0, out)}),
+                                record=work.parent / "wefts")
     assert result.errors == [refused]
     assert result.confirmed and result.version == "1.1.0"
     assert result.addresses == {}
-
-
-def test_confirm_does_not_take_old_documents_for_new_ones(dirs):
-    work, data, _ = dirs
-    folder = work / "site" / "wefts" / DOI
-    folder.mkdir(parents=True)
-    for fmt in ("fair2", "croissant"):
-        (folder / f"{fmt}.json").write_text("{}")
-        os.utime(folder / f"{fmt}.json", (1, 1))
-    fake = Fake(work, {"other": lambda a: (0, "Wrote 3 term files.\n")})
-    result = weft_steps.confirm(**confirm_args(work, data), run=fake, record=work.parent / "wefts")
+    out = said("publish", exported=[], terms_url=f"{CDN}/terms/")
+    result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {"publish": lambda a: (0, out)}))
     assert result.errors == [f"The FAIR² and Croissant documents of {DOI} were not written when the site was published."]
 
 
-# Triaged minors.
+def test_a_load_that_names_no_paper_is_a_sentence(dirs):
+    work, data, _ = dirs
+    fake = Fake(work, {"load": lambda a: (0, said("load", fields=2, paper=None))})
+    result = weft_steps.confirm(**confirm_args(work, data), run=fake)
+    assert result.errors == ["The confirmed description names no paper, so its addresses are unknown."]
+    assert "publish" not in fake.words()
 
-def test_the_terms_listed_are_those_of_confirmed_items(tmp_path):
-    weft = yaml.safe_load(WEFT_YAML)
-    assert weft_steps._terms_used(weft) == []
-    weft["files"][0]["fields"][0]["status"] = "confirmed"
-    assert weft_steps._terms_used(weft) == ["age", "participant"]
+
+# The terms of the paper's text.
+
+def test_link_terms_gives_the_count_and_the_labels(dirs):
+    work, _, _ = dirs
+    fake = Fake(work)
+    result = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake)
+    assert (result.linked, result.labels, result.failure) == (2, ["crop yield", "`plot`"], None)
+    argv = fake.calls[0]
+    assert argv[:4] == [sys.executable, "-m", "evidentron.graph", "concepts"]
+    assert argv_value(argv, "--paper") == DOI and argv_value(argv, "--backend") == "anthropic-api"
+    assert "--json" in argv
 
 
 def test_link_terms_that_fail_say_why(dirs):
     work, _, _ = dirs
-    fake = Fake(work, {"other": lambda a: (0, f"{DOI}: The model's answer was not JSON\n")})
-    assert weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=fake) == \
-        (None, "The model's answer was not JSON")
-    trace = "Traceback (most recent call last):\n  File x\nOSError: disk full\n"
-    count, why = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=Fake(work, {"other": lambda a: (1, trace)}))
-    assert count is None and "disk full" in why and "Traceback" not in why
+    out = said("graph concepts", errors=[f"{DOI}: The model's answer was not JSON"])
+    result = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=Fake(work, {"concepts": lambda a: (0, out)}))
+    assert (result.linked, result.failure) == (None, "The model's answer was not JSON")
+    out = said("graph concepts", errors=["The anthropic-api backend needs ANTHROPIC_API_KEY."])
+    result = weft_steps.link_terms(DOI, work / "graph.db", "anthropic-api", run=Fake(work, {"concepts": lambda a: (1, out)}))
+    assert result.failure == "The anthropic-api backend needs ANTHROPIC_API_KEY."
 
 
-# B7: a check with a submission applies it through `weft confirm --submit` on a scratch copy, then discards it.
+# Loading the paper into the store: a command without --json, read by its exit code, and on a failure by the last
+# line it wrote on stderr.
 
-def test_check_with_a_submission_confirms_a_scratch_copy_and_keeps_the_weft(dirs):
-    work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
-    sub = work / "submission.yaml"
-    sub.write_text("files: []\n")
-    seen = {}
-
-    def confirm(argv):
-        seen["argv"], seen["copy"] = argv, Path(argv[4])
-        seen["copied"] = Path(argv[4]).read_text()
-        return Fake(work)._confirm(argv)
-    fake = Fake(work, {"confirm": confirm})
-    result = weft_steps.check(weft, profiles, data, run=fake, submission=sub, by="ada")
-    assert fake.words() == ["confirm"]
-    argv = seen["argv"]
-    assert argv_value(argv, "--submit") == str(sub) and argv_value(argv, "--by") == "ada"
-    assert argv_value(argv, "--profiles") == str(profiles)
-    assert seen["copy"] != weft and seen["copied"] == WEFT_YAML
-    assert not seen["copy"].exists()                    # the scratch folder is gone
-    assert weft.read_text() == WEFT_YAML                # the weft is not confirmed
-    assert result.errors == [] and result.warnings == [] and result.unreadable is None
+def test_load_paper(dirs):
+    work, _, _ = dirs
+    fake = Fake(work)
+    assert weft_steps.load_paper(DOI, Path("/cdn/current"), work / "graph.db", run=fake) is None
+    assert fake.calls[0][1:] == ["-m", "evidentron.graph", "/cdn/current", "--doi", DOI, "--db", str(work / "graph.db")]
+    crash = weft_steps.Output("", "Traceback (most recent call last):\n  File x\nValueError: no such site\n")
+    sentence = weft_steps.load_paper(DOI, Path("/cdn/current"), work / "graph.db", run=lambda a: (1, crash))
+    assert sentence == "The paper could not be loaded into the store: ValueError: no such site."
 
 
-def test_check_with_a_refused_submission_lists_its_errors_and_notes(dirs):
-    work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
-    sub = work / "submission.yaml"
-    sub.write_text("files: []\n")
-    out = ("There was no field z in participants.tsv to remove.\n"
-           "The submission leaves the weft with errors, so nothing was confirmed:\n"
-           "- participants.tsv: a has no term\n- scans: no description\n")
-    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (1, out)}),
-                              submission=sub, by="ada")
-    assert result.errors == ["participants.tsv: a has no term", "scans: no description"]
-    assert result.warnings == ["There was no field z in participants.tsv to remove."]
+# The runner: stdout apart, and a time limit per step.
+
+def test_the_runner_keeps_stdout_apart(tmp_path):
+    run = weft_steps.subprocess_runner(tmp_path)
+    code, output = run([sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr)"])
+    assert code == 0
+    assert output.stdout.strip() == "out" and output.stderr.strip() == "err"
 
 
-def test_check_with_a_submission_that_passes_says_its_notes(dirs):
-    work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
-    sub = work / "submission.yaml"
-    sub.write_text("files: []\n")
-    out = "There was no entry for x.tsv to remove.\nThe version is now 1.1.0, dated 2026-10-26.\n"
-    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (0, out)}),
-                              submission=sub, by="ada")
-    assert result.errors == []
-    assert result.warnings == ["There was no entry for x.tsv to remove."]
+def test_a_command_that_cannot_start_is_a_result_with_its_sentence(tmp_path):
+    code, output = weft_steps.subprocess_runner(tmp_path)(["/no/such/python", "-m", "evidentron.weft", "check"])
+    result = weft_steps.outcome(code, output)
+    assert result["ok"] is False
+    assert result["errors"] == ["The command could not be started: No such file or directory."]
 
 
-def test_check_with_a_submission_not_applied_is_an_error(dirs):
-    work, data, _ = dirs
-    weft, profiles = work / "00041.weft.yaml", work / "00041.profiles.json"
-    weft.write_text(WEFT_YAML)
-    profiles.write_text("{}")
-    sub = work / "submission.yaml"
-    sub.write_text("files: 3\n")
-    out = f"The submission in {sub} was not applied, so nothing was confirmed: it must be one mapping with a files list\n"
-    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"confirm": lambda a: (1, out)}),
-                              submission=sub, by="ada")
-    assert result.errors == [out.strip()] and result.warnings == []
+@pytest.mark.parametrize("argv, seconds", [
+    (["py", "-m", "evidentron.weft", "profile"], 600),
+    (["py", "-m", "evidentron.weft", "explore"], 3600 + 3600),
+    (["py", "-m", "evidentron.weft", "check"], 900),
+    (["py", "-m", "evidentron.weft", "confirm"], 900),
+    (["py", "-m", "evidentron.weft", "load"], 900),
+    (["py", "-m", "evidentron.weft", "export"], 900),
+    (["py", "-m", "evidentron.cli.data_cli", "publish"], 900),
+])
+def test_each_step_has_its_time_limit(argv, seconds):
+    assert weft_steps.time_limit(argv)[1] == seconds
+
+
+def test_a_step_past_its_time_is_stopped_with_its_children(tmp_path, monkeypatch):
+    monkeypatch.setattr(weft_steps, "time_limit", lambda argv: ("check", 1))
+    marker = tmp_path / "child.pid"
+    script = ("import subprocess, sys, time; "
+              "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+              f"open({str(marker)!r}, 'w').write(str(c.pid)); time.sleep(60)")
+    started = time.monotonic()
+    code, output = weft_steps.subprocess_runner(tmp_path)([sys.executable, "-c", script])
+    assert time.monotonic() - started < 30
+    result = weft_steps.outcome(code, output)
+    assert result["ok"] is False
+    assert result["errors"] == ["The check step took longer than 1 seconds and was stopped."]
+    grandchild = int(marker.read_text())
+    for _ in range(50):                    # the killed grandchild is gone once its parent, init, reaps it
+        try:
+            os.kill(grandchild, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail("the step's child was left running")
+
+
+# Starting over.
+
+def test_reset_removes_the_confirmed_description_and_keeps_it_as_the_previous_one(tmp_path):
+    wefts, site = tmp_path / "wefts", tmp_path / "site.1"
+    wefts.mkdir()
+    (wefts / "00041.weft.yaml").write_text(WEFT_YAML)
+    (wefts / "00041.profiles.json").write_text("{}")
+    (wefts / "00042.weft.yaml").write_text("another paper")
+    (site / "wefts" / DOI).mkdir(parents=True)
+    (site / "wefts" / DOI / "fair2.json").write_text("{}")
+    link = tmp_path / "site"
+    link.symlink_to(site)
+    done = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", link)
+    assert not (wefts / "00041.weft.yaml").exists() and not (wefts / "00041.profiles.json").exists()
+    assert (wefts / "00041.weft.yaml.previous").read_text() == WEFT_YAML
+    assert (wefts / "00042.weft.yaml").read_text() == "another paper"
+    assert not (site / "wefts" / DOI).exists() and link.is_symlink()
+    assert done[-1] == ("The store keeps the paper's rows until the next load of the paper replaces them, since "
+                        "Evidentron has no command to remove them.")
+    assert all("\n" not in s for s in done)
+
+
+def test_reset_of_a_paper_with_nothing_confirmed_says_so(tmp_path):
+    done = weft_steps.reset(DOI, tmp_path / "wefts", tmp_path / "graph.db", tmp_path / "site")
+    assert done[0] == f"There is no confirmed description of {DOI} on the server."

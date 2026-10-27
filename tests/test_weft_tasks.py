@@ -1,78 +1,29 @@
-"""The three weft tasks, with weft_steps, the GitHub client and the data folder faked: nothing touches the network."""
+"""The three tasks that describe a paper's data, with weft_steps, the GitHub helpers and the data folder faked:
+nothing touches the network."""
 
 import os
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-API = Path(__file__).resolve().parent.parent / "api"
-sys.path.insert(0, str(API))
-_here = os.getcwd()
-os.chdir(API)                      # the modules read config/*.yaml relative to the api folder
-try:
-    from api import neurolibre_celery_tasks as tasks
-    import screening_client
-finally:
-    os.chdir(_here)
-
 from celery.exceptions import Ignore
 
-DOI = "10.55458/neurolibre.00041"
+import neurolibre_celery_tasks as celery_tasks
+import screening_client
+import weft_tasks as tasks
+from conftest import DOI, FakeGitHub, FakeTask
+
 REAL_ISDIR = os.path.isdir
 SEEN = {}
+CDN = "https://cdn.example.org"
+ADDRESSES = {"metadata": f"{CDN}/dois/{DOI}.json", "fair2": f"{CDN}/wefts/{DOI}/fair2.json",
+             "croissant": f"{CDN}/wefts/{DOI}/croissant.json"}
 
 
-class FakeTask:
-    """Stands for BaseNeuroLibreTask: records what the task says on the issue."""
-    last = None
-
-    def __init__(self, celery_task, screening=None, payload=None):
-        s = dict(screening)
-        self.screening = SimpleNamespace(
-            issue_id=s["issue_id"], review_repository="neurolibre/reviews",
-            target_repo_url=s["target_repo_url"], github_client=FakeGitHub.current,
-            fields=s.get("fields"), at=s.get("at"), command_comment_id=s.get("command_comment_id"))
-        self.owner_name, self.repo_name = "someone", "paper-repo"
-        self.started, self.comment, self.failed = [], None, None
-        FakeTask.last = self
-
-    def start(self, message=""):
-        self.started.append(message)
-
-    def succeed(self, message, collapsable=True, attachment_path=None):
-        self.comment = message
-
-    def fail(self, message, attachment_path=None):
-        self.failed = message
-        raise Ignore()
-
-
-class FakeRepo:
-    def __init__(self, files):
-        self.files = files
-        self.default_branch = "main"
-
-    def get_contents(self, path):
-        from github import UnknownObjectException
-        if path not in self.files:
-            raise UnknownObjectException(404, {"message": "Not Found"}, {})
-        return SimpleNamespace(path=path, sha="sha")
-
-
-class FakeGitHub:
-    current = None
-
-    def __init__(self, files=None):
-        self.files = files if files is not None else {}
-        self.writes = []               # files created or updated through gh_create_file and gh_update_file_content
-        self.opened = []               # repositories opened through the client
-        FakeGitHub.current = self
-
-    def get_repo(self, name):
-        self.opened.append(name)
-        return FakeRepo(self.files)
+def published(version="1.0.0", terms=("age",)):
+    """What weft_steps.confirm gives when every step worked."""
+    return tasks.weft_steps.ConfirmResult(version=version, confirmed=True, addresses=dict(ADDRESSES),
+                                          terms=list(terms), terms_url=f"{CDN}/terms/")
 
 
 @pytest.fixture
@@ -87,19 +38,10 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks.os.path, "isdir", lambda p: p == "/DATA_NFS/proj" or REAL_ISDIR(p))
     monkeypatch.setattr(tasks, "gh_get_project_name", lambda client, url: w.project)
     monkeypatch.setattr(tasks, "gh_read_from_issue_body", lambda c, r, i, tag: w.body.get(tag))
-
-    def create(client, repo, path, content, commit_message=None, encoding="utf-8"):
-        client.files[path] = content
-        client.writes.append(("create", path, content))
-        return {"status": True, "message": "Success"}
-
-    def update(client, repo, path, content, message):
-        client.files[path] = content
-        client.writes.append(("update", path, content))
-        return {"status": True, "message": "Success"}
-
-    monkeypatch.setattr(tasks, "gh_create_file", create)
-    monkeypatch.setattr(tasks, "gh_update_file_content", update)
+    config = tmp_path / "evidentron.yaml"
+    config.write_text("weft:\n  backend:\n    draft: openai-compatible\n    redraft: anthropic-api\n"
+                      "    terms: anthropic-api\n")
+    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(config))
 
     def comment(client, repo, issue_id, comment_id):
         assert (repo, issue_id) == ("neurolibre/reviews", 41)
@@ -117,13 +59,13 @@ def world(tmp_path, monkeypatch):
     w.load_result = (0, "loaded")
     w.clones, w.commit = [], "abc1234def"
     monkeypatch.setattr(tasks, "REPOS_PATH", str(tmp_path / "repos"))
-    monkeypatch.setattr(tasks.requests, "get", lambda url: SimpleNamespace(
-        status_code=200 if w.commit else 404, text=(w.commit or "") + "\n"))
+    monkeypatch.setattr(tasks, "_published_commit", lambda org, repo: w.commit)
     monkeypatch.setattr(tasks, "gh_clone_repository", lambda url, path, depth=1, commit=None:
                         w.clones.append((url, commit)) or w.clone_error and (_ for _ in ()).throw(RuntimeError(w.clone_error)))
     w.clone_error = None
     monkeypatch.setattr(tasks.weft_steps, "subprocess_runner", runner)
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: (7, None))
+    monkeypatch.setattr(tasks.weft_steps, "link_terms",
+                        lambda doi, db, backend, run=None: tasks.weft_steps.LinkResult(linked=7))
     monkeypatch.setattr(tasks, "STORE_LOCK_PATH", str(tmp_path / "store.lock"))
     w.rebuilds = []
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: w.rebuilds.append(True) or {"projects": 3, "clashes": []})
@@ -161,7 +103,7 @@ def test_draft_comment_shows_the_draft_and_invites_nobody(world, monkeypatch):
     assert "`@roboneuro weft check at <comment id>`" in t.comment
     assert "`@roboneuro weft confirm at <comment id>`" in t.comment
     assert "3. If the draft is right as it is, reply saying so." in t.comment
-    assert world.gh.writes == [] and world.gh.files == {}
+    assert world.gh.used == []
     assert "fork" not in t.comment
     assert (world.work / "00041.weft.yaml").read_text() == f"paper: {DOI}\n"
     assert (world.work / "00041.profiles.json").exists()
@@ -179,7 +121,7 @@ def test_second_draft_updates_and_says_replaced(world, monkeypatch):
     tasks.weft_draft_task.run(payload())
     assert "replaced" not in FakeTask.last.comment
     tasks.weft_draft_task.run(payload())
-    assert world.gh.writes == []
+    assert world.gh.used == []
     assert "It replaces the earlier draft on the server." in FakeTask.last.comment
 
 
@@ -233,16 +175,7 @@ def test_draft_that_wrote_nothing_fails_with_the_problem(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == "The description could not be drafted: the data could not be profiled: bad."
-    assert world.gh.writes == []
-
-
-def test_backends_default_and_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(tmp_path / "none.yaml"))
-    assert tasks._weft_backends() == {"draft": "openai-compatible", "redraft": "anthropic-api", "terms": "anthropic-api"}
-    f = tmp_path / "e.yaml"
-    f.write_text("weft:\n  backend:\n    draft: a\n    redraft: b\n    terms: c\n")
-    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(f))
-    assert tasks._weft_backends() == {"draft": "a", "redraft": "b", "terms": "c"}
+    assert world.gh.used == []
 
 
 def seed_server(world, weft="paper: x\n", profiles="{}", where="work"):
@@ -279,8 +212,7 @@ def test_check_clean_and_no_draft(world, monkeypatch):
     assert FakeTask.last.comment == (
         "### Description of this paper's data: check\n\n"
         "No corrections were given, so the description was checked as it is.\n\n"
-        "The description passes the check. There are no warnings.\n\n"
-        "An editor or reviewer confirms it with `@roboneuro weft confirm`.")
+        "The description passes the check. There are no warnings.\n\n" + WHO)
     (world.work / "00041.weft.yaml").unlink()
     with pytest.raises(Ignore):
         tasks.weft_check_task.run(payload())
@@ -304,7 +236,7 @@ def test_confirm_with_errors_writes_nothing(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert "bad field" in FakeTask.last.failed and "bad link" in FakeTask.last.failed
-    assert world.gh.writes == []
+    assert world.gh.used == []
 
 
 def _recording_confirm(monkeypatch, seen):
@@ -316,7 +248,7 @@ def _recording_confirm(monkeypatch, seen):
         Path(weft).write_text("paper: x\nversion: 1.0.0\n")
         if record:
             tasks.weft_steps._record(Path(weft), Path(profiles), Path(record))     # as the real confirm does
-        return tasks.weft_steps.ConfirmResult(version="1.0.0", addresses=tasks.weft_steps.addresses_of(DOI, ["age"]))
+        return published()
     monkeypatch.setattr(tasks.weft_steps, "confirm", confirm)
 
 
@@ -333,7 +265,7 @@ def test_confirm_success(world, monkeypatch):
     assert "1.0.0" in c
     for part in ("/wefts/%s/fair2.json" % DOI, "/wefts/%s/croissant.json" % DOI, "/dois/%s.json" % DOI, "/terms/age/"):
         assert part in c
-    assert world.gh.writes == [] and world.gh.files == {}
+    assert world.gh.used == []
     assert "fork" not in c
     assert (world.flat / "00041.weft.yaml").read_text() == "paper: x\nversion: 1.0.0\n"
     assert seen["weft"] == str(world.work / "00041.weft.yaml")
@@ -408,7 +340,7 @@ def test_corrections_by_someone_else_are_refused(world, monkeypatch):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; "
                                     "the corrections in comment 200 are by @mallory.")
-    assert world.gh.writes == [] and world.calls == []
+    assert world.gh.used == [] and world.calls == []
 
 
 def test_the_editor_may_confirm_as_it_stands(world, monkeypatch):
@@ -443,13 +375,13 @@ def test_check_applies_the_block_of_its_own_comment(world, monkeypatch):
     seed_server(world)
     seen = {}
 
-    def check(weft, profiles, data_dir, run=None, db=None, submission=None, by=None):
-        seen.update(text=Path(submission).read_text() if submission else None, by=by)
+    def check(weft, profiles, data_dir, run=None, db=None, submission=None):
+        seen.update(text=Path(submission).read_text() if submission else None, db=str(db))
         return tasks.weft_steps.CheckResult()
     monkeypatch.setattr(tasks.weft_steps, "check", check)
     world.comments[100] = ("mallory", "@roboneuro weft check\n```yaml\nfiles: []\n```")
     tasks.weft_check_task.run(payload(command_comment_id=100))
-    assert seen == {"text": "files: []\n", "by": "mallory"}      # anyone's block may be checked
+    assert seen == {"text": "files: []\n", "db": tasks.GRAPH_DB_PATH}      # anyone's block may be checked
     assert FakeTask.last.failed is None
     seen.clear()
     world.comments[100] = ("ada", "@roboneuro weft check")
@@ -469,7 +401,7 @@ def test_check_at_a_comment_without_a_block_checks_as_it_stands(world, monkeypat
     assert "No corrections were given, so the description was checked as it is." in c
     assert ("The description passes the check. There are 2 warnings, listed below; they do not block "
             "confirmation.") in c
-    assert "An editor or reviewer confirms it with `@roboneuro weft confirm at 200`." in c
+    assert WHO + " For this reply, that is `@roboneuro weft confirm at 200`." in c
     assert c.endswith("<details><summary>Warnings</summary>\n\n- W1\n- W2\n\n</details>")
 
 
@@ -488,7 +420,6 @@ def test_extra_payload_survives_to_dict_and_from_dict(monkeypatch):
 def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
     fake_draft(monkeypatch)
     tasks.weft_draft_task.run(payload())
-    writes = len(world.gh.writes)
 
     def failing(doi, data_dir, repo_dir, work, backends, lock, run=None):
         return tasks.weft_steps.DraftResult(weft=Path(work) / "00041.weft.yaml", profiles=Path(work) / "00041.profiles.json",
@@ -497,7 +428,7 @@ def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
     assert "could not be profiled" in FakeTask.last.failed
-    assert len(world.gh.writes) == writes
+    assert world.gh.used == []
 
 
 def test_no_published_commit_means_no_draft(world, monkeypatch):
@@ -507,7 +438,7 @@ def test_no_published_commit_means_no_draft(world, monkeypatch):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The paper has no published build yet, so its code cannot be read. Run "
                                     "`@roboneuro production sync myst` first.")
-    assert world.gh.writes == [] and world.clones == []
+    assert world.gh.used == [] and world.clones == []
 
 
 def test_clone_failure_is_one_sentence(world, monkeypatch):
@@ -532,7 +463,8 @@ def test_github_errors_become_a_sentence(world, monkeypatch):
 
 def test_a_failed_term_linking_is_said_not_counted(world, monkeypatch):
     fake_draft(monkeypatch)
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: (None, "The model's answer was not JSON"))
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: tasks.weft_steps.LinkResult(
+        failure="The model's answer was not JSON"))
     tasks.weft_draft_task.run(payload())
     c = FakeTask.last.comment
     assert "The paper's text could not be linked to shared terms: the model's answer was not JSON." in c
@@ -551,18 +483,22 @@ def _site_build(folder):
 
 def _sync(tmp_path, monkeypatch, extras):
     data = tmp_path / "data"
-    monkeypatch.setattr(tasks, "DATA_ROOT_PATH", str(data))
-    _site_build(data / tasks.MYST_FOLDER / tasks.GH_ORGANIZATION / "paper-repo" / "abc1234def" / "_build" / "site")
-    monkeypatch.setattr(tasks.myst_cdn, "CDN_ROOT", tmp_path / "cdn")
-    monkeypatch.setattr(tasks.myst_cdn, "EVIDENTRON_SITE", extras)
-    monkeypatch.setattr(tasks.requests, "get", lambda url: SimpleNamespace(status_code=200, text="abc1234def\n"))
+    monkeypatch.setattr(celery_tasks, "DATA_ROOT_PATH", str(data))
+    _site_build(data / celery_tasks.MYST_FOLDER / celery_tasks.GH_ORGANIZATION / "paper-repo" / "abc1234def" / "_build" / "site")
+    monkeypatch.setattr(celery_tasks.myst_cdn, "CDN_ROOT", tmp_path / "cdn")
+    monkeypatch.setattr(celery_tasks.myst_cdn, "EVIDENTRON_SITE", extras)
+    asked = []
+    monkeypatch.setattr(celery_tasks.requests, "get", lambda url, timeout=None: asked.append((url, timeout))
+                        or SimpleNamespace(status_code=200, text="abc1234def\n"))
 
     class Rsync:
         def __init__(self, *a, **k): pass
         def communicate(self): return (b"", None)
         def wait(self): return 0
-    monkeypatch.setattr(tasks.subprocess, "Popen", Rsync)
-    return tasks.add_to_myst_cdn(SimpleNamespace(repo_name="paper-repo"), "neurolibre.00041", "v1")
+    monkeypatch.setattr(celery_tasks.subprocess, "Popen", Rsync)
+    note = celery_tasks.add_to_myst_cdn(SimpleNamespace(repo_name="paper-repo"), "neurolibre.00041", "v1")
+    assert asked == [(f"{celery_tasks.PREVIEW_SERVER}/myst/roboneurolibre/paper-repo/latest.txt", 20)]
+    return note
 
 
 def test_a_paper_sync_carries_evidentrons_site(tmp_path, monkeypatch):
@@ -604,7 +540,7 @@ def test_check_reads_the_weft_and_profiles_from_the_servers_copy(world, monkeypa
     tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed is None
     assert seen == {"w": f"paper: {where}\n", "p": f'{{"{where}": true}}'}
-    assert world.gh.writes == []
+    assert world.gh.used == []
 
 
 def test_check_prefers_the_flat_confirmed_copy_to_the_draft(world, monkeypatch):
@@ -627,7 +563,7 @@ def test_confirm_works_on_a_copy_of_the_flat_weft_and_records_it_there(world, mo
     assert seen["weft_text"] == "paper: confirmed\n"
     assert seen["record"] == tasks.WEFTS_PATH
     assert (world.flat / "00041.weft.yaml").read_text() == "paper: x\nversion: 1.0.0\n"
-    assert world.gh.writes == [] and "fork" not in FakeTask.last.comment
+    assert world.gh.used == [] and "fork" not in FakeTask.last.comment
 
 
 def test_no_profiles_anywhere_is_a_sentence(world, tmp_path):
@@ -647,7 +583,7 @@ def test_a_flat_weft_without_its_profiles_is_a_sentence(world, monkeypatch):
         tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed == (
         "The confirmed description of this paper's data is on the server without its profiles, so it cannot be "
-        "checked. An editor restores the profiles beside it, or removes the confirmed description and asks for "
+        "checked. An editor restores the profiles beside it, or runs the reset command on the server and asks for "
         "`@roboneuro weft draft` again.")
 
 
@@ -659,7 +595,9 @@ def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):
     _recording_confirm(monkeypatch, {})
     tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert FakeTask.last.failed is None
-    assert world.gh.writes == [] and world.gh.files == {}
+    assert world.gh.used == []            # the client itself is never used: GitHub is reached only through
+    assert sorted(n for n in vars(tasks) if n.startswith("gh_")) == [   # these helpers, which only read
+        "gh_clone_repository", "gh_get_issue_comment", "gh_get_project_name", "gh_read_from_issue_body"]
 
 
 # I6: a draft never replaces confirmed work.
@@ -671,9 +609,8 @@ def test_a_draft_over_a_confirmed_weft_is_refused(world, monkeypatch):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == (
         "This paper's data description is already confirmed. To change it, reply with the entries to change in a "
-        "`yaml` code block and ask an editor or reviewer for `@roboneuro weft confirm at <comment id>`; to start "
-        "over, an editor removes the confirmed description on the server.")
-    assert world.gh.writes == [] and world.calls == []
+        "`yaml` code block. " + WHO + " To start over, an editor runs the reset command on the server.")
+    assert world.gh.used == [] and world.calls == []
 
 
 def test_a_draft_over_an_unconfirmed_weft_goes_on(world, monkeypatch):
@@ -683,13 +620,15 @@ def test_a_draft_over_an_unconfirmed_weft_goes_on(world, monkeypatch):
     assert "It replaces the earlier draft on the server." in FakeTask.last.comment
 
 
-def test_a_draft_clears_the_old_self_hosted_draft(world, monkeypatch, tmp_path):
+def test_the_task_leaves_the_earlier_draft_to_the_draft_step(world, monkeypatch, tmp_path):
+    """weft_steps.draft is the one place the earlier draft is removed (its tests say when); the task removes
+    nothing, so with the step faked the earlier files are all still there."""
     old = tmp_path / "wefts" / "00041" / "00041.selfhosted.weft.yaml"
     old.parent.mkdir(parents=True)
     old.write_text("old")
     fake_draft(monkeypatch)
     tasks.weft_draft_task.run(payload())
-    assert not old.exists()
+    assert old.read_text() == "old"
 
 
 # R2 and I7: the store, the vocabulary and the site are written by one task at a time.
@@ -719,7 +658,8 @@ def test_draft_holds_the_store_lock_for_the_load_and_the_linking(world, monkeypa
     fake_result = tasks.weft_steps.draft
     monkeypatch.setattr(tasks.weft_steps, "draft", draft)
     monkeypatch.setattr(tasks.weft_steps, "link_terms",
-                        lambda *a, **k: held.setdefault("link", _busy(tasks.STORE_LOCK_PATH)) and (3, None) or (3, None))
+                        lambda *a, **k: held.setdefault("link", _busy(tasks.STORE_LOCK_PATH))
+                        and tasks.weft_steps.LinkResult(linked=3) or tasks.weft_steps.LinkResult(linked=3))
     tasks.weft_draft_task.run(payload())
     assert held == {"load": True, "draft": False, "link": True}
 
@@ -766,7 +706,7 @@ def test_a_failed_reload_at_confirm_is_one_sentence(world, monkeypatch):
 def test_a_failed_cdn_rebuild_is_a_sentence_in_the_comment(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
-        version="1.0.0", confirmed=True, addresses=tasks.weft_steps.addresses_of(DOI, [])))
+        version="1.0.0", confirmed=True, addresses=dict(ADDRESSES)))
 
     def boom():
         raise RuntimeError("/DATA/cdn/current is a folder, not a symlink")
@@ -808,27 +748,26 @@ def test_a_local_file_error_is_one_sentence(world, monkeypatch):
         assert "No space left on device" in f and "/DATA" not in f and "\n" not in f
 
 
-def test_a_check_with_corrections_says_they_were_applied_to_a_copy(world, monkeypatch):
+def test_a_check_with_corrections_lists_its_warnings_like_any_other(world, monkeypatch):
     seed_server(world)
-    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult())
     world.comments[200] = ("ada", "```yaml\nfiles: []\n```")
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
+        warnings=["b.csv: a unit is missing"], notes=["The entry b.csv was added."]))
     tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
+    keep("check-comment.md", c)
     assert "The corrections from comment 200 were applied." in c
-    assert ("The description passes the check. The check's warnings are not listed after corrections; the draft "
-            "comment lists them.") in c
-    assert "no warnings" not in c and "<details>" not in c
+    assert "The description passes the check. There is 1 warning, listed below; it does not block confirmation." in c
+    assert WHO + " For this reply, that is `@roboneuro weft confirm at 200`." in c
+    assert ("<details><summary>Warnings</summary>\n\n- b.csv: a unit is missing\n\n</details>\n\n"
+            "<details><summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>") in c
+    assert "not listed" not in c
     monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
-        warnings=["The entry b.csv was added."]))
+        errors=["E1"], warnings=["W1"]))
     tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
-    assert "warning" not in c.split("<details>")[1]
-    assert c.endswith("<details><summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>")
-    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
-        errors=["E1"], warnings=["The entry b.csv was added."]))
-    tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
-    assert FakeTask.last.comment.endswith("<summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>")
-    assert "An editor or reviewer confirms it with `@roboneuro weft confirm at 200`." in c
+    assert c.endswith("<details><summary>Warnings</summary>\n\n- W1\n\n</details>")
+    assert WHO not in c
 
 
 def test_a_draft_holding_backticks_gets_a_longer_fence_and_reads_back(world, monkeypatch):
@@ -876,32 +815,30 @@ new_terms:
 """
 
 
+TWO_TABLES_SUMMARY = [
+    "`harvests.csv`: a table with 2 columns. One row is one field plot in one harvest year.",
+    "`stations.csv`: a table with 1 column. One row is NOAA weather station near the plots.",
+    "`notes.pdf`: not a table; a field notebook, scanned.",
+    "Proposed new term `crop-yield`: crop yield.",
+]
+RENDERED = Path(os.environ.get("WEFT_RENDERED_DIR", "")) if os.environ.get("WEFT_RENDERED_DIR") else None
+
+
 def two_table_draft(monkeypatch, problems=None, warnings=None):
+    """A draft as Evidentron gives it: the weft written, and the summary from the command's own result."""
     def draft(doi, data_dir, repo_dir, work, backends, lock, run=None):
         weft, profiles = Path(work) / "00041.weft.yaml", Path(work) / "00041.profiles.json"
         weft.write_text(TWO_TABLES)
         profiles.write_text("{}")
         return tasks.weft_steps.DraftResult(weft=weft, profiles=profiles, drafted_by="openai-compatible", reason=None,
                                             problems=problems or [], warnings=warnings or [],
-                                            summary=tasks.weft_steps.summary_of(weft))
+                                            summary=list(TWO_TABLES_SUMMARY))
     monkeypatch.setattr(tasks.weft_steps, "draft", draft)
 
 
-def a_store(path, links=(("crop-yield", "crop yield"), ("plot", "field plot")), concepts=True):
-    import sqlite3
-    con = sqlite3.connect(path)
-    con.execute("create table kg_paper_concept (work_id text, concept_id text, role text, quote text)")
-    if concepts:
-        con.execute("create table kg_concept (id text primary key, label text)")
-    for cid, label in links:
-        con.execute("insert into kg_paper_concept values (?, ?, 'measures', 'q')", (DOI, cid))
-        con.execute("insert into kg_paper_concept values (?, ?, 'studies', 'q')", (DOI, cid))
-        if concepts and label:
-            con.execute("insert into kg_concept values (?, ?)", (cid, label))
-    con.execute("insert into kg_paper_concept values ('10.1/other', 'soil-ph', 'measures', 'q')")
-    con.commit()
-    con.close()
-    return path
+def linked(monkeypatch, count, labels=(), failure=None):
+    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: tasks.weft_steps.LinkResult(
+        linked=count, labels=list(labels), failure=failure))
 
 
 def prose_of(comment):
@@ -911,29 +848,36 @@ def prose_of(comment):
     return re.sub(r"`[^`]*`", "", text)
 
 
-def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch, tmp_path):
+def keep(name, comment):
+    """Write a rendered comment where WEFT_RENDERED_DIR says, for a person to read."""
+    if RENDERED:
+        RENDERED.mkdir(parents=True, exist_ok=True)
+        (RENDERED / name).write_text(comment)
+
+
+WHO = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an author's "
+       "reply with `@roboneuro weft confirm at <comment id>`.")
+
+
+def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch):
     two_table_draft(monkeypatch, warnings=["The weft has a unit that is guessed."])
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "graph.db")))
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda doi, db, backend, run=None: (2, None))
+    linked(monkeypatch, 2, ["crop yield", "field plot"])
     tasks.weft_draft_task.run(payload())
     c = FakeTask.last.comment
-    (tmp_path / "rendered.md").write_text(c)
+    keep("draft-comment.md", c)
     assert c.startswith("### Description of this paper's data: draft\n\nNeuroLibre publishes, with each paper,")
     assert "[FAIR²](https://fair2.ai) and [Croissant](https://mlcommons.org/croissant/) documents." in c
-    assert ("**What the draft found**\n"
-            "- `harvests.csv`: a table with 2 columns. One row is one field plot in one harvest year.\n"
-            "- `stations.csv`: a table with 1 column. One row is NOAA weather station near the plots.\n"
-            "- `notes.pdf`: not a table; a field notebook, scanned.\n"
-            "- Proposed new term `crop-yield`: crop yield.") in c
+    assert "**What the draft found**\n" + "\n".join(f"- {line}" for line in TWO_TABLES_SUMMARY) in c
     assert "The paper's text was linked to 2 shared terms: crop yield, field plot." in c
     example = ("   ```yaml\n   files:\n     - file: harvests.csv\n       fields:\n         - name: plot_id\n"
                "           description: The identifier of the plot.\n           datatype: string\n"
                "           evidence_type: identifier\n           term: plot\n   ```")
     assert ", for example:\n\n" + example + "\n\n   To change a column's term, pick an id" in c
-    assert "**What the editor or reviewer does**\nWrite `@roboneuro weft check at <comment id>`" in c
-    assert ("the id is the number at the end of the reply's link. The confirmation is recorded under the name of "
-            "the person who wrote that reply. An editor can write `@roboneuro weft confirm` without `at` to confirm "
-            "the draft as it stands. To confirm only some columns, add `fields <name>, <name>`.") in c
+    assert ("**Checking and confirming**\nAnyone can write `@roboneuro weft check at <comment id>` to check a reply "
+            "with its corrections applied; the id is the number at the end of the reply's link. " + WHO +
+            " To confirm only some columns, add `fields <name>, <name>`.") in c
+    assert "without `at`" not in c
+    assert "nothing is published until it is confirmed." in c
     assert "<summary>Warnings from the check</summary>\n\n- The description has a unit that is guessed." in c
     # the draft itself reads back as the weft
     assert tasks._yaml_block(c) == TWO_TABLES
@@ -963,54 +907,156 @@ def test_with_nothing_to_show_the_example_is_dropped_and_the_sentence_kept(world
     tasks.weft_draft_task.run(payload())
     c = FakeTask.last.comment
     assert ("an entry with `remove: true` is dropped). To change a column's term, pick an id from the "
-            "[list of terms](https://cdn.evidencepub.io/terms/)") in c
+            f"[list of terms]({tasks.weft_steps.CDN_URL}/terms/)") in c
     assert "for example" not in c
 
 
-def test_term_labels_come_from_the_store_read_only(tmp_path, monkeypatch):
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db", links=(("plot", "field plot"),
-                                                                                      ("soil-depth", None)))))
-    assert tasks._paper_term_labels(DOI) == ["field plot", "soil depth"]
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "h.db", concepts=False)))
-    assert tasks._paper_term_labels(DOI) == ["crop yield", "plot"]          # no vocabulary table: the ids in words
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "i.db", links=())))
-    assert tasks._paper_term_labels(DOI) == []
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(tmp_path / "none.db"))
-    assert tasks._paper_term_labels(DOI) is None
-    assert not (tmp_path / "none.db").exists()
-
-
-def test_no_linked_terms_means_no_terms_sentence(world, monkeypatch, tmp_path):
+def test_the_linked_terms_are_named_by_the_labels_the_command_gives(world, monkeypatch):
     fake_draft(monkeypatch)
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db", links=())))
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (0, None))
+    linked(monkeypatch, 2, ["field plot", "`soil-depth`"])
     tasks.weft_draft_task.run(payload())
-    assert "text was linked" not in FakeTask.last.comment
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (0, None))
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(tmp_path / "none.db"))
+    assert "The paper's text was linked to 2 shared terms: field plot, `soil-depth`." in FakeTask.last.comment
+
+
+def test_no_linked_terms_means_no_terms_sentence(world, monkeypatch):
+    fake_draft(monkeypatch)
+    linked(monkeypatch, 0)
     tasks.weft_draft_task.run(payload())
     assert "text was linked" not in FakeTask.last.comment
 
 
-def test_a_count_with_no_labels_for_the_paper_says_the_count(world, monkeypatch, tmp_path):
+def test_a_count_with_no_labels_says_the_count(world, monkeypatch):
     fake_draft(monkeypatch)
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db", links=())))
-    monkeypatch.setattr(tasks.weft_steps, "link_terms", lambda *a, **k: (3, None))
+    linked(monkeypatch, 3)
     tasks.weft_draft_task.run(payload())
     assert "\n\nThe paper's text was linked to 3 shared terms.\n\n" in FakeTask.last.comment
 
 
-def test_the_confirm_comment_names_the_terms_by_their_labels(world, monkeypatch, tmp_path):
+def test_the_confirm_comment_gives_publishs_addresses_and_the_terms(world, monkeypatch):
     seed_server(world)
-    monkeypatch.setattr(tasks, "GRAPH_DB_PATH", str(a_store(tmp_path / "g.db")))
-    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
-        version="1.1.0", confirmed=True, addresses=tasks.weft_steps.addresses_of(DOI, ["crop-yield", "soil-ph"])))
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: published("1.1.0", ["crop-yield", "soil-ph"]))
     tasks.weft_confirm_task.run(payload(command_comment_id=100))
-    cdn = "https://cdn.evidencepub.io"
+    keep("confirm-comment.md", FakeTask.last.comment)
     assert FakeTask.last.comment == (
         "### Description of this paper's data: confirmed\n\n"
         "Confirmed by @ada as the draft stood. The description is now version 1.1.0 and is published with the paper:\n\n"
-        f"- FAIR²: {cdn}/wefts/{DOI}/fair2.json\n"
-        f"- Croissant: {cdn}/wefts/{DOI}/croissant.json\n"
-        f"- Metadata: {cdn}/dois/{DOI}.json\n"
-        f"- Terms it uses: [crop yield]({cdn}/terms/crop-yield/), [soil ph]({cdn}/terms/soil-ph/)")
+        f"- FAIR²: {CDN}/wefts/{DOI}/fair2.json\n"
+        f"- Croissant: {CDN}/wefts/{DOI}/croissant.json\n"
+        f"- Metadata: {CDN}/dois/{DOI}.json\n"
+        f"- Terms it uses: [`crop-yield`]({CDN}/terms/crop-yield/), [`soil-ph`]({CDN}/terms/soil-ph/)")
+
+
+# B10: the backends, the clone, failures and timeouts.
+
+def test_a_backend_missing_from_the_config_is_one_sentence(world, monkeypatch, tmp_path):
+    fake_draft(monkeypatch)
+    config = tmp_path / "partial.yaml"
+    config.write_text("weft:\n  backend:\n    draft: a\n    redraft: b\n")
+    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(config))
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert FakeTask.last.failed == ("The server's Evidentron config names no `terms` backend under `weft: backend:`, "
+                                    "so nothing was done. Ask an editor to set it.")
+    assert world.clones == []
+    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(tmp_path / "none.yaml"))
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert "names no `draft` backend" in FakeTask.last.failed
+
+
+def test_the_backends_come_from_the_config(world, monkeypatch, tmp_path):
+    seen = {}
+
+    def draft(doi, data_dir, repo_dir, work, backends, lock, run=None):
+        seen.update(backends)
+        return fake_result(doi, data_dir, repo_dir, work, backends, lock, run)
+    fake_draft(monkeypatch)
+    fake_result = tasks.weft_steps.draft
+    monkeypatch.setattr(tasks.weft_steps, "draft", draft)
+    config = tmp_path / "e.yaml"
+    config.write_text("weft:\n  backend:\n    draft: a\n    redraft: b\n    terms: c\n")
+    monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(config))
+    tasks.weft_draft_task.run(payload())
+    assert seen == {"draft": "a", "redraft": "b", "terms": "c"}
+    assert not hasattr(tasks, "DEFAULT_WEFT_BACKENDS")
+
+
+def test_a_failed_clone_leaves_the_earlier_draft(world, monkeypatch):
+    fake_draft(monkeypatch)
+    tasks.weft_draft_task.run(payload())
+    earlier = {p.name: p.read_text() for p in world.work.iterdir()}
+    world.clone_error = "fatal: could not read from remote repository"
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert FakeTask.last.failed == ("The repository roboneurolibre/paper-repo could not be cloned at abc1234: "
+                                    "fatal: could not read from remote repository")
+    assert {p.name: p.read_text() for p in world.work.iterdir()} == earlier
+
+
+def test_an_unreachable_preview_server_is_one_sentence(world, monkeypatch):
+    import requests
+
+    def down(org, repo):
+        raise requests.ConnectTimeout("timed out after 20 s")
+    monkeypatch.setattr(tasks, "_published_commit", down)
+    fake_draft(monkeypatch)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert FakeTask.last.failed == ("The published commit of roboneurolibre/paper-repo could not be read from the "
+                                    "preview server: ConnectTimeout.")
+
+
+def test_the_published_commit_is_read_once_with_a_timeout(monkeypatch):
+    asked = []
+    monkeypatch.setattr(celery_tasks.requests, "get", lambda url, timeout=None: asked.append((url, timeout))
+                        or SimpleNamespace(status_code=200, text="abc1234\n"))
+    assert celery_tasks._published_commit("org", "repo") == "abc1234"
+    assert asked == [(f"{celery_tasks.PREVIEW_SERVER}/myst/org/repo/latest.txt", 20)]
+    monkeypatch.setattr(celery_tasks.requests, "get", lambda url, timeout=None: SimpleNamespace(status_code=404, text="x"))
+    assert celery_tasks._published_commit("org", "repo") is None
+    source = Path(celery_tasks.__file__).read_text() + Path(tasks.__file__).read_text()
+    assert source.count("/latest.txt") == 1
+
+
+@pytest.mark.parametrize("error, said", [
+    (RuntimeError("Not Found"), "The paper's data folder could not be found on the server: Not Found."),
+    (RuntimeError("line one\nline two"), "The paper's data folder could not be found on the server."),
+])
+def test_a_data_folder_that_cannot_be_found_is_one_sentence(world, monkeypatch, error, said):
+    def boom(client, url):
+        raise error
+    monkeypatch.setattr(tasks, "gh_get_project_name", boom)
+    fake_draft(monkeypatch)
+    with pytest.raises(Ignore):
+        tasks.weft_draft_task.run(payload())
+    assert FakeTask.last.failed == said
+
+
+def test_the_store_lock_waits_half_an_hour():
+    assert tasks.STORE_LOCK_WAIT == 1800
+
+
+def test_a_cdn_rebuild_kept_waiting_says_why(world, monkeypatch):
+    seed_server(world)
+    monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: published())
+
+    def busy():
+        raise TimeoutError("another rebuild kept the CDN busy for more than 30 minutes")
+    monkeypatch.setattr(tasks.myst_cdn, "rebuild", busy)
+    tasks.weft_confirm_task.run(payload(command_comment_id=100))
+    assert FakeTask.last.comment.endswith("The CDN could not be rebuilt (another rebuild kept the CDN busy for more "
+                                          "than 30 minutes); the documents appear after the next rebuild.")
+
+
+def test_the_places_come_from_myst_cdn_and_the_config():
+    assert tasks.EVIDENTRON_SITE_PATH == str(tasks.myst_cdn.EVIDENTRON_SITE)
+    assert tasks.CDN_CURRENT_PATH == str(tasks.myst_cdn.CDN_CURRENT)
+    assert tasks.weft_steps.CDN_URL == "https://cdn.evidencepub.io"
+    assert tasks.say.TERMS_URL == tasks.weft_steps.CDN_URL + "/terms/"
+    assert tasks.say.DESCRIBING_URL == tasks.weft_steps.CDN_URL + "/terms/describing/"
+
+
+def test_the_tasks_keep_their_names_and_are_registered():
+    for name in ("weft_draft_task", "weft_check_task", "weft_confirm_task"):
+        assert getattr(tasks, name).name == f"neurolibre_celery_tasks.{name}"
+        assert f"neurolibre_celery_tasks.{name}" in celery_tasks.celery_app.tasks
