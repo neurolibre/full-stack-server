@@ -7,46 +7,64 @@ import sys
 import pytest
 
 import weft_admin
+import weft_steps
 from conftest import API, DOI
 
 
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     wefts, site = tmp_path / "wefts", tmp_path / "site"
-    wefts.mkdir()
+    (wefts / "00041").mkdir(parents=True)
     (wefts / "00041.weft.yaml").write_text("paper: x\nversion: 1.2.0\n")
     (wefts / "00041.profiles.json").write_text("{}")
-    (site / "wefts" / DOI).mkdir(parents=True)
-    monkeypatch.setattr(weft_admin, "WEFTS_PATH", wefts)
-    monkeypatch.setattr(weft_admin, "SITE_PATH", site)
-    monkeypatch.setattr(weft_admin, "GRAPH_DB_PATH", tmp_path / "graph.db")
-    monkeypatch.setattr(weft_admin, "STORE_LOCK_PATH", tmp_path / "store.lock")
-    rebuilds = []
-    monkeypatch.setattr(weft_admin.myst_cdn, "rebuild", lambda: rebuilds.append(True) or {"projects": 3})
-    return wefts, site, rebuilds
+    monkeypatch.setattr(weft_steps, "WEFTS_PATH", wefts)
+    monkeypatch.setattr(weft_steps, "SITE_PATH", site)
+    monkeypatch.setattr(weft_steps, "GRAPH_DB_PATH", tmp_path / "graph.db")
+    monkeypatch.setattr(weft_steps, "STORE_LOCK_PATH", tmp_path / "store.lock")
+    w = type("Server", (), {})()
+    w.wefts, w.rebuilds, w.publishes = wefts, [], []
+    w.publish_result = {"ok": True, "errors": []}
+    monkeypatch.setattr(weft_steps, "publish", lambda s, db, run=None: w.publishes.append((s, db)) or w.publish_result)
+    monkeypatch.setattr(weft_admin.myst_cdn, "rebuild", lambda: w.rebuilds.append(True) or {"projects": 3})
+    return w
 
 
-def test_reset_starts_the_paper_over_and_rebuilds_the_cdn(server, capsys):
-    wefts, site, rebuilds = server
+def test_reset_starts_the_paper_over_publishes_and_rebuilds_the_cdn(server, capsys, tmp_path):
     assert weft_admin.main(["reset", DOI]) == 0
     out = capsys.readouterr().out
-    assert not (wefts / "00041.weft.yaml").exists() and (wefts / "00041.weft.yaml.previous").exists()
-    assert not (site / "wefts" / DOI).exists()
-    assert rebuilds == [True]
+    assert not (server.wefts / "00041.weft.yaml").exists() and (server.wefts / "00041.weft.yaml.previous").exists()
+    assert not (server.wefts / "00041").exists()
+    assert server.publishes == [(tmp_path / "site", tmp_path / "graph.db")]
+    assert server.rebuilds == [True]
     assert "The CDN was rebuilt without them." in out
     assert "Evidentron has no command to remove them." in out
     assert "Traceback" not in out and "—" not in out
 
 
+def test_a_reset_with_nothing_confirmed_rebuilds_nothing(server, capsys):
+    (server.wefts / "00041.weft.yaml").unlink()
+    assert weft_admin.main(["reset", DOI]) == 0
+    out = capsys.readouterr().out
+    assert server.publishes == [] and server.rebuilds == []
+    assert "rebuilt" not in out
+    assert f"There is no confirmed description of {DOI} on the server." in out
+
+
+def test_a_reset_whose_publish_failed_does_not_rebuild(server, capsys):
+    server.publish_result = {"ok": False, "errors": ["The site could not be written: disk full."]}
+    assert weft_admin.main(["reset", DOI]) == 1
+    assert server.rebuilds == []
+    assert "Evidentron's site could not be published again" in capsys.readouterr().out
+
+
 def test_reset_waits_for_a_task_that_holds_the_store(server, monkeypatch, capsys):
-    wefts, _, rebuilds = server
-    monkeypatch.setattr(weft_admin, "STORE_LOCK_WAIT", 0.2)
-    with open(weft_admin.STORE_LOCK_PATH, "a") as other:
+    monkeypatch.setattr(weft_steps, "STORE_LOCK_WAIT", 0.2)
+    with open(weft_steps.STORE_LOCK_PATH, "a") as other:
         fcntl.flock(other, fcntl.LOCK_EX)
         assert weft_admin.main(["reset", DOI]) == 1
     assert capsys.readouterr().out.strip() == ("Another task kept the paper store busy for more than 0.2 seconds, so "
-                                               "nothing was reset. Try again in a while.")
-    assert (wefts / "00041.weft.yaml").exists() and rebuilds == []
+                                               "nothing was done. Ask again in a while.")
+    assert (server.wefts / "00041.weft.yaml").exists() and server.rebuilds == []
 
 
 def test_a_failed_rebuild_is_one_sentence(server, monkeypatch, capsys):
@@ -57,6 +75,11 @@ def test_a_failed_rebuild_is_one_sentence(server, monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines()[-1] == (
         "The CDN could not be rebuilt (RuntimeError: /DATA/cdn/current is a folder, not a symlink); the documents "
         "leave it at the next rebuild.")
+
+
+def test_the_admin_has_no_places_of_its_own():
+    for name in ("WEFTS_PATH", "GRAPH_DB_PATH", "SITE_PATH", "STORE_LOCK_PATH", "STORE_LOCK_WAIT", "EVIDENTRON_PATH"):
+        assert not hasattr(weft_admin, name)
 
 
 def test_the_command_runs_from_anywhere(tmp_path):
