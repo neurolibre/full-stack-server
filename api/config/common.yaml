@@ -44,6 +44,11 @@ JOURNAL_SUBJECT: "Living Preprint"
 # This follow OpenJournals convention.
 PAPERS_PATH: "https://neurolibre.org/papers"
 
+# The content CDN that serves the published papers, and Evidentron's terms,
+# FAIR² and Croissant documents and paper metadata beside them. The addresses
+# in the review comments come from it.
+CDN_URL: "https://cdn.evidencepub.io"
+
 # Private docker registry that hosts docker images 
 # built by repo2docker during a binderhub build.
 BINDER_REGISTRY: "https://registry.evidencepub.io"
