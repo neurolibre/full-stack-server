@@ -10,6 +10,7 @@ The commands run on the Python named by EVIDENTRON_PYTHON in the worker's enviro
 environment), else on this one; it is read when a command is built, not when this module is imported.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -22,17 +23,45 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import yaml
 
+import myst_cdn
+
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 CDN_URL = _config["CDN_URL"].rstrip("/")
 
+# The server's places for Evidentron, in one place: the tasks and the editor's command read them from here.
+EVIDENTRON_PATH = Path(_config["DATA_ROOT_PATH"]) / _config["EVIDENTRON_FOLDER"]
+WEFTS_PATH = EVIDENTRON_PATH / "wefts"              # the folder of record: the confirmed wefts, flat
+GRAPH_DB_PATH = EVIDENTRON_PATH / "graph.db"
+SITE_PATH = myst_cdn.EVIDENTRON_SITE                # Evidentron's static site (a link to its newest build)
+# Held while the store, the vocabulary or the site is written, so two writers never write them at once. A
+# confirmation holds it longest (loading the paper, the check, the confirmation, the load, both exports, the
+# publication and the CDN's rebuild); a writer waits at most STORE_LOCK_WAIT seconds for it.
+STORE_LOCK_PATH = EVIDENTRON_PATH / "store.lock"
+STORE_LOCK_WAIT = 1800
+
 Run = Callable[[List[str]], Tuple[int, str]]
 
-# How long each step may run before it is stopped, in seconds. explore first waits for the self-hosted model's
-# slot, up to EXPLORE_SLOT_WAIT (Evidentron's own wait), and then runs for up to an hour.
+# How long each step may run before it is stopped, in seconds. explore with --lock first waits for the self-hosted
+# model's slot, up to EXPLORE_SLOT_WAIT (Evidentron's own wait), and then runs for up to an hour.
 EXPLORE_SLOT_WAIT = 3600
-TIME_LIMITS = {"profile": 600, "explore": 3600 + EXPLORE_SLOT_WAIT, "check": 900, "confirm": 900, "load": 900,
-               "export": 900, "publish": 900}
+TIME_LIMITS = {"profile": 600, "explore": 3600, "check": 900, "confirm": 900, "load": 900, "export": 900,
+               "publish": 900}
 OTHER_TIME_LIMIT = 900          # loading the paper into the store, and linking its text to terms
+CLONE_TIMEOUT = 600             # cloning the paper's repository
+REBUILD_SECONDS = myst_cdn.LOCK_WAIT + 600          # the CDN's rebuild: its lock's wait, then the rebuild
+# The celery limits of the tasks, from the steps they run at their own limits.
+# draft: clone, two waits for the store, load, profile, explore with the slot wait, check, explore, check, terms.
+DRAFT_SECONDS = (CLONE_TIMEOUT + 2 * STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["profile"]
+                 + TIME_LIMITS["explore"] + EXPLORE_SLOT_WAIT + TIME_LIMITS["check"] + TIME_LIMITS["explore"]
+                 + TIME_LIMITS["check"] + OTHER_TIME_LIMIT)
+# confirm: a wait for the store, load, check, confirm, load, two exports, publish, the CDN's rebuild.
+CONFIRM_SECONDS = (STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["check"] + TIME_LIMITS["confirm"]
+                   + TIME_LIMITS["load"] + 2 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS)
+
+
+def store_lock():
+    """Hold STORE_LOCK_PATH, waiting at most STORE_LOCK_WAIT seconds; TimeoutError past it."""
+    return myst_cdn.held(Path(STORE_LOCK_PATH), STORE_LOCK_WAIT, "another task kept the paper store busy")
 
 
 def _python() -> str:
@@ -62,8 +91,8 @@ class Output(str):
 
 
 def _failed(sentence: str) -> Output:
-    """The output of a command that never gave its own result: a result that is not ok, with the sentence."""
-    return Output(json.dumps({"ok": False, "errors": [sentence], "warnings": [], "notes": []}))
+    """The output of a command that never gave its own result: a result that is not ok and did not run."""
+    return Output(json.dumps({"ok": False, "ran": False, "errors": [sentence], "warnings": [], "notes": []}))
 
 
 def time_limit(argv: List[str]) -> Tuple[str, int]:
@@ -71,11 +100,17 @@ def time_limit(argv: List[str]) -> Tuple[str, int]:
     module, word = (list(argv) + ["", "", ""])[2:4]
     if module == "evidentron.graph":
         return ("term linking" if word == "concepts" else "store loading"), OTHER_TIME_LIMIT
-    return word, TIME_LIMITS.get(word, OTHER_TIME_LIMIT)
+    limit = TIME_LIMITS.get(word, OTHER_TIME_LIMIT)
+    return word, limit + (EXPLORE_SLOT_WAIT if word == "explore" and "--lock" in argv else 0)
 
 
-def _duration(seconds: float) -> str:
-    return f"{seconds / 60:g} minutes" if seconds >= 60 else f"{seconds:g} seconds"
+def _kill(child) -> None:
+    """Kill the child and every process it started (it leads its own group), and reap it."""
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    child.wait()
 
 
 def subprocess_runner(work: Path) -> Run:
@@ -91,12 +126,14 @@ def subprocess_runner(work: Path) -> Run:
         try:
             stdout, stderr = child.communicate(timeout=limit)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(child.pid, signal.SIGKILL)       # the child leads its own group: its children go too
-            except ProcessLookupError:
-                pass
+            _kill(child)
             child.communicate()
-            return 1, _failed(f"The {step} step took longer than {_duration(limit)} and was stopped.")
+            return 1, _failed(f"The {step} step took longer than {myst_cdn.duration(limit)} and was stopped.")
+        except BaseException:
+            # celery's soft time limit, a signal, anything: the step must not go on writing after the task has let
+            # go of the store's lock, nor keep the model's slot.
+            _kill(child)
+            raise
         return child.returncode, Output(stdout or "", stderr or "")
     return run
 
@@ -113,15 +150,20 @@ def _no_result(stderr: str) -> str:
     return NO_RESULT + said[-1].rstrip(".") + "."
 
 
+USAGE_ERROR = 2                 # the exit code of a command line the command did not understand: it did not run
+
+
 def outcome(code: int, output) -> dict:
     """The command's result: the JSON object it printed, with `ok` true only when its exit code is 0 too, and
-    `errors` saying why whenever `ok` is false."""
+    `errors` saying why whenever `ok` is false. `ran` is false when the command did not get to do its work: it
+    printed no JSON, did not start, ran past its time or did not understand its command line."""
     try:
         result = json.loads(getattr(output, "stdout", output) or "")
     except (TypeError, ValueError):
         result = None
     if not isinstance(result, dict):
-        result = {"ok": False, "errors": [_no_result(getattr(output, "stderr", output))]}
+        result = {"ok": False, "ran": False, "errors": [_no_result(getattr(output, "stderr", output))]}
+    result["ran"] = result.get("ran", True) is not False and code != USAGE_ERROR
     for key in ("errors", "warnings", "notes"):
         result[key] = [str(s) for s in result.get(key) or []]
     result["ok"] = result.get("ok") is True and code == 0
@@ -145,6 +187,7 @@ class DraftResult:
     summary: List[str] = field(default_factory=list)
     selfhosted: Optional[Path] = None
     model: Optional[str] = None
+    check_failure: Optional[str] = None   # the sentence when the check of the final draft could not be run
 
 
 @dataclass
@@ -153,6 +196,7 @@ class CheckResult:
     warnings: List[str] = field(default_factory=list)
     unreadable: Optional[str] = None
     notes: List[str] = field(default_factory=list)
+    failure: Optional[str] = None         # the sentence when the check could not be run at all
 
 
 @dataclass
@@ -160,7 +204,7 @@ class ConfirmResult:
     version: str = ""
     errors: List[str] = field(default_factory=list)
     addresses: Dict[str, str] = field(default_factory=dict)     # metadata, fair2, croissant: publish's addresses
-    terms: List[str] = field(default_factory=list)              # the ids of the terms the confirmed items use
+    terms: List[dict] = field(default_factory=list)             # {id, label} of the terms the confirmed items use
     terms_url: Optional[str] = None                             # where publish put the terms, a page per id
     confirmed: bool = False               # the confirm command succeeded, whatever happened after it
 
@@ -187,6 +231,8 @@ def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
     if submission:
         argv += ["--submit", str(submission)]
     result = _run(run, argv)
+    if not result["ran"]:
+        return CheckResult(failure=result["errors"][0])
     if result.get("unreadable"):
         return CheckResult(unreadable=result["unreadable"], notes=result["notes"])
     return CheckResult(errors=[] if result["ok"] else result["errors"], warnings=result["warnings"],
@@ -238,8 +284,8 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
         failure = _why_not(explored)[0]
     else:
         first = check(weft, profiles, data_dir, run)
-        if first.unreadable or first.errors:
-            failure = first.unreadable or first.errors[0]
+        if first.failure or first.unreadable or first.errors:
+            failure = first.failure or first.unreadable or first.errors[0]
     if failure is None:
         final = first
     else:
@@ -255,6 +301,7 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
     drafted_by = explored.get("drafted_by") if isinstance(explored.get("drafted_by"), dict) else {}
     result.drafted_by = drafted_by.get("backend") or result.drafted_by
     result.model = drafted_by.get("model")
+    result.check_failure = final.failure
     result.problems = [final.unreadable] if final.unreadable else final.errors
     result.warnings = final.warnings
     result.summary = [str(line) for line in explored.get("summary") or []]
@@ -294,9 +341,29 @@ def _not_exported(doi: str, published: dict) -> Optional[str]:
     """None when publish exported the paper's documents, else publish's sentence about the paper."""
     if doi.lower() in {str(d).lower() for d in published.get("exported") or []}:
         return None
-    mine = [str(s) for s in published.get("refused") or [] if doi.lower() in str(s).lower()]
+    mine = [str(r.get("sentence")) for r in published.get("refused") or []
+            if isinstance(r, dict) and str(r.get("doi") or "").lower() == doi.lower() and r.get("sentence")]
     return mine[0] if mine else \
         f"The FAIR² and Croissant documents of {doi} were not written when the site was published."
+
+
+def _lower_first(text: str) -> str:
+    """The sentence with its first letter lower-cased when it starts with a plain word (as weft_messages does)."""
+    words = text.split(maxsplit=1)
+    if not words or any(c.isupper() for c in words[0][1:]):
+        return text
+    return text[:1].lower() + text[1:]
+
+
+def publish(site: Path, db: Path, run: Optional[Run] = None) -> dict:
+    """Publish Evidentron's static site (terms, documents, metadata) into a new build folder that `site` then links
+    to; publish's result.
+
+    `publish` has no --db: it reads the default store and the weft folder from the config it finds. The worker's
+    ~/.evidentron is a link to /DATA/evidentron (the provisioning sets that up), so the default store and
+    ~/.evidentron/config.yaml are the server's; running it in the store's folder also finds ./evidentron.yaml."""
+    run = run or subprocess_runner(Path(db).parent)
+    return _run(run, data_cli_command() + ["publish", "--out", str(site), "--json"])
 
 
 def _addresses(doi: str, published: dict) -> Dict[str, str]:
@@ -315,6 +382,8 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
     given = run is not None
     run = run or subprocess_runner(weft.parent)
     checked = check(weft, profiles, data_dir, run, db, submission)
+    if checked.failure:
+        return ConfirmResult(errors=["The check could not be run: " + _lower_first(checked.failure)])
     if checked.unreadable:
         return ConfirmResult(errors=[checked.unreadable])
     if checked.errors:
@@ -331,7 +400,8 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
     if not done["ok"]:
         return ConfirmResult(errors=done["errors"])
     result = ConfirmResult(version=str(done.get("version") or ""), confirmed=True,
-                           terms=[str(t) for t in done.get("terms") or []])
+                           terms=[{"id": str(t["id"]), "label": t.get("label")} for t in done.get("terms") or []
+                                  if isinstance(t, dict) and t.get("id")])
 
     def stop(errors: List[str]) -> ConfirmResult:
         result.errors = errors
@@ -353,11 +423,7 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
                                                "--db", str(db), "--data", str(data_dir), "--json"])
         if not exported["ok"]:
             return stop(exported["errors"])
-    # `publish` has no --db: it reads the default store and the weft folder from the config it finds. The worker's
-    # ~/.evidentron is a link to /DATA/evidentron (the provisioning sets that up), so the default store and
-    # ~/.evidentron/config.yaml are the server's; running it in the store's folder also finds ./evidentron.yaml.
-    publish_run = run if given else subprocess_runner(Path(db).parent)
-    published = _run(publish_run, data_cli_command() + ["publish", "--out", str(site), "--json"])
+    published = publish(site, db, run if given else None)
     if not published["ok"]:
         return stop(published["errors"])
     missing = _not_exported(str(doi), published)
@@ -382,46 +448,62 @@ def link_terms(doi: str, db: Path, backend: str, run: Optional[Run] = None) -> L
 
 
 def load_paper(doi: str, site: Path, db: Path, run: Optional[Run] = None) -> Optional[str]:
-    """Load the paper from a MyST site (the local CDN) into the store; the sentence when it could not be, else
-    None. This command of Evidentron's has no --json, so it is read by its exit code, and a failure by the last
-    line it wrote on stderr."""
+    """Load the paper from a MyST site (the local CDN) into the store; the command's sentence when it could not be,
+    else None."""
     run = run or subprocess_runner(Path(db).parent)
-    code, output = run(graph_command() + [str(site), "--doi", doi, "--db", str(db)])
-    if code == 0:
-        return None
-    why = outcome(code, output)["errors"][0]      # a time limit or a failed start is already a sentence
-    why = why[len(NO_RESULT):] if why.startswith(NO_RESULT) else why[:1].lower() + why[1:]
-    return f"The paper could not be loaded into the store: {why}"
+    result = _run(run, graph_command() + [str(site), "--doi", doi, "--db", str(db), "--json"])
+    if not result["ok"]:
+        return result["errors"][0]
+    papers = [p for p in result.get("papers") or [] if isinstance(p, dict)]
+    if not any(p.get("loaded") and str(p.get("doi") or "").lower() == doi.lower() for p in papers):
+        return f"The store has no row for {doi} after the load."
+    return None
 
 
-def reset(doi: str, wefts: Path, db: Path, site: Path) -> List[str]:
-    """Start a paper's description over: remove its confirmed weft and profiles from the folder of record (wefts),
-    keeping the weft as <stem>.weft.yaml.previous so the next confirmation measures its version against it, and
-    remove its documents from Evidentron's site (site/wefts/<doi>/). Returns what was done, one sentence each.
+@dataclass
+class ResetResult:
+    said: List[str] = field(default_factory=list)     # what was done, one sentence each
+    removed: bool = False                             # a confirmed description was there and was moved aside
+    published: bool = False                           # Evidentron's site was published again without it
+
+
+def reset(doi: str, wefts: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
+    """Start a paper's description over: move its confirmed weft aside as <stem>.weft.yaml.previous (the next
+    confirmation measures its version against it), remove its profiles and the work copy <wefts>/<stem>/ (so a later
+    check or confirmation cannot act on it), and publish Evidentron's site again as a confirmation does, which
+    builds it without the paper's documents and the terms only they used. The caller rebuilds the CDN.
 
     The paper's rows stay in the store (db): Evidentron has no command to remove them, and the next load of the
     paper replaces them. The last sentence says so."""
     wefts, stem = Path(wefts), _stem(doi)
-    weft, profiles = wefts / f"{stem}.weft.yaml", wefts / f"{stem}.profiles.json"
-    done = []
+    weft, profiles, work = wefts / f"{stem}.weft.yaml", wefts / f"{stem}.profiles.json", wefts / stem
+    result = ResetResult()
     try:
         if weft.is_file():
             os.replace(weft, wefts / (weft.name + PREVIOUS))
-            done.append(f"The confirmed description of {doi} was removed and kept as {weft.name + PREVIOUS}, so the "
-                        "next confirmation measures its version against it.")
+            result.removed = True
+            result.said.append(f"The confirmed description of {doi} was removed and kept as {weft.name + PREVIOUS}, "
+                               "so the next confirmation measures its version against it.")
         else:
-            done.append(f"There is no confirmed description of {doi} on the server.")
+            result.said.append(f"There is no confirmed description of {doi} on the server.")
         if profiles.is_file():
             profiles.unlink()
-            done.append(f"Its profiles, {profiles.name}, were removed.")
-        documents = Path(site) / "wefts" / doi
-        if documents.is_dir():
-            shutil.rmtree(documents)
-            done.append("Its FAIR² and Croissant documents were removed from Evidentron's site; the CDN drops them "
-                        "at its next rebuild.")
+            result.said.append(f"Its profiles, {profiles.name}, were removed.")
+        if work.is_dir():
+            shutil.rmtree(work)
+            result.said.append(f"Its working copy, {stem}/, was removed.")
     except OSError as e:
-        done.append(f"The reset stopped: {e.strerror or e.__class__.__name__}.")
-        return done
-    done.append("The store keeps the paper's rows until the next load of the paper replaces them, since Evidentron "
-                "has no command to remove them.")
-    return done
+        result.said.append(f"The reset stopped: {e.strerror or e.__class__.__name__}.")
+        return result
+    if result.removed:
+        published = publish(site, db, run)
+        if published["ok"]:
+            result.published = True
+            result.said.append("Evidentron's site was published again without its documents.")
+        else:
+            result.said.append("Evidentron's site could not be published again: "
+                               + _lower_first(published["errors"][0]).rstrip(".") + ".")
+            return result
+    result.said.append("The store keeps the paper's rows until the next load of the paper replaces them, since "
+                       "Evidentron has no command to remove them.")
+    return result

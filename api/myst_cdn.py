@@ -259,7 +259,7 @@ def publish(root: Optional[Path] = None, extras: Any = EVIDENTRON) -> Dict[str, 
     return report
 
 
-def _duration(seconds: float) -> str:
+def duration(seconds: float) -> str:
     return f"{seconds / 60:g} minutes" if seconds >= 60 else f"{seconds:g} seconds"
 
 
@@ -276,7 +276,7 @@ def held(path: Path, wait: float, busy: str):
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(f"{busy} for more than {_duration(wait)}")
+                    raise TimeoutError(f"{busy} for more than {duration(wait)}")
                 time.sleep(min(5, wait / 10))
         try:
             yield

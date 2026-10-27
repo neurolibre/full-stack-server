@@ -1,4 +1,5 @@
 import os
+import subprocess
 import re
 import logging
 from common import get_time, parse_front_matter
@@ -409,7 +410,7 @@ def get_default_branch(github_client,repository):
     default_branch = repo.default_branch
     return default_branch
 
-def gh_clone_repository(repo_url, target_path, depth=1, commit=None):
+def gh_clone_repository(repo_url, target_path, depth=1, commit=None, timeout=None):
     """
     Shallow clones a GitHub repository to the specified target path with the given depth.
 
@@ -418,6 +419,8 @@ def gh_clone_repository(repo_url, target_path, depth=1, commit=None):
     - target_path (str): The target directory where the repository will be cloned.
     - depth (int): The depth of the shallow clone (default: 1); None clones the whole history.
     - commit (str): Check out this commit after cloning.
+    - timeout (float): Seconds the clone and the checkout may take each; past it, git is stopped and a
+      RuntimeError says so. None waits as long as git takes.
 
     Returns:
     - None
@@ -427,7 +430,18 @@ def gh_clone_repository(repo_url, target_path, depth=1, commit=None):
     if not os.path.exists(target_path):
         os.makedirs(target_path)
 
-    # Clone the repository with the specified depth
-    repo = git.Repo.clone_from(repo_url, target_path, depth=depth)
+    if timeout is None:
+        # Clone the repository with the specified depth
+        repo = git.Repo.clone_from(repo_url, target_path, depth=depth)
+    else:
+        argv = ["git", "clone"] + (["--depth", str(depth)] if depth else []) + ["--", repo_url, str(target_path)]
+        try:
+            done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"the clone took longer than {timeout:g} seconds and was stopped")
+        if done.returncode != 0:
+            said = [line.strip() for line in done.stderr.split("\n") if line.strip()]
+            raise RuntimeError(said[-1] if said else f"git clone ended with exit code {done.returncode}")
+        repo = git.Repo(target_path)
     if commit:
-        repo.git.checkout(commit)
+        repo.git.checkout(commit, kill_after_timeout=timeout)

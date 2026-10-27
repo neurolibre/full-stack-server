@@ -69,7 +69,7 @@ class Fake:
         return 0, said("check", warnings=["participants.tsv: a unit is missing"])
 
     def _confirm(self, argv):
-        return 0, said("confirm", version="1.1.0", modified="2026-10-27", terms=["age", "participant"],
+        return 0, said("confirm", version="1.1.0", modified="2026-10-27", terms=[{"id": "age", "label": "age"}, {"id": "participant", "label": None}],
                        confirmed=[{"entry": "participants.tsv", "name": "a"}])
 
     def _load(self, argv):
@@ -87,7 +87,7 @@ class Fake:
                                                           {"id": "plot", "label": None}])
 
     def _graph_load(self, argv):
-        return 0, "Resolved 3 cross-work references\n"
+        return 0, said("graph", papers=[{"doi": argv_value(argv, "--doi"), "loaded": True}])
 
 
 @pytest.fixture
@@ -314,7 +314,7 @@ def test_confirm_happy_path(dirs):
     assert fake.calls[5][1:4] == ["-m", "evidentron.cli.data_cli", "publish"]
     assert argv_value(fake.calls[5], "--out") == str(work / "site")
     assert result.addresses == ADDRESSES                  # publish's own addresses
-    assert result.terms == ["age", "participant"]         # confirm's own terms
+    assert result.terms == [{"id": "age", "label": "age"}, {"id": "participant", "label": None}]   # confirm's own
     assert result.terms_url == f"{CDN}/terms/"
 
 
@@ -407,7 +407,9 @@ def test_confirm_measures_against_the_confirmed_copy_or_the_one_a_reset_kept(dir
 def test_confirm_fails_with_publishs_sentence_when_the_documents_are_not_written(dirs):
     work, data, _ = dirs
     refused = f"No weft of {DOI} is in the server's folder of wefts: it looks for 00041.weft.yaml there."
-    out = said("publish", refused=["No weft of 10.55458/neurolibre.00099 is in the server's folder of wefts.", refused],
+    out = said("publish", refused=[{"doi": None, "sentence": f"The terms are published without units: {DOI}."},
+                                   {"doi": "10.55458/neurolibre.00099", "sentence": f"No weft of {DOI}9 is there."},
+                                   {"doi": DOI.upper(), "sentence": refused}],
                exported=["10.55458/neurolibre.00099"], terms_url=f"{CDN}/terms/")
     result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {"publish": lambda a: (0, out)}),
                                 record=work.parent / "wefts")
@@ -450,17 +452,25 @@ def test_link_terms_that_fail_say_why(dirs):
     assert result.failure == "The anthropic-api backend needs ANTHROPIC_API_KEY."
 
 
-# Loading the paper into the store: a command without --json, read by its exit code, and on a failure by the last
-# line it wrote on stderr.
+# Loading the paper into the store.
 
 def test_load_paper(dirs):
     work, _, _ = dirs
     fake = Fake(work)
     assert weft_steps.load_paper(DOI, Path("/cdn/current"), work / "graph.db", run=fake) is None
-    assert fake.calls[0][1:] == ["-m", "evidentron.graph", "/cdn/current", "--doi", DOI, "--db", str(work / "graph.db")]
-    crash = weft_steps.Output("", "Traceback (most recent call last):\n  File x\nValueError: no such site\n")
-    sentence = weft_steps.load_paper(DOI, Path("/cdn/current"), work / "graph.db", run=lambda a: (1, crash))
-    assert sentence == "The paper could not be loaded into the store: ValueError: no such site."
+    assert fake.calls[0][1:] == ["-m", "evidentron.graph", "/cdn/current", "--doi", DOI, "--db",
+                                 str(work / "graph.db"), "--json"]
+    out = said("graph", errors=[f"The paper {DOI} was not loaded from /cdn/current: no config.json."],
+               papers=[{"doi": DOI, "loaded": False}])
+    sentence = weft_steps.load_paper(DOI, Path("/cdn/current"), work / "graph.db", run=lambda a: (1, out))
+    assert sentence == f"The paper {DOI} was not loaded from /cdn/current: no config.json."
+
+
+def test_a_load_that_did_not_load_the_paper_says_so(dirs):
+    work, _, _ = dirs
+    out = said("graph", papers=[{"doi": DOI, "loaded": False}])
+    sentence = weft_steps.load_paper(DOI, Path("/cdn"), work / "graph.db", run=lambda a: (0, out))
+    assert sentence == f"The store has no row for {DOI} after the load."
 
 
 # The runner: stdout apart, and a time limit per step.
@@ -481,7 +491,9 @@ def test_a_command_that_cannot_start_is_a_result_with_its_sentence(tmp_path):
 
 @pytest.mark.parametrize("argv, seconds", [
     (["py", "-m", "evidentron.weft", "profile"], 600),
-    (["py", "-m", "evidentron.weft", "explore"], 3600 + 3600),
+    (["py", "-m", "evidentron.weft", "explore", "--lock", "x"], 3600 + 3600),
+    (["py", "-m", "evidentron.weft", "explore"], 3600),
+    (["py", "-m", "evidentron.graph", "/cdn", "--doi", "d"], 900),
     (["py", "-m", "evidentron.weft", "check"], 900),
     (["py", "-m", "evidentron.weft", "confirm"], 900),
     (["py", "-m", "evidentron.weft", "load"], 900),
@@ -517,26 +529,138 @@ def test_a_step_past_its_time_is_stopped_with_its_children(tmp_path, monkeypatch
 
 # Starting over.
 
-def test_reset_removes_the_confirmed_description_and_keeps_it_as_the_previous_one(tmp_path):
-    wefts, site = tmp_path / "wefts", tmp_path / "site.1"
-    wefts.mkdir()
+def test_reset_moves_the_description_aside_publishes_again_and_removes_the_work_copy(tmp_path):
+    wefts, site = tmp_path / "wefts", tmp_path / "site"
+    (wefts / "00041").mkdir(parents=True)
+    (wefts / "00041" / "00041.weft.yaml").write_text("the work copy")
     (wefts / "00041.weft.yaml").write_text(WEFT_YAML)
     (wefts / "00041.profiles.json").write_text("{}")
     (wefts / "00042.weft.yaml").write_text("another paper")
-    (site / "wefts" / DOI).mkdir(parents=True)
-    (site / "wefts" / DOI / "fair2.json").write_text("{}")
-    link = tmp_path / "site"
-    link.symlink_to(site)
-    done = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", link)
+    fake = Fake(tmp_path)
+    seen = {}
+
+    def publish(argv):
+        seen["flat"] = (wefts / "00041.weft.yaml").exists()
+        return fake._publish(argv)
+    fake.script["publish"] = publish
+    result = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", site, run=fake)
+    assert fake.words() == ["publish"] and argv_value(fake.calls[0], "--out") == str(site)
+    assert "--json" in fake.calls[0]
+    assert seen == {"flat": False}                       # published once the description is gone
     assert not (wefts / "00041.weft.yaml").exists() and not (wefts / "00041.profiles.json").exists()
     assert (wefts / "00041.weft.yaml.previous").read_text() == WEFT_YAML
+    assert not (wefts / "00041").exists()
     assert (wefts / "00042.weft.yaml").read_text() == "another paper"
-    assert not (site / "wefts" / DOI).exists() and link.is_symlink()
-    assert done[-1] == ("The store keeps the paper's rows until the next load of the paper replaces them, since "
-                        "Evidentron has no command to remove them.")
-    assert all("\n" not in s for s in done)
+    assert result.removed and result.published
+    assert result.said[-1] == ("The store keeps the paper's rows until the next load of the paper replaces them, "
+                               "since Evidentron has no command to remove them.")
+    assert all("\n" not in s for s in result.said)
 
 
-def test_reset_of_a_paper_with_nothing_confirmed_says_so(tmp_path):
-    done = weft_steps.reset(DOI, tmp_path / "wefts", tmp_path / "graph.db", tmp_path / "site")
-    assert done[0] == f"There is no confirmed description of {DOI} on the server."
+def test_reset_that_cannot_publish_says_why(tmp_path):
+    wefts = tmp_path / "wefts"
+    wefts.mkdir()
+    (wefts / "00041.weft.yaml").write_text(WEFT_YAML)
+    out = said("publish", errors=["The site could not be written: disk full."])
+    result = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", tmp_path / "site", run=lambda a: (1, out))
+    assert result.removed and not result.published
+    assert "Evidentron's site could not be published again: the site could not be written: disk full." in result.said
+
+
+def test_reset_of_a_paper_with_nothing_confirmed_says_so_and_publishes_nothing(tmp_path):
+    fake = Fake(tmp_path)
+    result = weft_steps.reset(DOI, tmp_path / "wefts", tmp_path / "graph.db", tmp_path / "site", run=fake)
+    assert result.said[0] == f"There is no confirmed description of {DOI} on the server."
+    assert fake.calls == [] and not result.removed
+
+
+# B10 review: a result the server made up is not a check's finding; the runner leaves no child behind.
+
+@pytest.mark.parametrize("code, output", [
+    (2, said("check", errors=["The command was not run: the following arguments are required: weft."])),
+    (1, weft_steps.Output("", "Traceback\nImportError: x\n")),
+])
+def test_a_result_the_command_did_not_make_is_not_a_run(code, output):
+    result = weft_steps.outcome(code, output)
+    assert result["ok"] is False and result["ran"] is False
+    assert weft_steps.outcome(0, said("check"))["ran"] is True
+    assert weft_steps.outcome(1, said("check", errors=["a.tsv: no term"]))["ran"] is True
+
+
+def test_a_usage_error_is_the_commands_sentence():
+    out = said("check", errors=["The command was not run: the following arguments are required: weft."])
+    result = weft_steps.outcome(2, out)
+    assert result["errors"] == ["The command was not run: the following arguments are required: weft."]
+
+
+def test_a_check_that_could_not_run_is_a_failure_not_errors(dirs):
+    work, data, _ = dirs
+    weft, profiles = seed(work)
+    crash = weft_steps.Output("", "ImportError: no module\n")
+    result = weft_steps.check(weft, profiles, data, run=Fake(work, {"check": lambda a: (1, crash)}))
+    assert result.errors == [] and result.failure == "The command gave no result: ImportError: no module."
+    result = weft_steps.confirm(**confirm_args(work, data), run=Fake(work, {"check": lambda a: (1, crash)}))
+    assert result.errors == ["The check could not be run: the command gave no result: ImportError: no module."]
+
+
+def test_a_draft_whose_check_could_not_run_says_so(dirs):
+    work, data, lock = dirs
+    crash = weft_steps.Output("", "ImportError: no module\n")
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"check": lambda a: (1, crash)}))
+    assert result.problems == [] and result.check_failure == "The command gave no result: ImportError: no module."
+
+
+def test_an_exception_while_waiting_kills_the_step_and_its_children(tmp_path):
+    import signal
+
+    class Soft(Exception):
+        pass
+
+    def raise_soft(*a):
+        raise Soft()
+    marker = tmp_path / "child.pid"
+    script = ("import subprocess, sys, time; "
+              "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+              f"open({str(marker)!r}, 'w').write(str(c.pid)); time.sleep(60)")
+    old = signal.signal(signal.SIGALRM, raise_soft)
+    signal.alarm(2)
+    try:
+        with pytest.raises(Soft):
+            weft_steps.subprocess_runner(tmp_path)([sys.executable, "-c", script])
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+    grandchild = int(marker.read_text())
+    for _ in range(50):
+        try:
+            os.kill(grandchild, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail("the step's child was left running")
+
+
+def test_the_places_and_the_lock_have_one_home(tmp_path, monkeypatch):
+    import myst_cdn
+    assert weft_steps.WEFTS_PATH == weft_steps.EVIDENTRON_PATH / "wefts"
+    assert weft_steps.GRAPH_DB_PATH == weft_steps.EVIDENTRON_PATH / "graph.db"
+    assert weft_steps.STORE_LOCK_PATH == weft_steps.EVIDENTRON_PATH / "store.lock"
+    assert weft_steps.SITE_PATH == myst_cdn.EVIDENTRON_SITE and weft_steps.STORE_LOCK_WAIT == 1800
+    monkeypatch.setattr(weft_steps, "STORE_LOCK_PATH", tmp_path / "store.lock")
+    monkeypatch.setattr(weft_steps, "STORE_LOCK_WAIT", 0.2)
+    with weft_steps.store_lock():
+        with pytest.raises(TimeoutError):              # a second holder waits, then gives up
+            with weft_steps.store_lock():
+                pass
+    assert myst_cdn.duration(1800) == "30 minutes" and myst_cdn.duration(0.2) == "0.2 seconds"
+
+
+def test_the_task_time_limits_are_the_sum_of_the_steps():
+    t, wait = weft_steps.TIME_LIMITS, weft_steps.STORE_LOCK_WAIT
+    assert weft_steps.DRAFT_SECONDS == (weft_steps.CLONE_TIMEOUT + 2 * wait + weft_steps.OTHER_TIME_LIMIT
+                                        + t["profile"] + t["explore"] + weft_steps.EXPLORE_SLOT_WAIT + t["check"]
+                                        + t["explore"] + t["check"] + weft_steps.OTHER_TIME_LIMIT)
+    assert weft_steps.CONFIRM_SECONDS == (wait + weft_steps.OTHER_TIME_LIMIT + t["check"] + t["confirm"]
+                                          + t["load"] + 2 * t["export"] + t["publish"]
+                                          + weft_steps.REBUILD_SECONDS)

@@ -47,6 +47,7 @@ EXTRA = {
     "load": {"fields": 0, "paper": None},
     "export": {"written": None, "left_out": [], "refused": None},
     "graph concepts": {"linked": 0, "terms": []},
+    "graph": {"papers": []},
     "publish": {"terms": [], "terms_left_out": 0, "exported": [], "refused": [], "metadata": [], "addresses": {},
                 "terms_url": None, "folder": None},
 }
