@@ -670,9 +670,9 @@ def test_a_draft_over_a_confirmed_weft_is_refused(world, monkeypatch):
     with pytest.raises(Ignore):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == (
-        "This paper's data description is already confirmed on the server. To change it, reply with the entries to "
-        "change in a `yaml` code block and write `@roboneuro weft confirm`; to start over, an editor removes the "
-        "confirmed description on the server.")
+        "This paper's data description is already confirmed. To change it, reply with the entries to change in a "
+        "`yaml` code block and ask an editor or reviewer for `@roboneuro weft confirm at <comment id>`; to start "
+        "over, an editor removes the confirmed description on the server.")
     assert world.gh.writes == [] and world.calls == []
 
 

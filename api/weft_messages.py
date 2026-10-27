@@ -200,9 +200,10 @@ def data_missing(project_name: str) -> str:
 NO_PUBLISHED_BUILD = ("The paper has no published build yet, so its code cannot be read. Run "
                       "`@roboneuro production sync myst` first.")
 
-ALREADY_CONFIRMED = ("This paper's data description is already confirmed on the server. To change it, reply with "
-                     "the entries to change in a `yaml` code block and write `@roboneuro weft confirm`; to start "
-                     "over, an editor removes the confirmed description on the server.")
+ALREADY_CONFIRMED = ("This paper's data description is already confirmed. To change it, reply with the "
+                     "entries to change in a `yaml` code block and ask an editor or reviewer for "
+                     "`@roboneuro weft confirm at <comment id>`; to start over, an editor removes the confirmed "
+                     "description on the server.")
 
 NO_DRAFT = ("There is no draft of this paper's data description on the server yet. Ask for "
             "`@roboneuro weft draft` first.")
