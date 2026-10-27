@@ -118,7 +118,7 @@ def test_draft_happy_path(dirs):
     assert "--repo" not in explore
     assert result.warnings == ["participants.tsv: a unit is missing"]
     assert result.problems == []
-    assert any(line.startswith("participants.tsv: 2 columns") for line in result.summary)
+    assert any(line.startswith("`participants.tsv`: a table with 2 columns.") for line in result.summary)
 
 
 def test_draft_passes_the_repository(dirs):
@@ -281,9 +281,9 @@ def test_summary_of(tmp_path):
     weft = tmp_path / "w.yaml"
     weft.write_text(WEFT_YAML)
     assert weft_steps.summary_of(weft) == [
-        "participants.tsv: 2 columns; one row is one volunteer",
-        "scans: a collection of 115 files; one member is one image of a participant",
-        "proposed new term rf-shimming: RF shimming",
+        "`participants.tsv`: a table with 2 columns. One row is one volunteer.",
+        "`scans`: a collection of 115 files. One member is one image of a participant.",
+        "Proposed new term `rf-shimming`: RF shimming.",
     ]
 
 
@@ -314,14 +314,42 @@ def test_summary_of_a_real_shape(tmp_path):
     weft = tmp_path / "w.yaml"
     weft.write_text(REAL_SHAPE)
     lines = weft_steps.summary_of(weft)
-    assert lines[0] == "repo2data.log: a binary file; A log written by the data download tool"
-    assert lines[1] == "notes.bin: a binary file"
-    assert lines[2] == "database.xlsx#Details: 1 columns; one row is one published study"
-    assert lines[3] == "logs: a collection of files; one member is a log file"
+    assert lines[0] == "`repo2data.log`: not a table; a log written by the data download tool."
+    assert lines[1] == "`notes.bin`: not a table."
+    assert lines[2] == "`database.xlsx#Details`: a table with 1 column. One row is one published study."
+    assert lines[3] == "`logs`: a collection of files. One member is a log file."
     assert not any("0 columns" in line for line in lines)
-    terms = [line for line in lines if line.startswith("proposed new term")]
+    terms = [line for line in lines if line.startswith("Proposed new term")]
     assert len(terms) == 10
-    assert lines[-1] == "and 3 more proposed terms"
+    assert lines[-1] == "3 more proposed terms."
+
+
+def test_summary_of_writes_each_description_as_a_sentence(tmp_path):
+    weft = tmp_path / "w.yaml"
+    weft.write_text("""files:
+- file: pat.csv
+  row: {description: 'A single patent record from the WIPO PatentScope database, scraped between 1910 and 2023.'}
+  fields: [{name: a}, {name: b}, {name: c}, {name: d}, {name: e}, {name: f}, {name: g}, {name: h}, {name: i}]
+- file: repo2data_cache_record.json
+  kind: binary
+  description: A cache record written by repo2data..
+- file: sites.csv
+  row: {description: NOAA station that recorded the sample.}
+  fields: [{name: a}]
+- file_pattern: 'plot_*.csv'
+  row: {description: One row is one harvest.}
+  fields: [{name: a}, {name: b}]
+- file: scene.las
+  kind: point cloud
+""")
+    assert weft_steps.summary_of(weft) == [
+        "`pat.csv`: a table with 9 columns. One row is a single patent record from the WIPO PatentScope database, "
+        "scraped between 1910 and 2023.",
+        "`repo2data_cache_record.json`: not a table; a cache record written by repo2data.",
+        "`sites.csv`: a table with 1 column. One row is NOAA station that recorded the sample.",
+        "`plot_*.csv`: a table with 2 columns. One row is one harvest.",
+        "`scene.las`: a point cloud file.",
+    ]
 
 
 def test_summary_of_new_terms_that_is_not_a_mapping(tmp_path):

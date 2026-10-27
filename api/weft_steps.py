@@ -125,9 +125,19 @@ def _failures(output: str) -> List[str]:
 
 
 def _sentence(text: str, lead: str) -> str:
-    """The description as the end of "one row is ..." : without a lead it repeats, and lower case at the start."""
-    text = re.sub(rf"^one {lead} is\s+", "", str(text).strip(), flags=re.IGNORECASE).rstrip(".")
-    return text[:1].lower() + text[1:] if text[1:2].islower() else text
+    """The description as the end of "One row is ...": without the lead it would repeat, lower case at the start
+    (see lower_first) and without a final full stop."""
+    text = re.sub(rf"^one {lead} is\s+", "", str(text).strip(), flags=re.IGNORECASE).rstrip(".").rstrip()
+    return lower_first(text)
+
+
+def lower_first(text: str) -> str:
+    """The text with its first letter lower-cased, unless its first word is an acronym or a name written with
+    capitals inside it (NOAA, WIPO, iPhone): only when the rest of the first word has no capital letter."""
+    words = text.split(maxsplit=1)
+    if not words or any(c.isupper() for c in words[0][1:]):
+        return text
+    return text[:1].lower() + text[1:]
 
 
 def _load(path: Path):
@@ -156,7 +166,9 @@ def _entries(weft) -> list:
 
 
 def summary_of(weft_path: Path) -> List[str]:
-    """One line per table and per collection, then the terms the weft proposes."""
+    """One sentence per table, per file that is not a table and per collection, then the terms the weft
+    proposes: "`a.csv`: a table with 9 columns. One row is one plot in one year." The file name is in backticks,
+    and each description is written as the end of the sentence, ending with one full stop."""
     try:
         weft = _load(Path(weft_path))
     except (OSError, ValueError, yaml.YAMLError):
@@ -165,35 +177,36 @@ def summary_of(weft_path: Path) -> List[str]:
     for entry in _entries(weft):
         if "collection" in entry:
             count = entry.get("member_count") or len(entry.get("members") or [])
-            line = f"{entry['collection']}: a collection of {count} files" if count else \
-                f"{entry['collection']}: a collection of files"
+            line = f"`{entry['collection']}`: " + (f"a collection of {count} files" if count else "a collection of files")
             if entry.get("description"):
-                line += f"; one member is {_sentence(entry['description'], 'member')}"
-        elif "file" in entry:
+                line += f". One member is {_sentence(entry['description'], 'member')}"
+        elif "file" in entry or "file_pattern" in entry:
+            name = entry.get("file") or entry.get("file_pattern")
             fields = entry.get("fields") or []
             if fields:
-                line = f"{entry['file']}: {len(fields)} columns"
+                line = f"`{name}`: a table with {len(fields)} column" + ("" if len(fields) == 1 else "s")
                 row = entry.get("row")
                 text = row.get("description") if isinstance(row, dict) else row
                 text = text or entry.get("row_description")
                 if text:
-                    line += f"; one row is {_sentence(text, 'row')}"
+                    line += f". One row is {_sentence(text, 'row')}"
             else:
                 kind = entry.get("kind")
-                line = f"{entry['file']}: " + (f"a {kind} file" if kind else "a file with no columns described")
+                line = f"`{name}`: " + ("not a table" if kind in (None, "binary") else f"a {kind} file")
                 if entry.get("description"):
-                    line += f"; {str(entry['description']).strip().rstrip('.')}"
+                    line += f"; {_sentence(entry['description'], 'file')}"
         else:
             continue
-        lines.append(line)
+        lines.append(line + ".")
     new_terms = weft.get("new_terms") if isinstance(weft, dict) else None
     if not isinstance(new_terms, dict):
         new_terms = {}
     for term_id, info in list(new_terms.items())[:MAX_TERM_LINES]:
         label = info.get("label") if isinstance(info, dict) else None
-        lines.append(f"proposed new term {term_id}" + (f": {label}" if label else ""))
+        label = str(label).strip().rstrip(".") if label else None
+        lines.append(f"Proposed new term `{term_id}`" + (f": {label}." if label else "."))
     if len(new_terms) > MAX_TERM_LINES:
-        lines.append(f"and {len(new_terms) - MAX_TERM_LINES} more proposed terms")
+        lines.append(f"{len(new_terms) - MAX_TERM_LINES} more proposed terms.")
     return lines
 
 

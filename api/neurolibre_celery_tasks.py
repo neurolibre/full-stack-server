@@ -2553,6 +2553,8 @@ and the paper's repository is only read, cloned at its published commit.
 """
 import contextlib
 import fcntl
+import sqlite3
+import weft_messages as say
 import weft_steps
 from pathlib import Path
 from types import SimpleNamespace
@@ -2597,7 +2599,7 @@ def _weft_paper(task):
         task.fail(f"The data requirement of {doi} could not be read, so the paper's data folder is unknown: {e}")
     data_dir = os.path.join(DATA_NFS_PATH, project_name)
     if not os.path.isdir(data_dir):
-        task.fail(f"The data of {doi} is not at {data_dir}, so there is nothing to describe.")
+        task.fail(say.data_missing(project_name))
     work = os.path.join(WEFTS_PATH, stem)
     os.makedirs(work, exist_ok=True)
     return SimpleNamespace(doi=doi, stem=stem, data_dir=data_dir, work=work,
@@ -2614,16 +2616,11 @@ def _server_weft(task, paper):
     if os.path.isfile(confirmed):
         confirmed_profiles = os.path.join(WEFTS_PATH, paper.profiles_name)
         if not os.path.isfile(confirmed_profiles):
-            task.fail(f"The confirmed weft of {paper.doi} is on the server but its profiles are not, so it cannot be "
-                      "checked; restore the profiles beside it, or remove the confirmed weft from the server and ask for "
-                      "`@roboneuro weft draft` again.")
+            task.fail(say.CONFIRMED_WITHOUT_PROFILES)
         shutil.copyfile(confirmed, weft)
         shutil.copyfile(confirmed_profiles, profiles)
-    if not os.path.isfile(weft):
-        task.fail(f"No draft of {paper.doi} is on the server; ask for `@roboneuro weft draft` first.")
-    if not os.path.isfile(profiles):
-        task.fail(f"The server has no profiles of the data of {paper.doi}, so the weft cannot be checked: ask for "
-                  "`@roboneuro weft draft` first.")
+    if not (os.path.isfile(weft) and os.path.isfile(profiles)):
+        task.fail(say.NO_DRAFT)
     return weft, profiles
 
 
@@ -2643,7 +2640,7 @@ def _errors_as_sentences(task):
     except Ignore:
         raise
     except (GithubException, requests.RequestException) as e:
-        task.fail(f"GitHub could not be reached: {_github_reason(e)}.")
+        task.fail(say.github_unreachable("the review issue", _github_reason(e)))
     except OSError as e:
         task.fail(f"The paper's files could not be written on the server: {e.strerror or e.__class__.__name__}.")
 
@@ -2661,8 +2658,7 @@ def _store_lock(task):
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    task.fail(f"Another weft task kept the paper store busy for more than {STORE_LOCK_WAIT / 60:g} "
-                              "minutes, so nothing was done: ask again in a while.")
+                    task.fail(say.store_busy(f"{STORE_LOCK_WAIT / 60:g}"))
                 time.sleep(min(5, STORE_LOCK_WAIT / 10))
         try:
             yield
@@ -2688,7 +2684,7 @@ def _published_clone(task, paper):
         task.fail(f"The published commit of {fork_name} could not be read from the preview server: {e.__class__.__name__}")
     commit = response.text.strip() if response.status_code == 200 else ""
     if not commit:
-        task.fail(f"There is no published commit of {fork_name} on the preview server, so the paper's repository cannot be read.")
+        task.fail(say.NO_PUBLISHED_BUILD)
     target = os.path.join(REPOS_PATH, paper.stem)
     shutil.rmtree(target, ignore_errors=True)
     try:
@@ -2699,16 +2695,79 @@ def _published_clone(task, paper):
     return target
 
 
-def _drafter(result):
-    if result.reason:
-        reason = result.reason.rstrip(".")
-        reason = reason[:1].lower() + reason[1:] if reason[1:2].islower() else reason
-        return f"Claude because {reason}"
-    return "the self-hosted model"
+def _read_store(query, args):
+    """Rows from the graph store, opened read-only so that a missing store is an error and never a new file."""
+    con = sqlite3.connect(Path(os.path.abspath(GRAPH_DB_PATH)).as_uri() + "?mode=ro", uri=True)
+    try:
+        return con.execute(query, args).fetchall()
+    finally:
+        con.close()
 
 
-def _bullets(items):
-    return "\n".join(f"- {item}" for item in items)
+def _id_words(term_id):
+    return str(term_id).replace("-", " ")
+
+
+def _paper_term_labels(doi):
+    """The labels of the terms the paper's text is linked to, sorted; the ids in words for a term with no label
+    (or when the vocabulary's table cannot be read); [] when there are none; None when the store cannot be read."""
+    try:
+        rows = _read_store("SELECT DISTINCT pc.concept_id, c.label FROM kg_paper_concept pc LEFT JOIN kg_concept c "
+                           "ON c.id = pc.concept_id WHERE lower(pc.work_id) = lower(?)", (doi,))
+    except sqlite3.Error:
+        try:
+            rows = [(r[0], None) for r in _read_store(
+                "SELECT DISTINCT concept_id FROM kg_paper_concept WHERE lower(work_id) = lower(?)", (doi,))]
+        except sqlite3.Error:
+            return None
+    labels = {label or _id_words(term_id) for term_id, label in rows if term_id}
+    return sorted(labels, key=str.lower)
+
+
+def _term_labels(term_ids):
+    """Each term id's label from the store, or the id in words when it has none or the store cannot be read."""
+    found = {}
+    if term_ids:
+        try:
+            marks = ",".join("?" * len(term_ids))
+            found = dict(_read_store(f"SELECT id, label FROM kg_concept WHERE id IN ({marks})", tuple(term_ids)))
+        except sqlite3.Error:
+            pass
+    return {t: found.get(t) or _id_words(t) for t in term_ids}
+
+
+def _yaml_scalar(value):
+    text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10 ** 9)
+    return text.split("\n...")[0].strip()
+
+
+def _example(weft_path):
+    """A yaml block that changes one real entry of this draft: the first table's first field, else the first
+    collection's first variable, with the keys an author reviews; None when the draft has neither."""
+    try:
+        weft = yaml.safe_load(Path(weft_path).read_text())
+    except (OSError, ValueError, yaml.YAMLError):
+        return None
+    entries = [e for e in (weft.get("files") or [] if isinstance(weft, dict) else []) if isinstance(e, dict)]
+    for owner_keys, items_key in ((("file", "file_pattern"), "fields"), (("collection",), "variables")):
+        for entry in entries:
+            owner = next((k for k in owner_keys if entry.get(k)), None)
+            items = [i for i in entry.get(items_key) or [] if isinstance(i, dict)]
+            if owner is None or "collection" in entry and owner != "collection" or not items:
+                continue
+            item = items[0]
+            name_key = "name" if item.get("name") is not None else "pattern"
+            if item.get(name_key) is None:
+                continue
+            lines = ["files:", f"  - {owner}: {_yaml_scalar(entry[owner])}", f"    {items_key}:",
+                     f"      - {name_key}: {_yaml_scalar(item[name_key])}"]
+            term = item.get("term", item.get("concept"))
+            for key, value in (("description", item.get("description")), ("datatype", item.get("datatype")),
+                               ("evidence_type", item.get("evidence_type")), ("term", term)):
+                if value is not None:
+                    lines.append(f"        {key}: {_yaml_scalar(value)}")
+            return "\n".join(lines)
+    return None
 
 
 def _issue_author(task):
@@ -2740,7 +2799,8 @@ def _yaml_block(body):
 def _corrections(task):
     """The corrections a weft command brings: (login, yaml text or None, comment id) from the comment `at`
     names when given, else from the command's own comment; (None, None, None) when the payload names no
-    comment. Fails with a sentence when the comment cannot be read, or when the `at` comment has no yaml block."""
+    comment. A comment without a yaml block means the description as it stands. Fails with a sentence when the
+    comment cannot be read, or when its yaml block is not valid YAML."""
     s = task.screening
     at, own = getattr(s, "at", None), getattr(s, "command_comment_id", None)
     source = at if at is not None else own
@@ -2749,12 +2809,17 @@ def _corrections(task):
     try:
         login, body = gh_get_issue_comment(s.github_client, s.review_repository, s.issue_id, source)
     except UnknownObjectException:
-        task.fail(f"The comment {source} is not on this review issue, so its corrections cannot be read.")
+        task.fail(say.comment_not_found(source))
     except (GithubException, requests.RequestException) as e:
-        task.fail(f"The comment {source} could not be read from the review issue: {_github_reason(e)}")
+        task.fail(say.github_unreachable(f"comment {source}", _github_reason(e)))
     block = _yaml_block(body)
-    if block is None and at is not None:
-        task.fail(f"The comment {source} holds no yaml block, so there is nothing to apply.")
+    if block is not None:
+        try:
+            yaml.safe_load(block)
+        except yaml.YAMLError as e:
+            mark, problem = getattr(e, "problem_mark", None), getattr(e, "problem", None)
+            where = f"line {mark.line + 1}, column {mark.column + 1}" if mark is not None else "it is not valid YAML"
+            task.fail(say.unreadable_block(source, f"{where}: {problem}" if problem and mark is not None else where))
     return login, block, source
 
 
@@ -2768,18 +2833,13 @@ def _write_submission(paper, text):
     return Path(path)
 
 
-def _draft_block(paper, weft_path):
-    """The draft weft in a collapsed block, or a sentence when it is too long for a comment."""
+def _draft_inside(weft_path):
+    """The draft weft as a fenced yaml block, with a fence longer than any run of backticks in it."""
     text = Path(weft_path).read_text()
-    if len(text) > MAX_DRAFT_IN_COMMENT:
-        inside = (f"The weft is too long for a comment, so it is not shown here: it is kept as `{paper.weft_name}` "
-                  "on the server.")
-    else:
-        fence = "```"
-        while fence in text:            # a fence longer than any run of backticks in the weft
-            fence += "`"
-        inside = f"{fence}yaml\n" + text.rstrip("\n") + f"\n{fence}"
-    return f"<details><summary>The draft</summary>\n\n{inside}\n\n</details>"
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}yaml\n" + text.rstrip("\n") + f"\n{fence}"
 
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
@@ -2794,9 +2854,7 @@ def _weft_draft(task):
     task.start("Describing the paper's data")
     paper = _weft_paper(task)
     if os.path.isfile(os.path.join(WEFTS_PATH, paper.weft_name)):
-        task.fail(f"The weft of {paper.doi} is already confirmed on the server, so a new draft would replace "
-                  "confirmed work: write the corrections as a ```yaml block in a comment and ask for "
-                  "`@roboneuro weft confirm`, or remove the confirmed weft from the server by hand to start over.")
+        task.fail(say.ALREADY_CONFIRMED)
     backends = _weft_backends()
     replaced = os.path.isfile(os.path.join(paper.work, paper.weft_name))
     for name in (f"{paper.stem}.weft.yaml", f"{paper.stem}.profiles.json", f"{paper.stem}.selfhosted.weft.yaml"):
@@ -2812,32 +2870,23 @@ def _weft_draft(task):
     result = weft_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
                               Path(LLM_LOCK_PATH), run)
     if not (result.weft.exists() and result.profiles.exists()) or (result.problems and not result.summary):
-        task.fail("The paper's data could not be drafted: " + (" ".join(result.problems) or "no draft was written."))
+        task.fail(say.not_drafted(result.problems))
+    logging.info(f"The data of {paper.doi} was drafted by {result.drafted_by}"
+                 + (f", because {result.reason}" if result.reason else ""))
 
     with _store_lock(task):
         linked, link_failure = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
+    labels = _paper_term_labels(paper.doi) if linked else None
+    terms = say.terms_sentence(linked, labels, link_failure)
 
-    parts = []
-    if replaced:
-        parts.append("This draft replaced the earlier draft on the server.")
-    parts.append(f"The paper's data is described in a draft drafted by {_drafter(result)}, kept on the server and "
-                 "shown below.")
-    if result.summary:
-        parts.append("What the draft says:\n" + _bullets(result.summary))
-    if result.problems:
-        parts.append("Still to fix:\n" + _bullets(result.problems))
-    if result.warnings:
-        parts.append("Warnings:\n" + _bullets(result.warnings))
-    if linked is None:
-        parts.append(f"The paper's text could not be linked to the vocabulary's terms: {link_failure.rstrip('.')}.")
-    else:
-        parts.append(f"The paper's text was linked to {linked} terms.")
-    parts.append(_draft_block(paper, result.weft))
-    parts.append("Write the entries to change as a ```yaml block in a comment, then `@roboneuro weft check` or "
-                 "`@roboneuro weft confirm` (add `at <comment id>` to use a block from another comment, or "
-                 "`fields a, b` to confirm only those).")
-    task.succeed("\n\n".join(parts), collapsable=False)
-    return f"Drafted the weft of {paper.doi}"
+    def comment(inside):
+        return say.draft_comment(result.summary, terms, _example(result.weft), inside, result.problems,
+                                 result.warnings, replaced=replaced)
+    message = comment(_draft_inside(result.weft))
+    if len(message) > MAX_DRAFT_IN_COMMENT:
+        message = comment(say.too_long(paper.weft_name))
+    task.succeed(message, collapsable=False)
+    return f"Drafted the weft of {paper.doi} with {result.drafted_by}"
 
 
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
@@ -2849,30 +2898,20 @@ def weft_check_task(self, screening_dict):
 
 
 def _weft_check(task):
-    task.start("Checking the paper's weft")
+    task.start("Checking the description of the paper's data")
     login, block, source = _corrections(task)          # anyone's block may be checked
     paper = _weft_paper(task)
     weft, profiles = _server_weft(task, paper)
     submission = _write_submission(paper, block)
     result = weft_steps.check(Path(weft), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH),
                               submission=submission, by=login if submission else None)
+    corrections = source if submission else None
     if result.unreadable:
-        task.succeed(result.unreadable, collapsable=False)
+        task.succeed(say.check_unreadable(corrections, result.unreadable), collapsable=False)
         return f"The weft of {paper.doi} could not be read"
-    parts = []
-    if submission:
-        parts.append(f"The corrections in comment {source} were applied to a copy of the weft for this check; the "
-                     "weft on the server is unchanged. Checked this way, warnings are not listed, only errors and "
-                     "what the corrections could not apply.")
-    if result.errors:
-        parts.append("The weft has errors:\n" + _bullets(result.errors))
-    if result.warnings:
-        parts.append("Warnings:\n" + _bullets(result.warnings))
-    if not result.errors and not result.warnings and not submission:
-        parts.append("The weft passes the check with no errors and no warnings.")
-    elif not result.errors:
-        parts.append("There are no errors, so the weft can be confirmed.")
-    task.succeed("\n\n".join(parts), collapsable=False)
+    at = getattr(task.screening, "at", None)
+    confirm_at = source if (submission or at is not None) else None
+    task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at), collapsable=False)
     return f"Checked the weft of {paper.doi}"
 
 
@@ -2885,25 +2924,22 @@ def weft_confirm_task(self, screening_dict):
 
 
 def _weft_confirm(task):
-    task.start("Confirming the paper's weft")
+    task.start("Confirming the description of the paper's data")
     screening = task.screening
     archive = gh_read_from_issue_body(screening.github_client, screening.review_repository, screening.issue_id, "data-archive")
     if not archive or archive.strip().upper() == "N/A":
-        task.fail("The weft cannot be confirmed yet: the issue has no data archive DOI, and the published description must name the archive that holds the data.")
+        task.fail(say.NO_ARCHIVE_DOI)
     fields = [f.strip() for f in (getattr(screening, "fields", None) or "").split(",") if f.strip()] or None
     by, block, source = _corrections(task)
     if not by:
-        task.fail("The weft cannot be confirmed without the comment that asked for it, since that comment says "
-                  "who confirms it.")
+        task.fail(say.NO_COMMAND_COMMENT)
     author, editor = _issue_author(task), _issue_editor(task)
     if by.lower() not in {name.lower() for name in (author, editor) if name}:
-        what = f"the corrections in comment {source} are" if block is not None else f"comment {source} is"
-        task.fail(f"Only the paper's author ({'@' + author if author else 'not named on the issue'}) or the "
-                  f"editor ({'@' + editor if editor else 'not named on the issue'}) can confirm; {what} by @{by}.")
+        task.fail(say.not_allowed(author, editor, source, by, corrections=block is not None))
     paper = _weft_paper(task)
     weft, profiles = _server_weft(task, paper)
     submission = _write_submission(paper, block)
-    rebuilt = None
+    note = None
     with _store_lock(task):
         # The store gets the paper as it is now, the data archive DOI minted after the draft among it.
         _load_paper(task, weft_steps.subprocess_runner(Path(paper.work)), paper)
@@ -2911,26 +2947,19 @@ def _weft_confirm(task):
                                     Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH),
                                     record=Path(WEFTS_PATH))
         if result.errors and result.confirmed:
-            task.fail(f"The weft was confirmed at version {result.version} but not published:\n"
-                      + _bullets(result.errors)
-                      + "\n\nAsking for `@roboneuro weft confirm` again is safe once this is fixed.")
+            task.fail(say.confirmed_not_published(result.version, result.errors))
         if result.errors:
-            task.fail("The weft was not confirmed:\n" + _bullets(result.errors))
+            task.fail(say.not_confirmed(result.errors))
         try:
             report = myst_cdn.rebuild()
-            rebuilt = " ".join(report.get("notes", [])) or None
+            note = " ".join(report.get("notes", [])) or None
         except Exception as e:
             logging.exception("MyST CDN rebuild after a weft confirmation failed")
-            rebuilt = (f"The CDN could not be rebuilt ({e.__class__.__name__}), so these addresses go live with "
-                       "the next paper sync.")
+            note = say.cdn_not_rebuilt(e.__class__.__name__)
     a = result.addresses
-    lines = [f"{label}: {a[key]}" for label, key in (("FAIR²", "fair2"), ("Croissant", "croissant"), ("Metadata", "metadata")) if a.get(key)]
-    lines += [f"Term: {t}" for t in a.get("terms", [])]
-    who = (f"Confirmed by @{by} (corrections from comment {source})." if submission
-           else f"Confirmed by @{by} as the weft stands.")
-    message = (f"The weft is confirmed at version {result.version}, and published. {who} Its addresses:\n"
-               + _bullets(lines))
-    if rebuilt:
-        message += "\n\n" + rebuilt
-    task.succeed(message, collapsable=False)
+    urls = {url.rstrip("/").rsplit("/", 1)[-1]: url for url in a.get("terms", [])}
+    labels = _term_labels(list(urls))
+    links = [f"[{labels[t]}]({url})" for t, url in urls.items()]
+    reply = source if (submission or getattr(screening, "at", None) is not None) else None
+    task.succeed(say.confirm_comment(by, reply, result.version, a, links, note), collapsable=False)
     return f"Confirmed the weft of {paper.doi}"
