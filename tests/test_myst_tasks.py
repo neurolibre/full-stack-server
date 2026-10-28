@@ -181,3 +181,23 @@ def test_an_upstream_myst_yml_production_cannot_read_fails_the_sync_once(sync):
     assert FakeTask.last.failed == ("⛔️ Could not configure the upstream myst.yml for production: "
                                     "myst.yml is not a mapping of settings.")
     assert sync.fork.pulls == []
+
+
+def test_a_new_version_keeps_the_banner_production_chose(sync, monkeypatch):
+    article = AUTHOR_MYST.replace("template: book-theme", "template: article-theme")
+    sync.fork.files[("main", "myst.yml")] = article
+    UPSTREAM.files[("main", "myst.yml")] = article
+    banners = iter(range(1, 100))
+    monkeypatch.setattr(celery_tasks.random, "randint", lambda a, b: next(banners))
+    start_production()
+    chosen = load(sync.fork.files[("main", "myst.yml")])["project"]["banner"]
+    run_sync()
+    assert load(sync.fork.files[("sync-upstream-v2", "myst.yml")])["project"]["banner"] == chosen
+    assert "banner" not in sync.fork.pulls[-1]
+
+
+def test_an_upstream_without_myst_yml_says_merging_removes_the_forks(sync):
+    sync.fork.files[("main", "myst.yml")] = AUTHOR_MYST
+    del UPSTREAM.files[("main", "myst.yml")]
+    run_sync()
+    assert "merging removes the fork's `myst.yml`" in sync.fork.pulls[-1]

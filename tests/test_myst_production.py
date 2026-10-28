@@ -67,16 +67,6 @@ def test_comments_order_quotes_and_characters_are_kept():
     assert out.index("title:") < out.index("authors:") < out.index("abbreviations:")
 
 
-def test_only_the_values_production_sets_change():
-    out = mp.configure(HYDROLOGY, PRODUCTION)
-    changed = [line for line in out.splitlines() if line not in HYDROLOGY.splitlines()]
-    assert all(any(word in line for word in ("url:", "repo:", "github:", "doi:", "code:", "copyright:",
-                                              "open_access:", "venue:", "subject:", "banner:", "options:",
-                                              "favicon:", "twitter:", "logo:", "logo_text:", "actions:",
-                                              "title: 🏠", "- title:"))
-               for line in changed), changed
-
-
 def test_configuring_twice_gives_the_same_text():
     once = mp.configure(HYDROLOGY, PRODUCTION)
     assert mp.configure(once, PRODUCTION) == once
@@ -187,3 +177,90 @@ def test_differences_list_each_changed_setting():
     assert "`project.copyright`: (absent) → `Journal`" in lines
     assert mp.differences(after, after) == []
     assert "`project.title`: (absent) → `Sediment transport in braided rivers`" in mp.differences(None, after)
+
+
+@pytest.mark.parametrize("dress", [
+    lambda t: t.replace("\n", "\r\n"),
+    lambda t: "\ufeff" + t,
+    lambda t: "---\n" + t,
+    lambda t: t.replace("version: 1", "version: 1   ").replace("  title: 'Sediment", "  title:   'Sediment"),
+    lambda t: t.replace("  keywords:\n    - bedload", "  keywords: [ bedload ]"),
+])
+def test_a_configured_file_written_in_any_style_is_not_rewritten(dress):
+    configured = dress(mp.configure(HYDROLOGY, PRODUCTION))
+    assert mp.configure(configured, PRODUCTION) == configured
+
+
+@pytest.mark.parametrize("dress", [
+    lambda t: t.replace("\n", "\r\n"),
+    lambda t: "\ufeff" + t,
+    lambda t: "---\n" + t,
+])
+def test_line_endings_a_byte_order_mark_and_a_document_start_survive_a_change(dress):
+    out = mp.configure(dress(HYDROLOGY), PRODUCTION)
+    assert out == dress(mp.configure(HYDROLOGY, PRODUCTION))
+
+
+def test_a_list_inside_a_block_of_text_does_not_set_the_list_style():
+    text = ("project:\n  title: Lake ice\n  description: |\n    We study:\n    - freeze dates\n"
+            "  keywords:\n    - ice\n")
+    assert "  keywords:\n    - ice\n" in mp.configure(text, PRODUCTION)
+
+
+def test_the_list_style_most_of_the_file_uses_is_kept():
+    text = ("project:\n  title: Bat echolocation\n  keywords:\n  - sonar\n  authors:\n    - name: A\n"
+            "      roles:\n        - Writing\n  toc:\n    - file: paper.md\n")
+    out = mp.configure(text, PRODUCTION)
+    assert "  authors:\n    - name: A\n      roles:\n        - Writing\n" in out
+    assert "  toc:\n    - file: paper.md\n" in out
+
+
+def test_exactly_the_settings_production_sets_change():
+    out = mp.configure(HYDROLOGY, PRODUCTION)
+    assert mp.differences(HYDROLOGY, out) == [
+        "`project.banner`: (absent) → `https://example.org/banner.jpg`",
+        "`project.copyright`: (absent) → `Journal`",
+        "`project.doi`: `10.99999/journal.xxxxx` → `10.99999/journal.00077`",
+        "`project.github`: `https://github.com/someone/river-sediment` → `https://github.com/journal-org/river-sediment`",
+        "`project.jupyter.binder.repo`: `someone/river-sediment` → `journal-org/river-sediment`",
+        "`project.jupyter.binder.url`: `https://preview-binder.journal.example` → `https://binder.journal.example`",
+        "`project.license.code`: `MIT` → `Apache-2.0`",
+        "`project.open_access`: (absent) → `True`",
+        "`project.subject`: (absent) → `Living Preprint`",
+        "`project.venue`: (absent) → `Journal`",
+        "`site.actions`: (absent) → `[{'title': '🏠 Home', 'url': 'https://doi.org/10.99999/journal.00077'}]`",
+        "`site.options.favicon`: (absent) → `favicon.ico`",
+        "`site.options.logo`: (absent) → `logo.png`",
+        "`site.options.logo_text`: (absent) → `Journal`",
+        "`site.options.twitter`: (absent) → `journal`",
+    ]
+    assert [l for l in out.splitlines() if l not in HYDROLOGY.splitlines()] == [
+        "  github: https://github.com/journal-org/river-sediment",
+        "      url: https://binder.journal.example",
+        "      repo: journal-org/river-sediment",
+        "  doi: 10.99999/journal.00077  # placeholder",
+        "    code: Apache-2.0",
+        "  copyright: Journal",
+        "  open_access: true",
+        "  venue: Journal",
+        "  subject: Living Preprint",
+        "  banner: https://example.org/banner.jpg",
+        "  options:",
+        "    favicon: favicon.ico",
+        "    twitter: journal",
+        "    logo: logo.png",
+        "    logo_text: Journal",
+        "  actions:",
+        "    - title: 🏠 Home",
+        "      url: https://doi.org/10.99999/journal.00077",
+    ]
+
+
+def test_actions_that_are_not_a_list_are_one_sentence():
+    with pytest.raises(mp.MystConfigError, match=r"^The `site.actions` section of myst.yml is not a list\.$"):
+        mp.configure("project:\n  title: Moss\nsite:\n  actions: oops\n", PRODUCTION)
+
+
+def test_a_setting_that_goes_from_empty_to_absent_is_listed():
+    assert mp.differences("project:\n  x:\n", "project:\n  y: 1\n") == [
+        "`project.x`: empty → (absent)", "`project.y`: (absent) → `1`"]

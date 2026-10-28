@@ -496,15 +496,16 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
 
 
-def production_settings(forked_name, issue_id, code_license):
+def production_settings(forked_name, issue_id, code_license, banner=None):
     """What production sets in the myst.yml of the paper of issue_id, built from the fork forked_name; code_license
-    is the licence GitHub detects for the code, or None to keep the author's."""
+    is the licence GitHub detects for the code, or None to keep the author's; banner is the one production chose
+    before, kept for a new version, or None to choose one for an article that has none."""
     doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
     return myst_production.Production(
         fork=forked_name, ref="main", doi=doi, binderhub=PRODUCTION_BINDERHUB, journal=JOURNAL_NAME,
         subject=JOURNAL_SUBJECT, content_license=PUBLISH_LICENSE, code_license=code_license,
         twitter=JOURNAL_TWITTER, home_url=f"https://doi.org/{doi}",
-        banner=lambda: f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg")
+        banner=lambda: banner or f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg")
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
@@ -719,24 +720,32 @@ def fork_configure_repository_task(self, payload):
 
 def configure_synced_myst(task, forked_repo, sync_branch, base_branch):
     """Configure the upstream myst.yml on the sync branch for production, and return the pull request's section on
-    it: the settings merging changes in the fork's myst.yml. A file that cannot be configured raises
+    it: the settings merging changes in the fork's myst.yml. A file that cannot be configured or written raises
     myst_production.MystConfigError."""
-    try:
-        upstream = forked_repo.get_contents("myst.yml", ref=sync_branch)
-    except UnknownObjectException:
-        return "## `myst.yml`\n\nThe upstream repository has no `myst.yml`; nothing was configured."
-    upstream_text = upstream.decoded_content.decode()
-    code_license = get_repository_license(task.screening.github_client, task.screening.target_repo_url)
-    configured = myst_production.configure(
-        upstream_text, production_settings(forked_repo.full_name, task.screening.issue_id,
-                                           code_license['license'] if code_license['status'] else None))
-    if configured != upstream_text:
-        forked_repo.update_file(path="myst.yml", message=":robot: [Automated] Configure myst.yml for production",
-                                content=configured, sha=upstream.sha, branch=sync_branch)
     try:
         current = forked_repo.get_contents("myst.yml", ref=base_branch).decoded_content.decode()
     except UnknownObjectException:
         current = None
+    try:
+        upstream = forked_repo.get_contents("myst.yml", ref=sync_branch)
+    except UnknownObjectException:
+        if current is None:
+            return "## `myst.yml`\n\nNeither the upstream repository nor the fork has a `myst.yml`."
+        return ("## `myst.yml`\n\nThe upstream repository has no `myst.yml`, so merging removes the fork's "
+                "`myst.yml`; production's settings go with it.")
+    upstream_text = upstream.decoded_content.decode()
+    code_license = get_repository_license(task.screening.github_client, task.screening.target_repo_url)
+    configured = myst_production.configure(
+        upstream_text, production_settings(forked_repo.full_name, task.screening.issue_id,
+                                           code_license['license'] if code_license['status'] else None,
+                                           banner=myst_production.setting(current, "project.banner")))
+    if configured != upstream_text:
+        try:
+            forked_repo.update_file(path="myst.yml", message=":robot: [Automated] Configure myst.yml for production",
+                                    content=configured, sha=upstream.sha, branch=sync_branch)
+        except GithubException as e:
+            raise myst_production.MystConfigError(
+                f"the configured myst.yml could not be written to {sync_branch} (GitHub answered {e.status}).") from None
     changes = myst_production.differences(current, configured)
     if not changes:
         return "## `myst.yml`\n\nThe upstream `myst.yml`, configured for production, has the same settings as the fork's."

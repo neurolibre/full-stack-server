@@ -10,9 +10,16 @@ Live code is declared in three places (https://mystmd.org/guide/in-page-executio
   JupyterLite (`lite`) does not use Binder and is left as it is.
 - `project.binder`: the address of the launch button, a URL.
 Each is changed only where the author declared it, so a paper with no live code stays without.
+
+Whether anything changed is decided on the settings, not the bytes: a file whose settings production already has is
+returned as it is, whatever its line endings or spacing. When something does change, the line endings, a byte order
+mark and a leading `---` are kept. ruamel writes every list of a file in one style, so a file that writes its lists
+in two styles gets the style most of them use.
 """
 
 import io
+import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -50,8 +57,13 @@ class Production:
 
 def configure(text: str, production: Production) -> str:
     """myst.yml's text with production's settings applied; the same text when there is nothing to change."""
-    yaml = _yaml(text)
-    config = _load(yaml, text)
+    bom = text.startswith("\ufeff")
+    body = text[1:] if bom else text
+    crlf = "\r\n" in body
+    body = body.replace("\r\n", "\n")
+    yaml = _yaml(body)
+    yaml.explicit_start = body.startswith("---")
+    config = _load(yaml, body)
     project = config["project"]
 
     project["copyright"] = production.journal
@@ -80,7 +92,13 @@ def configure(text: str, production: Production) -> str:
     out = io.StringIO()
     yaml.dump(config, out)
     new = out.getvalue()
-    return text if _same(new, text) else new
+    if YAML(typ="safe").load(new) == YAML(typ="safe").load(body):
+        return text
+    if not body.endswith("\n"):
+        new = new.rstrip("\n")
+    if crlf:
+        new = new.replace("\n", "\r\n")
+    return ("\ufeff" if bom else "") + new
 
 
 def live_code(text: str) -> List[str]:
@@ -110,8 +128,18 @@ def differences(before: Optional[str], after: str) -> List[str]:
     """The settings that differ between two myst.yml texts, one line each, as `key`: before → after. A text that
     is missing or cannot be read counts as having no settings."""
     old, new = _flat(before), _flat(after)
-    return [f"`{key}`: {_show(old.get(key))} → {_show(new.get(key))}"
-            for key in sorted(set(old) | set(new)) if old.get(key) != new.get(key)]
+    return [f"`{key}`: {_show(old.get(key, ABSENT))} → {_show(new.get(key, ABSENT))}"
+            for key in sorted(set(old) | set(new)) if old.get(key, ABSENT) != new.get(key, ABSENT)]
+
+
+ABSENT = object()       # a setting the file does not have, told apart from one written with no value
+
+
+def setting(text: Optional[str], key: str):
+    """The value of one setting, named by its dotted path (`project.banner`), or None when the file is missing,
+    cannot be read or does not have it."""
+    value = _flat(text).get(key, ABSENT)
+    return None if value is ABSENT else value
 
 
 def _license(project, production):
@@ -159,8 +187,10 @@ def _options(site, production):
 
 def _home_action(site, production):
     actions = site.get("actions")
-    if not isinstance(actions, list):
+    if actions is None:
         actions = site["actions"] = []
+    if not isinstance(actions, list):
+        raise MystConfigError("The `site.actions` section of myst.yml is not a list.")
     if any(isinstance(a, dict) and a.get("url") == production.home_url for a in actions):
         return
     actions.append(CommentedMap(title="🏠" if actions else "🏠 Home", url=production.home_url))
@@ -176,18 +206,33 @@ def _yaml(text: str) -> YAML:
 
 
 def _indents(text: str):
-    """The mapping indent, and the indent and dash offset of lists, as the file writes them (ruamel needs them
-    given; it does not read them from the file). The first nested key and the first list give them."""
-    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-    mapping = next((len(b) - len(b.lstrip()) - (len(a) - len(a.lstrip()))
-                    for a, b in zip(lines, lines[1:])
-                    if a.rstrip().endswith(":") and not b.lstrip().startswith("- ")
-                    and len(b) - len(b.lstrip()) > len(a) - len(a.lstrip())), 2)
-    for a, b in zip(lines, lines[1:]):
-        if a.rstrip().endswith(":") and b.lstrip().startswith("- "):
-            offset = (len(b) - len(b.lstrip())) - (len(a) - len(a.lstrip()))
-            return mapping, offset + 2, offset
-    return mapping, mapping + 2, mapping
+    """The mapping indent, and the indent and dash offset of lists, that most of the file uses (ruamel needs them
+    given; it does not read them from the file). Lines inside a block of text (`key: |` or `key: >`) are not
+    settings and are skipped."""
+    lines, block = [], None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if block is not None and indent > block:
+            continue
+        block = indent if BLOCK_TEXT.search(line) else None
+        lines.append((indent, line.strip()))
+    mappings, lists = Counter(), Counter()
+    for (a_indent, a), (b_indent, b) in zip(lines, lines[1:]):
+        if not a.endswith(":"):
+            continue
+        if b.startswith("- "):
+            lists[b_indent - a_indent] += 1
+        elif b_indent > a_indent:
+            mappings[b_indent - a_indent] += 1
+    mapping = mappings.most_common(1)[0][0] if mappings else 2
+    offset = lists.most_common(1)[0][0] if lists else mapping
+    return mapping, offset + 2, offset
+
+
+# A key or list item whose value is a block of text: `key: |`, `key: >-`, `- |2`.
+BLOCK_TEXT = re.compile(r"(:|^-)\s+[|>][-+0-9]*\s*(#.*)?$")
 
 
 def _load(yaml: YAML, text: str):
@@ -203,11 +248,6 @@ def _load(yaml: YAML, text: str):
     if not isinstance(config.get("project"), dict):
         raise MystConfigError("myst.yml has no `project` section.")
     return config
-
-
-def _same(a: str, b: str) -> bool:
-    """Equal up to the final newline, which the round trip may add or drop."""
-    return a.rstrip("\n") == b.rstrip("\n")
 
 
 def _flat(text: Optional[str]) -> dict:
@@ -229,4 +269,6 @@ def _flat(text: Optional[str]) -> dict:
 
 
 def _show(value) -> str:
-    return "(absent)" if value is None else f"`{value}`"
+    if value is ABSENT:
+        return "(absent)"
+    return "empty" if value is None else f"`{value}`"
