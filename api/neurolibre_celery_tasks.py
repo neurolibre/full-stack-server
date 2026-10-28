@@ -2338,8 +2338,9 @@ def get_repository_license(github_client, repo_url):
         owner, repo, _ = get_owner_repo_provider(repo_url)
         repository = github_client.get_repo(f"{owner}/{repo}")
         license_info = repository.get_license()
-        
-        if license_info:
+        # GitHub answers NOASSERTION for a licence file it cannot classify (two licences in one file, a custom
+        # text): that names no licence, so the author's own declaration stands.
+        if license_info and license_info.license.spdx_id not in (None, "NOASSERTION"):
             return {
                 "status": True,
                 "message": "License found",

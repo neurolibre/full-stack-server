@@ -201,3 +201,14 @@ def test_an_upstream_without_myst_yml_says_merging_removes_the_forks(sync):
     del UPSTREAM.files[("main", "myst.yml")]
     run_sync()
     assert "merging removes the fork's `myst.yml`" in sync.fork.pulls[-1]
+
+
+@pytest.mark.parametrize("spdx, detected", [("MIT", True), ("NOASSERTION", False)])
+def test_a_licence_github_cannot_classify_is_not_a_detected_licence(monkeypatch, spdx, detected):
+    """GitHub answers NOASSERTION for a licence file it cannot classify (two licences in one file, a custom
+    text); taking that as the code licence would replace the author's own."""
+    repo = SimpleNamespace(get_license=lambda: SimpleNamespace(license=SimpleNamespace(spdx_id=spdx)))
+    client = SimpleNamespace(get_repo=lambda name: repo)
+    found = celery_tasks.get_repository_license(client, "https://github.com/someone/ant-seeds")
+    assert found["status"] is detected
+    assert found["license"] == (spdx if detected else None)
