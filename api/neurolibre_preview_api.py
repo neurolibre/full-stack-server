@@ -6,7 +6,7 @@ import requests
 import json
 import myst_production
 from common import *
-from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlPreprintVersionSchema
+from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlPreprintVersionSchema, MystCleanupSchema
 from flask_htpasswd import HtPasswdAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -14,7 +14,7 @@ from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from github_client import *
-from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task, sync_fork_from_upstream_task
+from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_task, preview_build_book_test_task, preview_download_data,preview_build_myst_task, sync_fork_from_upstream_task, preview_cleanup_task
 from celery.events.state import State
 from github import Github, UnknownObjectException
 from screening_client import ScreeningClient
@@ -246,6 +246,18 @@ def api_myst_build(user, id, repository_url, commit_hash=None, binder_hash=None,
                                 **extra_payload)
     response = screening.start_celery_task(preview_build_myst_task)
     return response
+
+@app.route('/api/myst/cleanup', methods=['POST'],endpoint='api_myst_cleanup')
+@preview_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@use_kwargs(MystCleanupSchema())
+@doc(description="After the technical screening: keep the author's last successful MyST build, remove the other builds, the working copy and the images pulled for the repository. A commit_hash, such as the commit production will start from, keeps that build as well. The paper's data, the logs and the journal's copies are kept.", tags=['Myst'])
+def api_myst_cleanup(user, id, repository_url, commit_hash=None):
+    screening = ScreeningClient(task_name="Clean up the preview builds",
+                                issue_id=id,
+                                target_repo_url=repository_url,
+                                commit_hash=commit_hash)
+    return screening.start_celery_task(preview_cleanup_task)
 
 @app.route('/api/book/build/test', methods=['POST'],endpoint='api_myst_build_robo')
 @preview_api.auth_required

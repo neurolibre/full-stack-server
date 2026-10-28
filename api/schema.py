@@ -77,6 +77,11 @@ class IdUrlSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
 
+class MystCleanupSchema(Schema):
+    id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
+    repository_url = fields.String(required=True,description="Full URL of the author's repository")
+    commit_hash = fields.String(required=False,description="A build to keep besides the last successful one, such as the commit production will start from.")
+
 class IdUrlPreprintVersionSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")

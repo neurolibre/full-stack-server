@@ -11,6 +11,7 @@ from screening_client import ScreeningClient
 from myst_frontmatter import first_affiliations
 import myst_cdn
 import myst_production
+import preview_cleanup
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException, GithubException
@@ -2473,6 +2474,79 @@ def clean_garbage_files(source_path, unwanted_dirs=None, unwanted_files=None):
                     logging.warning(f"Failed to remove {file_path}: {str(e)}")
     
     return removed_count
+
+
+
+def _docker_client():
+    import docker
+    return docker.from_env()
+
+
+@celery_app.task(bind=True, soft_time_limit=1800, time_limit=2000)
+def preview_cleanup_task(self, screening_dict):
+    """After the technical screening: keep the author's last successful MyST build on the preview server, and the
+    build of the commit given when there is one (such as the commit production will start from); remove the other
+    builds and the images pulled for the repository; say on the issue what was removed. What the cleanup removes
+    and keeps, and why, is in preview_cleanup."""
+    task = BaseNeuroLibreTask(self, screening_dict)
+    owner, repo = task.owner_name, task.repo_name
+    if owner == GH_ORGANIZATION:
+        task.fail(f"The builds of the journal's copies ({GH_ORGANIZATION}) are all kept; the cleanup is for the "
+                  f"author's repository.")
+        return
+    # The same lock a build takes, so a build never finds its folder or its image gone half way.
+    lock = _lock_redis.lock(f"myst-build-lock:{owner}/{repo}", timeout=2000)
+    if not lock.acquire(blocking=False):
+        task.fail(f"A MyST build of {owner}/{repo} is in progress; run the cleanup again once it has finished.")
+        return
+    try:
+        task.start(f"Cleaning up the preview builds of {owner}/{repo}.")
+        try:
+            builds = preview_cleanup.clean_builds(os.path.join(DATA_ROOT_PATH, MYST_FOLDER), owner, repo,
+                                                  keep=[task.screening.commit_hash])
+        except ValueError as e:
+            task.fail(str(e))
+            return
+        try:
+            images = preview_cleanup.remove_images(_docker_client(), owner, repo)
+        except Exception:
+            logging.exception("Docker could not be reached for the cleanup")
+            images = preview_cleanup.Report(problems=[
+                "Docker could not be reached on the preview server, so no image was removed."])
+    finally:
+        try:
+            lock.release()
+        except redis_lib.exceptions.LockNotOwnedError:
+            logging.warning(f"Cleanup lock for {owner}/{repo} already expired.")
+
+    lines = [f"🧹 Preview cleanup of {owner}/{repo}", ""]
+    kept = preview_cleanup.kept_build(os.path.join(DATA_ROOT_PATH, MYST_FOLDER), owner, repo)
+    if kept:
+        lines.append(f"* The build of commit {kept[:7]} is kept, the last successful one.")
+    asked = task.screening.commit_hash
+    if asked and asked != kept and os.path.isdir(os.path.join(DATA_ROOT_PATH, MYST_FOLDER, owner, repo, asked)):
+        lines.append(f"* The build of commit {asked[:7]}, asked for, is kept as well.")
+    earlier = [name for name in builds.removed if preview_cleanup.COMMIT.fullmatch(name)]
+    if earlier:
+        lines.append(f"* {len(earlier)} earlier {'build was' if len(earlier) == 1 else 'builds were'} removed, "
+                     f"with {'its archive' if len(earlier) == 1 else 'their archives'}.")
+    if preview_cleanup.WORKING_CLONE in builds.removed:
+        lines.append("* The working copy of the repository was removed; the next build clones it again and "
+                     "executes the notebooks from the start.")
+    if images.removed:
+        lines.append(f"* {len(images.removed)} {'image' if len(images.removed) == 1 else 'images'} pulled for "
+                     f"the repository {'was' if len(images.removed) == 1 else 'were'} removed: "
+                     f"{', '.join(f'`{name}`' for name in images.removed)}.")
+    if builds.freed:
+        lines.append(f"* {preview_cleanup.readable(builds.freed)} of builds freed.")
+    if images.freed:
+        lines.append(f"* Up to {preview_cleanup.readable(images.freed)} of images freed (images share layers, so "
+                     f"a layer another image uses stays).")
+    for sentence in builds.notes + builds.problems + images.notes + images.problems:
+        lines.append(f"* {sentence}")
+    lines += ["", "The paper's data and the build logs are kept: production copies the data from the preview "
+                  "server."]
+    task.succeed("\n".join(lines))
 
 
 # The tasks that describe a paper's data (draft, check, confirm) are in weft_tasks, which registers them on
