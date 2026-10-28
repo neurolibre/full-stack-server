@@ -681,11 +681,17 @@ def test_the_places_and_the_lock_have_one_home(tmp_path, monkeypatch):
     assert myst_cdn.duration(1800) == "30 minutes" and myst_cdn.duration(0.2) == "0.2 seconds"
 
 
-def test_the_task_time_limits_are_the_sum_of_the_steps():
+def test_the_task_time_limits_leave_room_for_the_steps_own_timeouts():
+    """Each task's soft limit is the sum of its steps at their own limits plus STEP_MARGIN, so the step's own
+    one-sentence timeout always fires before celery's soft limit."""
     t, wait = weft_steps.TIME_LIMITS, weft_steps.STORE_LOCK_WAIT
-    assert weft_steps.DRAFT_SECONDS == (weft_steps.CLONE_TIMEOUT + 2 * wait + weft_steps.OTHER_TIME_LIMIT
-                                        + t["profile"] + t["explore"] + weft_steps.EXPLORE_SLOT_WAIT + t["check"]
-                                        + t["explore"] + t["check"] + weft_steps.OTHER_TIME_LIMIT)
-    assert weft_steps.CONFIRM_SECONDS == (wait + weft_steps.OTHER_TIME_LIMIT + t["check"] + t["confirm"]
-                                          + t["load"] + 2 * t["export"] + t["publish"]
-                                          + weft_steps.REBUILD_SECONDS)
+    draft = (weft_steps.CLONE_TIMEOUT + 2 * wait + weft_steps.OTHER_TIME_LIMIT + t["profile"] + t["explore"]
+             + weft_steps.EXPLORE_SLOT_WAIT + t["check"] + t["explore"] + t["check"] + weft_steps.OTHER_TIME_LIMIT)
+    check = t["check"]
+    confirm = (wait + weft_steps.OTHER_TIME_LIMIT + t["check"] + t["confirm"] + t["load"] + 2 * t["export"]
+               + t["publish"] + weft_steps.REBUILD_SECONDS)
+    assert weft_steps.STEP_MARGIN == 120
+    for limit, steps in ((weft_steps.DRAFT_SECONDS, draft), (weft_steps.CHECK_SECONDS, check),
+                         (weft_steps.CONFIRM_SECONDS, confirm)):
+        assert limit > steps
+        assert limit == steps + weft_steps.STEP_MARGIN

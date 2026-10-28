@@ -50,16 +50,20 @@ TIME_LIMITS = {"profile": 600, "explore": 3600, "check": 900, "confirm": 900, "l
 OTHER_TIME_LIMIT = 900          # loading the paper into the store, and linking its text to terms
 CLONE_TIMEOUT = 600             # cloning the paper's repository
 REBUILD_SECONDS = myst_cdn.LOCK_WAIT + 600          # the CDN's rebuild: its lock's wait, then the rebuild
-# The celery limits of the tasks, from the steps they run at their own limits.
+# The celery limits of the tasks, from the steps they run at their own limits, plus STEP_MARGIN: the task's own work
+# around the steps (GitHub reads, file copies, the comment). Without it the soft limit would fire at the moment the
+# last step's own timeout does, and the author could get celery's generic failure instead of the step's sentence.
+STEP_MARGIN = 120
 # draft: clone, two waits for the store, load, profile, explore with the slot wait, check, explore, check, terms.
 DRAFT_SECONDS = (CLONE_TIMEOUT + 2 * STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["profile"]
                  + TIME_LIMITS["explore"] + EXPLORE_SLOT_WAIT + TIME_LIMITS["check"] + TIME_LIMITS["explore"]
-                 + TIME_LIMITS["check"] + OTHER_TIME_LIMIT)
+                 + TIME_LIMITS["check"] + OTHER_TIME_LIMIT + STEP_MARGIN)
 # check: the one step it runs (it reads the store and takes no lock, so there is no wait to add).
-CHECK_SECONDS = TIME_LIMITS["check"]
+CHECK_SECONDS = TIME_LIMITS["check"] + STEP_MARGIN
 # confirm: a wait for the store, load, check, confirm, load, two exports, publish, the CDN's rebuild.
 CONFIRM_SECONDS = (STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["check"] + TIME_LIMITS["confirm"]
-                   + TIME_LIMITS["load"] + 2 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS)
+                   + TIME_LIMITS["load"] + 2 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS
+                   + STEP_MARGIN)
 
 
 def store_lock():

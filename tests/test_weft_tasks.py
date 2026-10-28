@@ -1121,7 +1121,7 @@ def test_a_check_with_corrections_that_could_not_run_repeats_the_command_with_at
 def test_the_check_task_limits_come_from_its_step():
     assert tasks.weft_check_task.soft_time_limit == tasks.weft_steps.CHECK_SECONDS
     assert tasks.weft_check_task.time_limit == tasks.weft_steps.CHECK_SECONDS + tasks.HARD_MARGIN
-    assert tasks.weft_steps.CHECK_SECONDS == tasks.weft_steps.TIME_LIMITS["check"]
+    assert tasks.weft_steps.CHECK_SECONDS > tasks.weft_steps.TIME_LIMITS["check"]
 
 
 def test_a_block_by_someone_who_cannot_confirm_is_not_offered_for_confirmation(world, monkeypatch):
