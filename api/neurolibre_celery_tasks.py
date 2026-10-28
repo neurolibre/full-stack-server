@@ -12,6 +12,7 @@ from myst_frontmatter import first_affiliations
 import myst_cdn
 import myst_production
 import task_outcome
+import zenodo_cleanup
 import preview_cleanup
 from common import *
 from preprint import *
@@ -1275,6 +1276,10 @@ def zenodo_upload_docker_task(self, screening_dict):
             return
 
         tar_file = r[1]
+        # The archive holds the image now and the registry still has it, so the copy on this host can go.
+        image_note = zenodo_cleanup.remove_image(image_name)
+        if image_note:
+            logging.warning(image_note)
 
         task.start(f"Uploading docker image: \n {tar_file}")
 
@@ -1293,6 +1298,16 @@ def zenodo_upload_docker_task(self, screening_dict):
         elif response is None:
             task.fail(f"ERROR: Unrecognized archive type.")
 
+def _remove_published_archives(issue_id):
+    """Remove the paper's archives once all its Zenodo records are published (zenodo_cleanup); the sentence for
+    the issue, or None when there were none."""
+    try:
+        return zenodo_cleanup.archives_sentence(zenodo_cleanup.remove_archives(get_archive_dir(issue_id)))
+    except OSError as e:
+        logging.exception("Removing the published archives failed")
+        return f"The archives could not be removed from the server: {e.strerror or e}."
+
+
 @celery_app.task(bind=True)
 @handle_soft_timeout
 def zenodo_publish_task(self, payload):
@@ -1310,8 +1325,9 @@ def zenodo_publish_task(self, payload):
         # Means already published. In this case just set the DOIs.
         gh_template_respond(github_client,"started",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],"As the reproducibility assets have already been published, I will just set the DOIs.")
         gpt_response = get_gpt_response(prompt)
+        removed = _remove_published_archives(payload['issue_id'])
         # Show already exists status
-        gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Looks like the reproducibility assets have already been published! So... \n\n {gpt_response}", False)
+        gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Looks like the reproducibility assets have already been published! So... \n\n {gpt_response}" + (f"\n\n{removed}" if removed else ""), False)
         dois = zenodo_collect_dois(payload['issue_id'])
         for key in dois.keys():
             command = f"@roboneuro set {dois[key]} as {key} archive"
@@ -1342,6 +1358,9 @@ def zenodo_publish_task(self, payload):
             msgs.append("\n>[!NOTE]\n>It may take a few minutes for Zenodo DOIs to be set. You can test each DOI by clicking the `(test ... DOI)` hyperlinks. Successful page load is a prerequisite for finalizing DOI assignment. \n\n When the DOIs become available, you can set them as reproducibility assets by running the following commands per object:")
             for key in dois.keys():
                 msgs.append(f"\n* [Test {key} DOI](https://doi.org/{dois[key]}) ➡️ `@roboneuro set {dois[key]} as {key} archive`")
+            removed = _remove_published_archives(payload['issue_id'])
+            if removed:
+                msgs.append(f"\n\n{removed}")
             
             gh_create_comment(github_client,payload['review_repository'],payload['issue_id'],"".join(msgs))
 
