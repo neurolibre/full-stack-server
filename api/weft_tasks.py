@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import requests
 import yaml
-from celery.exceptions import Ignore
+from task_outcome import TaskFailed
 from github import GithubException, UnknownObjectException
 
 import myst_cdn
@@ -115,7 +115,7 @@ def _errors_as_sentences(task):
     pass through."""
     try:
         yield
-    except Ignore:
+    except TaskFailed:
         raise
     except (GithubException, requests.RequestException) as e:
         task.fail(say.github_unreachable("the review issue", _github_reason(e)))

@@ -11,6 +11,7 @@ from screening_client import ScreeningClient
 from myst_frontmatter import first_affiliations
 import myst_cdn
 import myst_production
+import task_outcome
 import preview_cleanup
 from common import *
 from preprint import *
@@ -22,7 +23,6 @@ from flask import Response
 import shutil
 import base64
 import tempfile
-from celery.exceptions import Ignore
 from repo2data.repo2data import Repo2Data
 from myst_libre.tools import JupyterHubLocalSpawner
 from myst_libre.rees import REES
@@ -97,7 +97,9 @@ logging.basicConfig(level=logging.INFO,
 load_dotenv()
 
 # Setting Redis as both backend and broker
-celery_app = Celery('neurolibre_celery_tasks', backend='redis://localhost:6379/1', broker='redis://localhost:6379/0')
+# NeuroLibreTask makes what Celery records (and Flower shows) follow what each task says on the issue.
+celery_app = Celery('neurolibre_celery_tasks', backend='redis://localhost:6379/1', broker='redis://localhost:6379/0',
+                    task_cls=task_outcome.NeuroLibreTask)
 
 celery_app.conf.update(task_track_started=True)
 celery_app.conf.broker_connection_retry_on_startup = True
@@ -170,7 +172,7 @@ def handle_soft_timeout(func):
     Decorator to handle SoftTimeLimitExceeded and TimeoutError exceptions for Celery tasks.
     
     This decorator wraps a Celery task function and catches timeout exceptions,
-    updating the task state and raising Ignore to prevent the task from being retried.
+    posting on the issue and ending the task as a failure (task_outcome.fail), which is not retried.
     """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -217,18 +219,8 @@ def handle_soft_timeout(func):
                 except Exception as notify_error:
                     logging.error(f"Failed to notify on GitHub: {str(notify_error)}")
             
-            # Update task state
-            self.update_state(
-                state=states.FAILURE,
-                meta={
-                    'exc_type': exception_type,
-                    'exc_message': str(e),
-                    'message': f"Task {task_name} exceeded its time limit and was terminated."
-                }
-            )
-            
-            # Prevent retry
-            raise Ignore()
+            # Recorded as a failure, which Celery does not retry.
+            task_outcome.fail(self, f"Task {task_name} exceeded its time limit and was terminated.")
     
     return wrapper
 
@@ -303,19 +295,17 @@ class BaseNeuroLibreTask:
             else:
                 # Original failure response
                 self.screening.respond.FAILURE(message, collapsable=False)
-                
-            self.update_state(state=states.FAILURE, meta={
-                'exc_type': f"{JOURNAL_NAME} celery exception",
-                'exc_message': "Custom", 
-                'message': message
-            })
-            raise Ignore()
+            task_outcome.fail(self.celery_task, message)
+        # Without an issue (a build asked for by email) the caller goes on to email the person and return; the task
+        # still ends as a failure.
+        task_outcome.failed(self.celery_task, message)
 
     def email_user(self, message):
         if self.screening.email_address is not None:
             self.screening.send_user_email(message)
 
     def succeed(self, message, collapsable=True, attachment_path=None):
+        task_outcome.succeeded(self.celery_task, message)
         if self.screening.issue_id is not None:
             if attachment_path:
                 self.screening.STATE_WITH_ATTACHMENT(message, attachment_path, failure=False)
@@ -397,7 +387,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     return_code, output = run_celery_subprocess(["/usr/bin/rsync", "-avR", remote_path, "/"])
     if return_code != 0:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{output}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': output})
+        task_outcome.failed(self, output)
     # process = subprocess.Popen(["/usr/bin/rsync", "-avR", remote_path, "/"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
     # output = process.communicate()[0]
     # ret = process.wait()
@@ -409,7 +399,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
     if os.path.exists(os.path.join(DATA_ROOT_PATH, project_name)):
         if len(os.listdir(os.path.join(DATA_ROOT_PATH, project_name))) == 0:
             # Directory exists but empty
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Directory exists but empty {project_name}"})
+            task_outcome.failed(self, f"Directory exists but empty {project_name}")
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory exists but empty: {project_name}")
         else:
             # Directory exists and not empty
@@ -417,7 +407,7 @@ def rsync_data_task(self, comment_id, issue_id, project_name, reviewRepository):
             self.update_state(state=states.SUCCESS, meta={'message': f"Data sync has been completed for {project_name}"})
     else:
         # Directory does not exist
-        self.update_state(state=states.FAILURE, meta={'exc_type': f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Directory does not exist {project_name}"})
+        task_outcome.failed(self, f"Directory does not exist {project_name}")
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Directory does not exist: {project_name}")
 
 @celery_app.task(bind=True)
@@ -438,7 +428,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     [owner,repo,provider] = get_owner_repo_provider(repo_url,provider_full_name=True)
     if owner != GH_ORGANIZATION:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Repository is not under {GH_ORGANIZATION} organization!")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Repository {owner}/{repo} has no {GH_ORGANIZATION} fork."})
+        task_outcome.failed(self, f"FAILURE: Repository {owner}/{repo} has no {GH_ORGANIZATION} fork.")
         return
     commit_hash = format_commit_hash(repo_url,commit_hash)
     logging.info(f"{owner}{provider}{repo}{commit_hash}")
@@ -459,12 +449,12 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
     except subprocess.CalledProcessError as e:
         #logging.info("Subprocess exception")
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"{e.output}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
+        task_outcome.failed(self, e.output)
     # Check if GET works for the complicated address
     results = book_get_by_params(commit_hash=commit_hash)
     if not results:
         gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, f"Cannot retrieve book at {commit_hash}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot retrieve book at {commit_hash}"})
+        task_outcome.failed(self, f"Cannot retrieve book at {commit_hash}")
     else:
         # Symlink production book to attain a proper URL
         book_target_tail = get_book_target_tail(results[0]['book_url'],commit_hash)
@@ -494,9 +484,7 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
             self.update_state(state=states.SUCCESS, meta={'message': message})
         else:
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
-
-
+            task_outcome.failed(self, f"Cannot sync book at {commit_hash}")
 def production_settings(forked_name, issue_id, code_license, banner=None):
     """What production sets in the myst.yml of the paper of issue_id, built from the fork forked_name; code_license
     is the licence GitHub detects for the code, or None to keep the author's; banner is the one production chose
@@ -527,7 +515,7 @@ def fork_configure_repository_task(self, payload):
     if not book_tested_check['status']:
         msg = f"\n > [!WARNING] \n > A living preprint build could not be found at commit `{payload['commit_hash']}` at {payload['repository_url']}. Production process cannot be started."
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, collapsable=False)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+        task_outcome.failed(self, msg)
         return
     else:
         # Create a record for this.
@@ -554,7 +542,7 @@ def fork_configure_repository_task(self, payload):
             forked_repo = gh_fork_repository(github_client,payload['repository_url'])
         except Exception as e:
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}")
-            self.update_state(state=states.FAILURE, meta={'message': f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}"})
+            task_outcome.failed(self, f"Cannot fork the repository into {GH_ORGANIZATION}! \n {str(e)}")
             return
 
         forked_repo = None
@@ -573,7 +561,7 @@ def fork_configure_repository_task(self, payload):
         if not forked_repo and retry_count == max_retries:
             msg = f"Forked repository is still not available after {max_retries*15} seconds! Please check if the repository is available under {GH_ORGANIZATION} organization, then try again."
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            task_outcome.failed(self, msg)
             return
     else:
         logging.info(f"Fork already exists {payload['repository_url']}, moving on with configurations.")
@@ -594,7 +582,7 @@ def fork_configure_repository_task(self, payload):
     if (not jb_config or not jb_toc) and (not myst_text):
         msg = f"Could not load [_config.yml and _toc.yml] under the content or myst.yml at the base of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+        task_outcome.failed(self, msg)
         return
 
     assets_to_upload = {
@@ -627,7 +615,7 @@ def fork_configure_repository_task(self, payload):
         except myst_production.MystConfigError as e:
             msg = f"Could not configure myst.yml for {forked_name}: {e}"
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            task_outcome.failed(self, msg)
             return
         # An unchanged file is not written: a commit moves the fork's head and starts a BinderHub build.
         if configured != myst_text:
@@ -636,7 +624,7 @@ def fork_configure_repository_task(self, payload):
             if not response['status']:
                 msg = f"Could not update myst.yml for {forked_name}: \n {response['message']}"
                 gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update myst.yml for {forked_name}"})
+                task_outcome.failed(self, f"Could not update myst.yml for {forked_name}")
                 return
 
         msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>myst.yml</code>) properly configured."
@@ -661,7 +649,7 @@ def fork_configure_repository_task(self, payload):
         if not response['status']:
             msg = f"Could not update _config.yml for {forked_name}: \n {response['message']}"
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+            task_outcome.failed(self, msg)
             return
 
         jb_toc_new = jb_toc
@@ -694,7 +682,7 @@ def fork_configure_repository_task(self, payload):
         if not response['status']:
             msg = f"Could not update toc.yml for {forked_name}: \n {response['message']}"
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update _toc.yml for {forked_name}"})
+            task_outcome.failed(self, f"Could not update _toc.yml for {forked_name}")
             return
 
         msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>_toc.yml</code> and <code>_config.ymlk</code>) properly configured."
@@ -957,7 +945,7 @@ def zenodo_create_buckets_task(self, payload):
     if os.path.exists(local_file):
         msg = f"Zenodo records already exist for this submission on {JOURNAL_NAME} servers: {fname}. Please proceed with data uploads if the records are valid. Flush the existing records otherwise."
         gh_template_respond(github_client,"exists",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'],msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+        task_outcome.failed(self, msg)
         return
 
     data = payload['paper_data']
@@ -1039,7 +1027,7 @@ def zenodo_upload_book_task(self, payload):
         local_path = os.path.join(DATA_ROOT_PATH, DOI_PREFIX, f"{DOI_SUFFIX}.{payload['issue_id']:05d}")
         if not os.path.exists(os.path.join(local_path,"index.html")):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Cannot find book at {local_path}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Cannot find book at {local_path}"})
+            task_outcome.failed(self, f"ERROR: Cannot find book at {local_path}")
             return
 
     zenodo_file = os.path.join(get_archive_dir(payload['issue_id']),f"{record_name}_{DOI_PREFIX}_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}")
@@ -1052,7 +1040,7 @@ def zenodo_upload_book_task(self, payload):
     if (isinstance(response, requests.Response)):
         if (response.status_code > 300):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+            task_outcome.failed(self, f"ERROR {fork_url}: {response.text}")
         elif (response.status_code < 300):
             tmp = f"zenodo_uploaded_book_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
             log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
@@ -1062,11 +1050,10 @@ def zenodo_upload_book_task(self, payload):
             self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Book upload for {owner}/{repo} at {commit_fork} has succeeded."})
     elif (isinstance(response, str)):
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+        task_outcome.failed(self, f"ERROR An exception has occurred {fork_url}: {response}")
     elif response is None:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
-
+        task_outcome.failed(self, f"ERROR: Unrecognized archive type.")
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
 def zenodo_upload_data_task(self,payload):
@@ -1107,7 +1094,7 @@ def zenodo_upload_data_task(self,payload):
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                task_outcome.failed(self, f"ERROR {fork_url}: {response.text}")
             elif (response.status_code < 300):
                 tmp = f"zenodo_uploaded_data_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
@@ -1117,11 +1104,10 @@ def zenodo_upload_data_task(self,payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Data upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            task_outcome.failed(self, f"ERROR An exception has occurred {fork_url}: {response}")
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
-
+            task_outcome.failed(self, f"ERROR: Unrecognized archive type.")
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
 def zenodo_upload_repository_task(self, payload):
@@ -1148,14 +1134,14 @@ def zenodo_upload_repository_task(self, payload):
     resp = os.system(f"wget -O {zenodo_file} {download_url}")
     if resp != 0:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"Cannot download: {download_url}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot download {download_url}"})
+        task_outcome.failed(self, f"Cannot download {download_url}")
         return
     else:
         response = zenodo_upload_item(zenodo_file,payload['bucket_url'],payload['issue_id'],commit_fork,"repository")
         if (isinstance(response, requests.Response)):
             if (response.status_code > 300):
                 gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{response.text}")
-                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR {fork_url}: {response.text}"})
+                task_outcome.failed(self, f"ERROR {fork_url}: {response.text}")
             elif (response.status_code < 300):
                 tmp = f"zenodo_uploaded_repository_{JOURNAL_NAME}_{payload['issue_id']:05d}_{commit_fork[0:6]}.json"
                 log_file = os.path.join(get_deposit_dir(payload['issue_id']), tmp)
@@ -1165,11 +1151,10 @@ def zenodo_upload_repository_task(self, payload):
                 self.update_state(state=states.SUCCESS, meta={'message': f"SUCCESS: Repository upload for {owner}/{repo} at {commit_fork} has succeeded."})
         elif (isinstance(response, str)):
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"An exception has occurred: {response}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR An exception has occurred {fork_url}: {response}"})
+            task_outcome.failed(self, f"ERROR An exception has occurred {fork_url}: {response}")
         elif response is None:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"ERROR: Unrecognized archive type.")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"ERROR: Unrecognized archive type."})
-
+            task_outcome.failed(self, f"ERROR: Unrecognized archive type.")
 @celery_app.task(bind=True, soft_time_limit=5000, time_limit=6000)
 @handle_soft_timeout
 def zenodo_upload_docker_task(self, screening_dict):
@@ -1342,7 +1327,7 @@ def zenodo_publish_task(self, payload):
     if response == "no-record-found":
         msg = f"<br> :neutral_face: I could not find any Zenodo-related records on {JOURNAL_NAME} servers. Maybe start with <code>roboneuro zenodo create buckets</code>?"
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
+        task_outcome.failed(self, msg)
         return
     else:
         # Confirm that all items are published.
@@ -1365,8 +1350,7 @@ def zenodo_publish_task(self, payload):
             response.append(f"\n Looks like there's a problem. {publish_status[1]} reproducibility assets are archived.")
             msg = "\n".join(response)
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg, False)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
-
+            task_outcome.failed(self, msg)
 ### DUPLICATION FOR NOW, SAVING THE DAY.
 
 @celery_app.task(bind=True)
@@ -1457,7 +1441,7 @@ def preview_build_book_test_task(self, payload):
         tmp_log = write_html_log(payload['commit_hash'], issue_comment)
         body = "<p>&#129344; We ran into a problem building your book. Please download the log file attached and open in your web browser.</p>"
         send_email_with_html_attachment_celery.delay(payload['email'], payload['mail_subject'], body, tmp_log)
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed"})
+        task_outcome.failed(self, f"FAILURE: Build for {owner}/{repo} at {payload['commit_hash']} has failed")
     else:
         #gh_template_respond(github_client,"success","Successfully built", payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"The next comment will forward the logs")
         #issue_comment = []
@@ -1553,7 +1537,7 @@ def preprint_build_pdf_draft(self, payload):
         gh_clone_repository(payload['repository_url'], target_path, depth=1)
     except Exception as e:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], str(e))
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': str(e)})
+        task_outcome.failed(self, str(e))
         return
     # Crawl notebooks for the citation text and append it to paper.md, update bib.
     res = create_extended_pdf_sources(target_path, payload['issue_id'],payload['repository_url'])
@@ -1584,11 +1568,10 @@ def preprint_build_pdf_draft(self, payload):
             gh_create_comment(github_client, payload['review_repository'],payload['issue_id'],comment)
         except subprocess.CalledProcessError as e:
             gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{e.output}")
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': e.output})
+            task_outcome.failed(self, e.output)
     else:
         gh_template_respond(github_client,"failure",payload['task_title'], payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], f"{res['message']}")
-        self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': res['message']})
-
+        task_outcome.failed(self, res['message'])
 # REFACTORED TASKS ----------------------------------------------------------------
 # ---------------------------------------------------------------------------------
 

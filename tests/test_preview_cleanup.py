@@ -151,7 +151,7 @@ def test_a_long_repository_name_matches_the_name_binderhub_shortens():
 # The task that runs the cleanup for a screening issue and says on it what was done.
 
 import neurolibre_celery_tasks as celery_tasks
-from celery.exceptions import Ignore
+from task_outcome import TaskFailed
 from conftest import FakeTask
 
 
@@ -222,13 +222,13 @@ def test_the_task_keeps_the_commit_it_is_given(preview):
 
 def test_a_repository_name_that_leaves_the_folder_is_refused(preview):
     FakeTask.owner_override = ".."
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         celery_tasks.preview_cleanup_task.run(dict(issue_id=52, target_repo_url="https://github.com/x/y"))
     assert FakeTask.last.failed.endswith("is not a repository name.")
 
 
 def test_the_journals_copies_are_never_cleaned(preview):
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         run(owner=celery_tasks.GH_ORGANIZATION)
     assert FakeTask.last.failed == (f"The builds of the journal's copies ({celery_tasks.GH_ORGANIZATION}) are all "
                                     f"kept; the cleanup is for the author's repository.")
@@ -237,7 +237,7 @@ def test_the_journals_copies_are_never_cleaned(preview):
 
 def test_a_build_in_progress_stops_the_cleanup(preview):
     Lock.held = True
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         run()
     assert FakeTask.last.failed == ("A MyST build of someone/paper-repo is in progress; run the cleanup again "
                                     "once it has finished.")
@@ -295,3 +295,44 @@ def test_the_endpoint_passes_a_commit_to_keep(preview_api):
 def test_the_endpoint_needs_the_issue(preview_api):
     r = preview_api.client.post("/api/myst/cleanup", json={"repository_url": "https://github.com/someone/paper-repo"})
     assert r.status_code == 422 and preview_api.sent == []
+
+
+# Through Celery with the real BaseNeuroLibreTask: Flower shows the sentence of a failure, and the comment of a
+# success as the task's result.
+
+BASE_TASK = celery_tasks.BaseNeuroLibreTask
+
+
+@pytest.fixture
+def real_task(preview, monkeypatch):
+    posted = []
+    respond = SimpleNamespace(STARTED=lambda m="": posted.append(("started", m)),
+                              FAILURE=lambda m, collapsable=True: posted.append(("failure", m)),
+                              SUCCESS=lambda m, collapsable=True: posted.append(("success", m)))
+
+    def screening(d):
+        return SimpleNamespace(issue_id=d["issue_id"], target_repo_url=d["target_repo_url"], task_id=None,
+                               commit_hash=d.get("commit_hash"), respond=respond, email_address=None)
+    monkeypatch.setattr(celery_tasks, "BaseNeuroLibreTask", BASE_TASK)
+    monkeypatch.setattr(celery_tasks.ScreeningClient, "from_dict", staticmethod(screening))
+    monkeypatch.setattr(celery_tasks.preview_cleanup_task, "update_state", lambda *a, **k: None)
+    return posted
+
+
+def send(owner):
+    return celery_tasks.preview_cleanup_task.apply(args=[dict(
+        issue_id=52, target_repo_url=f"https://github.com/{owner}/paper-repo")])
+
+
+def test_a_failed_cleanup_is_a_failure_with_its_sentence(real_task):
+    result = send(celery_tasks.GH_ORGANIZATION)
+    assert result.state == "FAILURE"
+    assert str(result.result).startswith("The builds of the journal's copies")
+    assert real_task[-1][0] == "failure"
+
+
+def test_a_cleanup_has_its_comment_as_its_result(real_task, preview):
+    result = send("someone")
+    assert result.state == "SUCCESS"
+    assert result.result.startswith("🧹 Preview cleanup of someone/paper-repo")
+    assert real_task[-1] == ("success", result.result)

@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from celery.exceptions import Ignore
+from task_outcome import TaskFailed
 
 import neurolibre_celery_tasks as celery_tasks
 import screening_client
@@ -158,7 +158,7 @@ def test_a_draft_too_long_for_a_comment_names_the_file(world, monkeypatch):
 def test_missing_data_folder_fails(world, monkeypatch):
     world.project = "gone"
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The paper's data is not at its place on the server (gone), so there is nothing "
                                     "to describe. Ask an editor to check the data transfer.")
@@ -167,7 +167,7 @@ def test_missing_data_folder_fails(world, monkeypatch):
 def test_load_failure_is_one_sentence(world, monkeypatch):
     world.load_result = (1, said("graph", errors=["The paper was not loaded from /DATA/cdn/current: no such site."]))
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The paper could not be loaded into the store: the paper was not loaded from "
                                     "/DATA/cdn/current: no such site.")
@@ -175,7 +175,7 @@ def test_load_failure_is_one_sentence(world, monkeypatch):
 
 def test_draft_that_wrote_nothing_fails_with_the_problem(world, monkeypatch):
     fake_draft(monkeypatch, problems=["The data could not be profiled: bad"], write=False)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == "The description could not be drafted: the data could not be profiled: bad."
     assert world.gh.used == []
@@ -217,7 +217,7 @@ def test_check_clean_and_no_draft(world, monkeypatch):
         "No corrections were given, so the description was checked as it is.\n\n"
         "The description passes the check. There are no warnings.\n\n" + WHO)
     (world.work / "00041.weft.yaml").unlink()
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed == ("There is no draft of this paper's data description on the server yet. Ask for "
                                     "`@roboneuro weft draft` first.")
@@ -226,7 +226,7 @@ def test_check_clean_and_no_draft(world, monkeypatch):
 def test_confirm_refused_without_data_archive(world, monkeypatch):
     seed_server(world)
     world.body["data-archive"] = None
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert FakeTask.last.failed == (
         "The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the data has been "
@@ -236,7 +236,7 @@ def test_confirm_refused_without_data_archive(world, monkeypatch):
 def test_confirm_with_errors_writes_nothing(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(errors=["bad field", "bad link"]))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert "bad field" in FakeTask.last.failed and "bad link" in FakeTask.last.failed
     assert world.gh.used == []
@@ -310,7 +310,7 @@ def test_a_reply_without_a_block_by_someone_else_is_refused(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
     world.comments[200] = ("mallory", "Looks right.")
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; comment 200 "
                                     "is by @mallory.")
@@ -320,7 +320,7 @@ def test_an_unreadable_yaml_block_is_one_sentence(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: pytest.fail("check ran"))
     world.comments[200] = ("ada", "```yaml\nfiles: [unclosed\n```")
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
     f = FakeTask.last.failed
     assert f.startswith("The `yaml` block in comment 200 could not be read (line ")
@@ -329,7 +329,7 @@ def test_an_unreadable_yaml_block_is_one_sentence(world, monkeypatch):
 
 def test_confirm_at_a_missing_comment_is_a_sentence(world, monkeypatch):
     seed_server(world)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, at=999))
     f = FakeTask.last.failed
     assert "999" in f and "\n" not in f and "fork" not in f
@@ -339,7 +339,7 @@ def test_corrections_by_someone_else_are_refused(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
     world.comments[200] = ("mallory", "```yaml\nfiles: []\n```")
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; "
                                     "the corrections in comment 200 are by @mallory.")
@@ -368,7 +368,7 @@ def test_confirm_without_a_block_confirms_as_it_stands(world, monkeypatch):
 def test_confirm_without_the_command_comment_is_refused(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(fields=""))
     f = FakeTask.last.failed
     assert "comment" in f and "\n" not in f
@@ -428,7 +428,7 @@ def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
         return tasks.weft_steps.DraftResult(weft=Path(work) / "00041.weft.yaml", profiles=Path(work) / "00041.profiles.json",
                                             drafted_by="anthropic-api", reason="x", problems=["The data could not be profiled: bad"])
     monkeypatch.setattr(tasks.weft_steps, "draft", failing)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert "could not be profiled" in FakeTask.last.failed
     assert world.gh.used == []
@@ -437,7 +437,7 @@ def test_failed_second_draft_does_not_reuse_old_files(world, monkeypatch):
 def test_no_published_commit_means_no_draft(world, monkeypatch):
     world.commit = None
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The paper has no published build yet, so its code cannot be read. Run "
                                     "`@roboneuro production sync myst` first.")
@@ -447,7 +447,7 @@ def test_no_published_commit_means_no_draft(world, monkeypatch):
 def test_clone_failure_is_one_sentence(world, monkeypatch):
     world.clone_error = "fatal: reference is not a tree\nmore"
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == "The repository roboneurolibre/paper-repo could not be cloned at abc1234: more."
 
@@ -459,7 +459,7 @@ def test_github_errors_become_a_sentence(world, monkeypatch):
     def boom(*a, **k):
         raise GithubException(404, {"message": "Not Found", "documentation_url": "x"}, {})
     monkeypatch.setattr(tasks, "gh_read_from_issue_body", boom)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert FakeTask.last.failed == "GitHub could not be reached for the review issue (404 Not Found). Ask again in a minute."
 
@@ -571,7 +571,7 @@ def test_confirm_works_on_a_copy_of_the_flat_weft_and_records_it_there(world, mo
 
 def test_no_profiles_anywhere_is_a_sentence(world, tmp_path):
     seed_server(world, profiles=None)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed == ("There is no draft of this paper's data description on the server yet. Ask for "
                                     "`@roboneuro weft draft` first.")
@@ -582,7 +582,7 @@ def test_a_flat_weft_without_its_profiles_is_a_sentence(world, monkeypatch):
     seed_server(world, weft="paper: draft\n", profiles='{"draft": true}')
     seed_server(world, weft="paper: confirmed\n", profiles=None, where="flat")
     monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: pytest.fail("check ran"))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_check_task.run(payload())
     assert FakeTask.last.failed == (
         "The confirmed description of this paper's data is on the server without its profiles, so it cannot be "
@@ -608,7 +608,7 @@ def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):
 def test_a_draft_over_a_confirmed_weft_is_refused(world, monkeypatch):
     fake_draft(monkeypatch)
     seed_server(world, weft="paper: x\nversion: 1.0.0\n", where="flat")
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == (
         "This paper's data description is already confirmed. To change it, reply with the entries to change in a "
@@ -690,7 +690,7 @@ def test_a_store_kept_busy_is_one_sentence(world, monkeypatch):
     monkeypatch.setattr(tasks.weft_steps, "STORE_LOCK_WAIT", 0.2)
     with open(tasks.weft_steps.STORE_LOCK_PATH, "a") as other:
         fcntl.flock(other, fcntl.LOCK_EX)
-        with pytest.raises(Ignore):
+        with pytest.raises(TaskFailed):
             tasks.weft_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
     assert "busy" in f and "\n" not in f and "store.lock" not in f
@@ -700,7 +700,7 @@ def test_a_failed_reload_at_confirm_is_one_sentence(world, monkeypatch):
     seed_server(world)
     world.load_result = (1, said("graph", errors=["The paper was not loaded: no such site."]))
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100))
     assert "no such site" in FakeTask.last.failed and "Traceback" not in FakeTask.last.failed
 
@@ -728,7 +728,7 @@ def test_confirmed_but_not_published_says_so(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
         version="1.2.0", confirmed=True, errors=["No weft of x is in the server's folder of wefts."]))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
     assert f == ("The description was confirmed at version 1.2.0 but not published: no description of x is in the "
@@ -746,7 +746,7 @@ def test_a_local_file_error_is_one_sentence(world, monkeypatch):
     monkeypatch.setattr(tasks.os, "makedirs", full)
     for task in (tasks.weft_draft_task, tasks.weft_check_task, tasks.weft_confirm_task):
         fake_draft(monkeypatch)
-        with pytest.raises(Ignore):
+        with pytest.raises(TaskFailed):
             task.run(payload(command_comment_id=100))
         f = FakeTask.last.failed
         assert "No space left on device" in f and "/DATA" not in f and "\n" not in f
@@ -958,13 +958,13 @@ def test_a_backend_missing_from_the_config_is_one_sentence(world, monkeypatch, t
     config = tmp_path / "partial.yaml"
     config.write_text("weft:\n  backend:\n    draft: a\n    redraft: b\n")
     monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(config))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The server's Evidentron config names no `terms` backend under `weft: backend:`, "
                                     "so nothing was done. Ask an editor to set it.")
     assert world.clones == []
     monkeypatch.setattr(tasks, "EVIDENTRON_CONFIG", str(tmp_path / "none.yaml"))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert "names no `draft` backend" in FakeTask.last.failed
 
@@ -991,7 +991,7 @@ def test_a_failed_clone_leaves_the_earlier_draft(world, monkeypatch):
     tasks.weft_draft_task.run(payload())
     earlier = {p.name: p.read_text() for p in world.work.iterdir()}
     world.clone_error = "fatal: could not read from remote repository"
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The repository roboneurolibre/paper-repo could not be cloned at abc1234: "
                                     "fatal: could not read from remote repository.")
@@ -1005,7 +1005,7 @@ def test_an_unreachable_preview_server_is_one_sentence(world, monkeypatch):
         raise requests.ConnectTimeout("timed out after 20 s")
     monkeypatch.setattr(tasks, "_published_commit", down)
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == ("The published commit of roboneurolibre/paper-repo could not be read from the "
                                     "preview server: ConnectTimeout.")
@@ -1032,7 +1032,7 @@ def test_a_data_folder_that_cannot_be_found_is_one_sentence(world, monkeypatch, 
         raise error
     monkeypatch.setattr(tasks, "gh_get_project_name", boom)
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == said
 
@@ -1089,7 +1089,7 @@ def test_a_github_error_reading_the_data_requirement_is_its_reason(world, monkey
         raise GithubException(502, {"message": "Bad Gateway"}, {})
     monkeypatch.setattr(tasks, "gh_get_project_name", boom)
     fake_draft(monkeypatch)
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_draft_task.run(payload())
     assert FakeTask.last.failed == "The paper's data folder could not be found on the server: 502 Bad Gateway."
 
@@ -1144,7 +1144,7 @@ def test_confirmed_but_not_kept_names_the_reply_to_confirm_again(world, monkeypa
     world.comments[200] = ("ada", "```yaml\nfiles: []\n```")
     monkeypatch.setattr(tasks.weft_steps, "confirm", lambda *a, **k: tasks.weft_steps.ConfirmResult(
         version="1.2.0", confirmed=True, errors=["The disk is full."]))
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         tasks.weft_confirm_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed.endswith("Asking for `@roboneuro weft confirm at 200` again is safe once this is fixed.")
 

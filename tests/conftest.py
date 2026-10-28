@@ -33,7 +33,7 @@ try:
 finally:
     os.chdir(_here)
 
-from celery.exceptions import Ignore
+from task_outcome import TaskFailed
 
 DOI = "10.55458/neurolibre.00041"
 
@@ -85,7 +85,7 @@ class FakeTask:
 
     def fail(self, message, attachment_path=None):
         self.failed = message
-        raise Ignore()
+        raise TaskFailed(message)
 
 
 class FakeGitHub:

@@ -5,7 +5,7 @@ import base64
 from types import SimpleNamespace
 
 import pytest
-from celery.exceptions import Ignore
+from task_outcome import TaskFailed
 from github import UnknownObjectException
 from ruamel.yaml import YAML
 
@@ -176,7 +176,7 @@ def test_a_hand_edit_in_the_fork_that_merging_undoes_is_listed(sync):
 
 def test_an_upstream_myst_yml_production_cannot_read_fails_the_sync_once(sync):
     UPSTREAM.files[("main", "myst.yml")] = "- not\n- settings\n"
-    with pytest.raises(Ignore):
+    with pytest.raises(TaskFailed):
         run_sync()
     assert FakeTask.last.failed == ("⛔️ Could not configure the upstream myst.yml for production: "
                                     "myst.yml is not a mapping of settings.")
@@ -212,3 +212,23 @@ def test_a_licence_github_cannot_classify_is_not_a_detected_licence(monkeypatch,
     found = celery_tasks.get_repository_license(client, "https://github.com/someone/ant-seeds")
     assert found["status"] is detected
     assert found["license"] == (spdx if detected else None)
+
+
+# Through Celery as a worker runs it: what Flower shows for an older task that posts its failure and returns.
+
+def production_payload():
+    return dict(issue_id=77, comment_id=1, review_repository="journal/reviews",
+                repository_url="https://github.com/someone/ant-seeds", task_title="t", commit_hash="abc")
+
+
+def test_an_older_task_that_posts_a_failure_ends_as_failed(journal, monkeypatch):
+    monkeypatch.setattr(celery_tasks, "get_test_book_build", lambda *a: {"status": False, "book_url": None})
+    result = celery_tasks.fork_configure_repository_task.apply(args=[production_payload()])
+    assert result.state == "FAILURE"
+    assert "A living preprint build could not be found at commit `abc`" in str(result.result)
+    assert journal.said[-1][0] == "failure"
+
+
+def test_an_older_task_that_succeeds_ends_as_succeeded(journal):
+    journal.fork.files[("main", "myst.yml")] = AUTHOR_MYST
+    assert celery_tasks.fork_configure_repository_task.apply(args=[production_payload()]).state == "SUCCESS"
