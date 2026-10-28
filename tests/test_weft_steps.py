@@ -557,6 +557,31 @@ def test_reset_moves_the_description_aside_publishes_again_and_removes_the_work_
     assert all("\n" not in s for s in result.said)
 
 
+def test_a_reset_that_stopped_says_so_and_is_marked(tmp_path, monkeypatch):
+    wefts = tmp_path / "wefts"
+    wefts.mkdir()
+    (wefts / "00041.weft.yaml").write_text(WEFT_YAML)
+
+    def refuse(src, dst):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(weft_steps.os, "replace", refuse)
+    fake = Fake(tmp_path)
+    result = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", tmp_path / "site", run=fake)
+    assert result.stopped and not result.removed and fake.calls == []
+    assert result.said == ["The reset stopped: Permission denied."]
+
+
+def test_the_reset_says_publishs_failure_in_plain_words(tmp_path):
+    wefts = tmp_path / "wefts"
+    wefts.mkdir()
+    (wefts / "00041.weft.yaml").write_text(WEFT_YAML)
+    out = said("publish", errors=["The weft folder could not be read."])
+    result = weft_steps.reset(DOI, wefts, tmp_path / "graph.db", tmp_path / "site", run=lambda a: (1, out))
+    assert "Evidentron's site could not be published again: the description folder could not be read." in result.said
+    assert result.stopped
+    assert not hasattr(weft_steps, "_lower_first")
+
+
 def test_reset_that_cannot_publish_says_why(tmp_path):
     wefts = tmp_path / "wefts"
     wefts.mkdir()

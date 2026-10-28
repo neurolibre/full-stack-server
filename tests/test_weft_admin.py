@@ -57,6 +57,15 @@ def test_a_reset_whose_publish_failed_does_not_rebuild(server, capsys):
     assert "Evidentron's site could not be published again" in capsys.readouterr().out
 
 
+def test_a_reset_that_stopped_exits_1(server, monkeypatch, capsys):
+    def refuse(src, dst):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(weft_steps.os, "replace", refuse)
+    assert weft_admin.main(["reset", DOI]) == 1
+    assert capsys.readouterr().out.strip() == "The reset stopped: Permission denied."
+    assert server.publishes == [] and server.rebuilds == []
+
+
 def test_reset_waits_for_a_task_that_holds_the_store(server, monkeypatch, capsys):
     monkeypatch.setattr(weft_steps, "STORE_LOCK_WAIT", 0.2)
     with open(weft_steps.STORE_LOCK_PATH, "a") as other:

@@ -268,7 +268,8 @@ def check(task):
                               submission=submission)
     corrections = source if submission else None
     if result.failure:
-        task.succeed(say.check_unreadable(corrections, say.check_not_run(result.failure)), collapsable=False)
+        task.succeed(say.check_not_run_comment(result.failure, getattr(task.screening, "at", None)),
+                     collapsable=False)
         return f"The description of the data of {paper.doi} could not be checked"
     if result.unreadable:
         task.succeed(say.check_unreadable(corrections, result.unreadable), collapsable=False)
@@ -325,7 +326,7 @@ def confirm(task):
 
 
 # The tasks, under the names they had in the celery module. Their soft time limits are the sums of the steps they run
-# at their own limits (weft_steps.DRAFT_SECONDS, CONFIRM_SECONDS); the check runs one step.
+# at their own limits (weft_steps.DRAFT_SECONDS, CHECK_SECONDS, CONFIRM_SECONDS).
 
 @celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_draft_task", soft_time_limit=weft_steps.DRAFT_SECONDS,
                  time_limit=weft_steps.DRAFT_SECONDS + HARD_MARGIN)
@@ -336,7 +337,8 @@ def weft_draft_task(self, screening_dict):
         return draft(task)
 
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_check_task", soft_time_limit=5000, time_limit=6000)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_check_task", soft_time_limit=weft_steps.CHECK_SECONDS,
+                 time_limit=weft_steps.CHECK_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def weft_check_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)

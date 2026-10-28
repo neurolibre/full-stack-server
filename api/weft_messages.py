@@ -11,6 +11,7 @@ from typing import List, Optional
 import yaml
 
 from weft_steps import CDN_URL
+from weft_words import lower_first, plain  # noqa: F401  (part of this module's words)
 
 DESCRIBING_URL = f"{CDN_URL}/terms/describing/"
 TERMS_URL = f"{CDN_URL}/terms/"
@@ -45,23 +46,7 @@ RESET = "an editor runs the reset command on the server"
 
 # Sentences that come from the steps and the commands.
 
-# "weft" as a word, but not in a command (`@roboneuro weft check`, evidentron.weft) or a file name (x.weft.yaml).
-_WEFT = re.compile(r"(?<!roboneuro )(?<![\w.`/-])weft(s?)(?=['\s,;:)!?]|\.(?!\w)|$)")
-
-
-def plain(text: str) -> str:
-    """A sentence from a step or a command, with "weft" written as "description", since the comment explains
-    the description and never the word."""
-    return _WEFT.sub(r"description\1", str(text))
-
-
-def lower_first(text: str) -> str:
-    """The text with its first letter lower-cased, unless its first word is an acronym or a name written with
-    capitals inside it (NOAA, WIPO, iPhone): only when the rest of the first word has no capital letter."""
-    words = text.split(maxsplit=1)
-    if not words or any(c.isupper() for c in words[0][1:]):
-        return text
-    return text[:1].lower() + text[1:]
+# plain and lower_first are in weft_words, which weft_steps shares.
 
 
 def end(text: str) -> str:
@@ -204,8 +189,15 @@ def applied(comment_id) -> str:
     return f"The corrections from comment {comment_id} were applied."
 
 
-def check_not_run(sentence: str) -> str:
-    return f"The check could not be run: {inner(sentence)}. Ask for `@roboneuro weft check` again later."
+def check_not_run(sentence: str, at=None) -> str:
+    """The check could not be run (the command gave no result, ran past its time, did not start): nothing is known
+    about the description. The hint repeats the command as it was asked."""
+    command = f"`@roboneuro weft check at {at}`" if at is not None else "`@roboneuro weft check`"
+    return f"The check could not be run: {inner(sentence)}. Ask for {command} again later."
+
+
+def check_not_run_comment(sentence: str, at=None) -> str:
+    return "\n\n".join([heading("check"), check_not_run(sentence, at)])
 
 
 def cannot_confirm(login: str) -> str:

@@ -1099,9 +1099,29 @@ def test_a_check_that_could_not_run_is_not_a_fault_of_the_description(world, mon
     monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
         failure="The check step took longer than 15 minutes and was stopped."))
     tasks.weft_check_task.run(payload(command_comment_id=100))
+    assert FakeTask.last.comment == (
+        "### Description of this paper's data: check\n\n"
+        "The check could not be run: the check step took longer than 15 minutes and was stopped. "
+        "Ask for `@roboneuro weft check` again later.")
+
+
+def test_a_check_with_corrections_that_could_not_run_repeats_the_command_with_at(world, monkeypatch):
+    seed_server(world)
+    world.comments[200] = ("ada", "```yaml\nfiles: []\n```")
+    monkeypatch.setattr(tasks.weft_steps, "check", lambda *a, **k: tasks.weft_steps.CheckResult(
+        failure="The command gave no result: ImportError: no module."))
+    tasks.weft_check_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
-    assert "The check could not be run: the check step took longer than 15 minutes and was stopped." in c
-    assert "Fix these" not in c and "passes" not in c
+    assert c == ("### Description of this paper's data: check\n\n"
+                 "The check could not be run: the command gave no result: ImportError: no module. "
+                 "Ask for `@roboneuro weft check at 200` again later.")
+    assert "applied" not in c and "checked as it is" not in c
+
+
+def test_the_check_task_limits_come_from_its_step():
+    assert tasks.weft_check_task.soft_time_limit == tasks.weft_steps.CHECK_SECONDS
+    assert tasks.weft_check_task.time_limit == tasks.weft_steps.CHECK_SECONDS + tasks.HARD_MARGIN
+    assert tasks.weft_steps.CHECK_SECONDS == tasks.weft_steps.TIME_LIMITS["check"]
 
 
 def test_a_block_by_someone_who_cannot_confirm_is_not_offered_for_confirmation(world, monkeypatch):

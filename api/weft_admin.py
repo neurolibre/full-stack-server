@@ -35,10 +35,10 @@ def reset(doi: str) -> int:
         result = weft_steps.reset(doi, weft_steps.WEFTS_PATH, weft_steps.GRAPH_DB_PATH, weft_steps.SITE_PATH)
         for sentence in result.said:
             print(sentence)
+        if result.stopped:
+            return 1
         if not result.removed:
             return 0
-        if not result.published:
-            return 1
         try:
             myst_cdn.rebuild()
         except Exception as e:

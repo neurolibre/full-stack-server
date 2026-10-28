@@ -24,6 +24,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import yaml
 
 import myst_cdn
+from weft_words import lower_first, plain
 
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 CDN_URL = _config["CDN_URL"].rstrip("/")
@@ -54,6 +55,8 @@ REBUILD_SECONDS = myst_cdn.LOCK_WAIT + 600          # the CDN's rebuild: its loc
 DRAFT_SECONDS = (CLONE_TIMEOUT + 2 * STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["profile"]
                  + TIME_LIMITS["explore"] + EXPLORE_SLOT_WAIT + TIME_LIMITS["check"] + TIME_LIMITS["explore"]
                  + TIME_LIMITS["check"] + OTHER_TIME_LIMIT)
+# check: the one step it runs (it reads the store and takes no lock, so there is no wait to add).
+CHECK_SECONDS = TIME_LIMITS["check"]
 # confirm: a wait for the store, load, check, confirm, load, two exports, publish, the CDN's rebuild.
 CONFIRM_SECONDS = (STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["check"] + TIME_LIMITS["confirm"]
                    + TIME_LIMITS["load"] + 2 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS)
@@ -347,14 +350,6 @@ def _not_exported(doi: str, published: dict) -> Optional[str]:
         f"The FAIR² and Croissant documents of {doi} were not written when the site was published."
 
 
-def _lower_first(text: str) -> str:
-    """The sentence with its first letter lower-cased when it starts with a plain word (as weft_messages does)."""
-    words = text.split(maxsplit=1)
-    if not words or any(c.isupper() for c in words[0][1:]):
-        return text
-    return text[:1].lower() + text[1:]
-
-
 def publish(site: Path, db: Path, run: Optional[Run] = None) -> dict:
     """Publish Evidentron's static site (terms, documents, metadata) into a new build folder that `site` then links
     to; publish's result.
@@ -383,7 +378,7 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
     run = run or subprocess_runner(weft.parent)
     checked = check(weft, profiles, data_dir, run, db, submission)
     if checked.failure:
-        return ConfirmResult(errors=["The check could not be run: " + _lower_first(checked.failure)])
+        return ConfirmResult(errors=["The check could not be run: " + lower_first(checked.failure)])
     if checked.unreadable:
         return ConfirmResult(errors=[checked.unreadable])
     if checked.errors:
@@ -465,6 +460,7 @@ class ResetResult:
     said: List[str] = field(default_factory=list)     # what was done, one sentence each
     removed: bool = False                             # a confirmed description was there and was moved aside
     published: bool = False                           # Evidentron's site was published again without it
+    stopped: bool = False                             # the reset did not finish; the last sentence says why
 
 
 def reset(doi: str, wefts: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
@@ -494,6 +490,7 @@ def reset(doi: str, wefts: Path, db: Path, site: Path, run: Optional[Run] = None
             result.said.append(f"Its working copy, {stem}/, was removed.")
     except OSError as e:
         result.said.append(f"The reset stopped: {e.strerror or e.__class__.__name__}.")
+        result.stopped = True
         return result
     if result.removed:
         published = publish(site, db, run)
@@ -502,7 +499,8 @@ def reset(doi: str, wefts: Path, db: Path, site: Path, run: Optional[Run] = None
             result.said.append("Evidentron's site was published again without its documents.")
         else:
             result.said.append("Evidentron's site could not be published again: "
-                               + _lower_first(published["errors"][0]).rstrip(".") + ".")
+                               + plain(lower_first(published["errors"][0])).rstrip(".") + ".")
+            result.stopped = True
             return result
     result.said.append("The store keeps the paper's rows until the next load of the paper replaces them, since "
                        "Evidentron has no command to remove them.")
