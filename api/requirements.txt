@@ -44,3 +44,6 @@ PyYAML
 # marshmallow.utils.is_instance_or_subclass, both removed in marshmallow 4,
 # so the API cannot be imported with it.
 marshmallow<4
+# myst_production.py edits a paper's myst.yml in place: the round trip keeps
+# the author's comments, key order, quoting and characters.
+ruamel.yaml>=0.18
