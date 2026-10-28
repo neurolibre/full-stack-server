@@ -10,6 +10,7 @@ from github_client import *
 from screening_client import ScreeningClient
 from myst_frontmatter import first_affiliations
 import myst_cdn
+import myst_production
 from common import *
 from preprint import *
 from github import Github, UnknownObjectException, GithubException
@@ -36,6 +37,7 @@ from celery.exceptions import TimeoutError, SoftTimeLimitExceeded
 import functools
 import yaml
 import fnmatch
+import random
 
 '''
 TODO: IMPORTANT REFACTORING
@@ -493,6 +495,17 @@ def rsync_book_task(self, repo_url, commit_hash, comment_id, issue_id, reviewRep
             gh_template_respond(github_client,"failure",task_title,reviewRepository,issue_id,task_id,comment_id, output)
             self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Cannot sync book at {commit_hash}"})
 
+
+def production_settings(forked_name, issue_id, code_license):
+    """What production sets in the myst.yml of the paper of issue_id, built from the fork forked_name; code_license
+    is the licence GitHub detects for the code, or None to keep the author's."""
+    doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
+    return myst_production.Production(
+        fork=forked_name, ref="main", doi=doi, binderhub=PRODUCTION_BINDERHUB, journal=JOURNAL_NAME,
+        subject=JOURNAL_SUBJECT, content_license=PUBLISH_LICENSE, code_license=code_license,
+        twitter=JOURNAL_TWITTER, home_url=f"https://doi.org/{doi}",
+        banner=lambda: f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg")
+
 @celery_app.task(bind=True)
 @handle_soft_timeout
 def fork_configure_repository_task(self, payload):
@@ -567,7 +580,7 @@ def fork_configure_repository_task(self, payload):
 
     jb_config = gh_get_jb_config(github_client,forked_name)
     jb_toc = gh_get_jb_toc(github_client,forked_name)
-    myst_config = gh_get_myst_config(github_client,forked_name)
+    myst_text = gh_get_file_content(github_client, forked_name, "myst.yml")
 
     code_license_info = get_repository_license(github_client, payload['repository_url'])
     
@@ -576,7 +589,7 @@ def fork_configure_repository_task(self, payload):
     else:
         code_license_info = None
 
-    if (not jb_config or not jb_toc) and (not myst_config):
+    if (not jb_config or not jb_toc) and (not myst_text):
         msg = f"Could not load [_config.yml and _toc.yml] under the content or myst.yml at the base of {forked_name}"
         gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
         self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
@@ -605,62 +618,25 @@ def fork_configure_repository_task(self, payload):
         except Exception as e:
             logging.info(f"Error reading {source_path}: {str(e)}")
     
-    if myst_config:
-
-        myst_config_new = myst_config   
-        myst_config_new['project']['copyright'] = JOURNAL_NAME
-        # This should be applied only if thebe is already configured (could be non-executable)
-        if myst_config.get('project', {}).get('thebe'):
-            myst_config_new['project']['thebe'] = {}
-            myst_config_new['project']['thebe']['binder'] = {}
-            myst_config_new['project']['thebe']['binder']['url'] = PRODUCTION_BINDERHUB
-            myst_config_new['project']['thebe']['binder']['repo'] = f"{forked_name}"
-            myst_config_new['project']['thebe']['binder']['ref'] = "main"
-        # This should be applied only if binder is already configured (could be non-executable)
-        if myst_config.get('project', {}).get('binder'):
-            myst_config_new['project']['binder'] = PRODUCTION_BINDERHUB
-
-        myst_config_new['project']['github'] = f"https://github.com/{forked_name}"
-        myst_config_new['project']['open_access'] = True
-        myst_config_new['project']['license'] = {}
-        myst_config_new['project']['license']['content'] = PUBLISH_LICENSE
-        if code_license_info:
-            myst_config_new['project']['license']['code'] = code_license_info
-        myst_config_new['project']['venue'] = JOURNAL_NAME
-        myst_config_new['project']['subject'] = JOURNAL_SUBJECT
-        myst_config_new['project']['doi'] = f"{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
-        
-        if 'options' not in myst_config['site']:
-            myst_config_new['site']['options'] = {}
-            myst_config_new['site']['options']['favicon'] = 'favicon.ico'
-            myst_config_new['site']['options']['twitter'] = JOURNAL_TWITTER
-            myst_config_new['site']['options']['logo'] = 'logo.png'
-            myst_config_new['site']['options']['logo_text'] = JOURNAL_NAME
-        
-        if 'actions' not in myst_config['site'] or not isinstance(myst_config['site']['actions'], list):
-            myst_config_new['site']['actions'] = []
-            myst_config_new['site']['actions'].append({
-                "title": f"🏠 Home",
-                "url": f"https://doi.org/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
-            })
-        else:
-            myst_config_new['site']['actions'].append({
-                "title": f"🏠",
-                "url": f"https://doi.org/{DOI_PREFIX}/{DOI_SUFFIX}.{payload['issue_id']:05d}"
-            })
-
-        if myst_config['site']['template'] == "article-theme" and 'banner' not in myst_config['project']:
-            myst_config_new['project']['banner'] = f"https://raw.githubusercontent.com/evidencepub/brand/main/banner/png/article_hdr_{random.randint(1,7)}.jpg"
-
-        if not myst_config_new != myst_config:
-            response = gh_update_myst_config(github_client,forked_name,myst_config_new)
-        
-        if not response['status']:
-            msg = f"Could not update myst.yml for {forked_name}: \n {response['message']}"
+    if myst_text:
+        try:
+            configured = myst_production.configure(
+                myst_text, production_settings(forked_name, payload['issue_id'], code_license_info))
+        except myst_production.MystConfigError as e:
+            msg = f"Could not configure myst.yml for {forked_name}: {e}"
             gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
-            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update myst.yml for {forked_name}"})
+            self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': msg})
             return
-        
+        # An unchanged file is not written: a commit moves the fork's head and starts a BinderHub build.
+        if configured != myst_text:
+            response = gh_update_file_content(github_client, forked_name, "myst.yml", configured,
+                                              ":robot: [Automated] Configure myst.yml for production")
+            if not response['status']:
+                msg = f"Could not update myst.yml for {forked_name}: \n {response['message']}"
+                gh_template_respond(github_client,"failure",task_title,payload['review_repository'],payload['issue_id'],task_id,payload['comment_id'], msg)
+                self.update_state(state=states.FAILURE, meta={'exc_type':f"{JOURNAL_NAME} celery exception",'exc_message': "Custom",'message': f"Could not update myst.yml for {forked_name}"})
+                return
+
         msg = f"Please confirm that the <a href=\"https://github.com/{forked_name}\">forked repository</a> is available and (<code>myst.yml</code>) properly configured."
     else:
         # UPDATE JB CONFIG
@@ -741,52 +717,32 @@ def fork_configure_repository_task(self, payload):
     self.update_state(state=states.SUCCESS, meta={'message': msg})
 
 
-def compare_yaml_files(fork_yaml_content, upstream_yaml_content, file_path):
-    """
-    Compare two YAML files field by field and return a markdown formatted diff.
-
-    Args:
-        fork_yaml_content: Decoded content of YAML from fork
-        upstream_yaml_content: Decoded content of YAML from upstream
-        file_path: Name of the file being compared
-
-    Returns:
-        Markdown formatted string showing differences
-    """
+def configure_synced_myst(task, forked_repo, sync_branch, base_branch):
+    """Configure the upstream myst.yml on the sync branch for production, and return the pull request's section on
+    it: the settings merging changes in the fork's myst.yml. A file that cannot be configured raises
+    myst_production.MystConfigError."""
     try:
-        fork_data = yaml.safe_load(fork_yaml_content)
-        upstream_data = yaml.safe_load(upstream_yaml_content)
-    except Exception as e:
-        return f"⚠️ Could not parse YAML files: {str(e)}"
-
-    def flatten_dict(d, parent_key='', sep='.'):
-        """Flatten nested dict to show full path to each field"""
-        items = []
-        for k, v in d.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.extend(flatten_dict(v, new_key, sep=sep).items())
-            else:
-                items.append((new_key, v))
-        return dict(items)
-
-    fork_flat = flatten_dict(fork_data) if isinstance(fork_data, dict) else {}
-    upstream_flat = flatten_dict(upstream_data) if isinstance(upstream_data, dict) else {}
-
-    all_keys = set(fork_flat.keys()) | set(upstream_flat.keys())
-
-    differences = []
-    for key in sorted(all_keys):
-        fork_val = fork_flat.get(key, "❌ Not present")
-        upstream_val = upstream_flat.get(key, "❌ Not present")
-
-        if fork_val != upstream_val:
-            differences.append(f"- **`{key}`**:\n  - {GH_ORGANIZATION} (kept): `{fork_val}`\n  - Upstream (ignored): `{upstream_val}`")
-
-    if differences:
-        return f"### 📝 Preserved `{file_path}` from {GH_ORGANIZATION}\n\nThe following fields differ between {GH_ORGANIZATION} and upstream:\n\n" + "\n".join(differences)
-    else:
-        return f"### ✅ `{file_path}` is identical in {GH_ORGANIZATION} and upstream"
+        upstream = forked_repo.get_contents("myst.yml", ref=sync_branch)
+    except UnknownObjectException:
+        return "## `myst.yml`\n\nThe upstream repository has no `myst.yml`; nothing was configured."
+    upstream_text = upstream.decoded_content.decode()
+    code_license = get_repository_license(task.screening.github_client, task.screening.target_repo_url)
+    configured = myst_production.configure(
+        upstream_text, production_settings(forked_repo.full_name, task.screening.issue_id,
+                                           code_license['license'] if code_license['status'] else None))
+    if configured != upstream_text:
+        forked_repo.update_file(path="myst.yml", message=":robot: [Automated] Configure myst.yml for production",
+                                content=configured, sha=upstream.sha, branch=sync_branch)
+    try:
+        current = forked_repo.get_contents("myst.yml", ref=base_branch).decoded_content.decode()
+    except UnknownObjectException:
+        current = None
+    changes = myst_production.differences(current, configured)
+    if not changes:
+        return "## `myst.yml`\n\nThe upstream `myst.yml`, configured for production, has the same settings as the fork's."
+    return ("## `myst.yml`\n\nThe upstream `myst.yml`, configured for production, replaces the fork's. Merging "
+            "changes these settings; check that none of them undoes a change made by hand in the fork:\n\n"
+            + "\n".join(f"- {line}" for line in changes))
 
 @celery_app.task(bind=True)
 @handle_soft_timeout
@@ -835,48 +791,9 @@ def sync_fork_from_upstream_task(self, screening_dict):
             else:
                 raise
 
-        # Preserve specific files from fork's main to avoid conflicts
-        files_to_preserve = ['myst.yml']
-        fork_main_branch = forked_repo.get_branch(base_branch)
-        fork_main_sha = fork_main_branch.commit.sha
-
-        yaml_comparisons = []
-        for file_path in files_to_preserve:
-            try:
-                task.start(f"Preserving {file_path} from fork's main")
-                # Get the file content from fork's main
-                fork_file_content = forked_repo.get_contents(file_path, ref=base_branch)
-
-                # Get the file content from upstream (in sync branch before we overwrite)
-                try:
-                    upstream_file_content = forked_repo.get_contents(file_path, ref=sync_branch)
-                    upstream_decoded = upstream_file_content.decoded_content
-
-                    # Compare YAML files if it's a .yml or .yaml file
-                    if file_path.endswith(('.yml', '.yaml')):
-                        comparison = compare_yaml_files(
-                            fork_file_content.decoded_content,
-                            upstream_decoded,
-                            file_path
-                        )
-                        yaml_comparisons.append(comparison)
-                except:
-                    # File doesn't exist in upstream
-                    yaml_comparisons.append(f"### 📝 `{file_path}`\n\nThis file exists in fork but not in upstream.")
-
-                # Update the file in the sync branch with fork's version
-                forked_repo.update_file(
-                    path=file_path,
-                    message=f"Preserve {file_path} from fork",
-                    content=fork_file_content.decoded_content,
-                    sha=forked_repo.get_contents(file_path, ref=sync_branch).sha,
-                    branch=sync_branch
-                )
-                task.start(f"Preserved {file_path} from fork's main in {sync_branch}")
-            except Exception as e:
-                # File might not exist in upstream or fork, log but continue
-                task.start(f"Could not preserve {file_path}: {str(e)}")
-                yaml_comparisons.append(f"### ⚠️ `{file_path}`\n\nCould not preserve: {str(e)}")
+        # The upstream myst.yml, configured for production, replaces the fork's, so the author's changes to it
+        # arrive and production's settings stay; the pull request lists what merging changes.
+        myst_note = configure_synced_myst(task, forked_repo, sync_branch, base_branch)
 
         # Create a pull request from sync branch to main
         pr_title = f'🤖 {task.screening.preprint_version} changes from upstream ({upstream_repo_name})'
@@ -886,9 +803,7 @@ def sync_fork_from_upstream_task(self, screening_dict):
                                  gh_organization=GH_ORGANIZATION,
                                  preview_server=PREVIEW_SERVER)
 
-        # Append YAML comparison to PR body
-        if yaml_comparisons:
-            pr_body += "\n\n---\n\n## 🔍 Preserved Files Analysis\n\n" + "\n\n".join(yaml_comparisons)
+        pr_body += "\n\n---\n\n" + myst_note
 
         task.start(f"Creating pull request from {sync_branch} to {base_branch}")
         pr = forked_repo.create_pull(
@@ -902,6 +817,8 @@ def sync_fork_from_upstream_task(self, screening_dict):
             msg += f" ⚠️ This PR has merge conflicts that need to be resolved."
         task.succeed(msg, collapsable=False)
 
+    except myst_production.MystConfigError as e:
+        task.fail(f"⛔️ Could not configure the upstream myst.yml for production: {e}")
     except GithubException as e:
         error_msg = str(e)
         # Handle merge conflicts (409 status code)

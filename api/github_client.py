@@ -316,15 +316,6 @@ def gh_get_jb_config(github_client, repo):
     """Get Jupyter Book configuration YAML"""
     return gh_get_yaml(github_client, repo, "content/_config.yml")
 
-def gh_get_myst_config(github_client, repo):
-    """Get MyST configuration YAML"""
-    return gh_get_yaml(github_client, repo, "myst.yml")
-
-def gh_update_myst_config(github_client, repo, content):
-    """Update MyST configuration YAML"""
-    return gh_update_yaml(github_client, repo, "myst.yml", content, 
-                         ":robot: [Automated] MyST configuration update")
-
 def gh_update_jb_config(github_client, repo, content):
     """Update Jupyter Book configuration YAML"""
     return gh_update_yaml(github_client, repo, "content/_config.yml", content, 
