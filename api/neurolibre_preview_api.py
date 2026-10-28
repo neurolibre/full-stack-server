@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import time
 import requests
 import json
+import myst_production
 from common import *
 from schema import BuildSchema, BuildTestSchema, DownloadSchema, MystBuildSchema,IdUrlPreprintVersionSchema
 from flask_htpasswd import HtPasswdAuth
@@ -368,7 +369,8 @@ def process():
                             yield f"data: {json.dumps({'message': '- 📄 ' + content_item['name'], 'status': 'info'})}\n\n"
                 elif item['type'] == 'file' and item['name'] == 'myst.yml':
                     has_myst_yml = True
-                    yield f"data: {json.dumps({'message': '- ⚙️ ' + content_item['name'], 'status': 'positive'})}\n\n"
+                    myst_url = item['download_url']
+                    yield f"data: {json.dumps({'message': '- ⚙️ ' + item['name'], 'status': 'positive'})}\n\n"
                 else:
                     yield f"data: {json.dumps({'message': '- 📄 ' + item['name'], 'status': 'info'})}\n\n"
 
@@ -383,6 +385,17 @@ def process():
 
             if has_myst_yml:
                 yield f"data: {json.dumps({'message': 'Repository follows MyST format.', 'status': 'positive'})}\n\n"
+                try:
+                    response = requests.get(myst_url, timeout=20)
+                    response.raise_for_status()
+                    for sentence in myst_production.live_code(response.text):
+                        yield f"data: {json.dumps({'message': sentence, 'status': 'info'})}\n\n"
+                except myst_production.MystConfigError as e:
+                    yield f"data: {json.dumps({'message': f'Error: {e}', 'status': 'error'})}\n\n"
+                    yield f"data: {json.dumps({'message': 'Repository structure is invalid.', 'status': 'failure'})}\n\n"
+                    return
+                except requests.RequestException as e:
+                    yield f"data: {json.dumps({'message': f'Warning: myst.yml could not be read to check it ({e.__class__.__name__}).', 'status': 'warning'})}\n\n"
                 yield f"data: {json.dumps({'message': 'Repository structure is valid.', 'status': 'success'})}\n\n"
             elif has_content_folder and has_toc_yml and has_config_yml:
                 yield f"data: {json.dumps({'message': 'Repository follows Jupyter Book format.', 'info': 'positive'})}\n\n"
