@@ -116,3 +116,15 @@ def test_the_notes_wait_for_the_self_hosted_models_slot_and_say_when_it_stays_bu
                             env={"EVIDENTRON_LLM_URL": "http://model"}, stamp="20261030-120000", llm_wait=0)
     assert [c[0] for c in steps.calls] == ["crawl.py", "moment.py"]
     assert got["ok"] and any("busy" in s for s in got["said"])
+
+
+def test_a_seeded_first_build_is_carried_on_and_pruned_like_the_others(tmp_path):
+    seed = tmp_path / "sakiori" / "data" / "builds" / "00000000-seed"        # what the deployment puts there
+    (seed / "notes").mkdir(parents=True)
+    (seed / "notes" / "00012.json").write_text("{}")
+    os.symlink("builds/00000000-seed", tmp_path / "sakiori" / "data" / "current")
+    build(tmp_path, Steps(), stamp="20261030-120000")
+    assert (served(tmp_path) / "notes" / "00012.json").exists()                  # the seed's notes carried on
+    build(tmp_path, Steps(), stamp="20261030-130000")
+    left = sorted(p.name for p in (tmp_path / "sakiori" / "data" / "builds").iterdir())
+    assert left == ["20261030-120000", "20261030-130000"]
