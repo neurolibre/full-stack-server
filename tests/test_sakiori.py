@@ -103,3 +103,16 @@ def test_only_the_two_latest_builds_are_kept(tmp_path):
     left = sorted(p.name for p in (tmp_path / "sakiori" / "data" / "builds").iterdir())
     assert left == ["20261030-110000", "20261030-120000"]
     assert os.readlink(served(tmp_path)).endswith("20261030-120000")
+
+
+def test_the_notes_wait_for_the_self_hosted_models_slot_and_say_when_it_stays_busy(tmp_path):
+    import fcntl
+    lock = tmp_path / "evidentron" / "llm.lock"
+    lock.parent.mkdir(parents=True)
+    with open(lock, "w") as held:                     # a weft step is using the model
+        fcntl.flock(held, fcntl.LOCK_EX)
+        steps = Steps()
+        got = sakiori.build(["00052"], root=tmp_path / "sakiori", evidentron=tmp_path / "evidentron", run=steps,
+                            env={"EVIDENTRON_LLM_URL": "http://model"}, stamp="20261030-120000", llm_wait=0)
+    assert [c[0] for c in steps.calls] == ["crawl.py", "moment.py"]
+    assert got["ok"] and any("busy" in s for s in got["said"])

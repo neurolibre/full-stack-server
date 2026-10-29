@@ -39,9 +39,14 @@ SAKIORI_URL = _config["SAKIORI_URL"].rstrip("/")
 
 KEEP = 2                                     # builds kept: the served one and the one before
 CARRIED = ("notes", "moments")               # written per paper, so carried from build to build
-TIME_LIMITS = {"crawl": 1200, "notes": 3600, "moment": 3600}
+# A build of every paper writes many notes and answers (the notes take three model calls a paper, an answer one agent
+# turn); each is saved as it is written, so a step stopped at its limit loses nothing and the next build goes on.
+TIME_LIMITS = {"crawl": 1200, "notes": 3 * 3600, "moment": 3 * 3600}
 LOCK_WAIT = 7200                             # a build waits this long for another to finish
-BUILD_SECONDS = LOCK_WAIT + sum(TIME_LIMITS.values()) + 120
+# The self-hosted model answers one request at a time, so the notes take its slot (the lock file the weft steps take,
+# evidentron/frames/slot.py), waiting this long for it.
+LLM_WAIT = 3600
+BUILD_SECONDS = LOCK_WAIT + LLM_WAIT + sum(TIME_LIMITS.values()) + 120
 
 Run = Callable[[List[str], str, Dict[str, str], int], Tuple[int, str]]
 
@@ -80,7 +85,7 @@ def _locked(path: Path, wait: int):
 
 
 def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDENTRON_PATH, run: Run = _run,
-          env: Optional[Dict[str, str]] = None, stamp: Optional[str] = None) -> dict:
+          env: Optional[Dict[str, str]] = None, stamp: Optional[str] = None, llm_wait: int = LLM_WAIT) -> dict:
     """Build and serve Sakiori's data, with notes and answers written for `papers` (numbers like "00052"; none: every
     paper still missing them). Returns {"ok", "build", "said"}: whether a new build is served, where, and a sentence
     for each step that did not go as it should."""
@@ -101,10 +106,15 @@ def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDE
             if (current / folder).is_dir():
                 shutil.copytree(current / folder, new / folder)
         if env.get("EVIDENTRON_LLM_URL"):
-            code, out = run([sys.executable, str(crawl / "notes.py"), "--data", str(new), *papers], str(root), env,
-                            TIME_LIMITS["notes"])
-            if code != 0:
-                said.append(f"The notes were not written, so the papers keep the ones they had: {_why(out)}")
+            try:
+                with _locked(evidentron / "llm.lock", llm_wait):
+                    code, out = run([sys.executable, str(crawl / "notes.py"), "--data", str(new), *papers], str(root),
+                                    env, TIME_LIMITS["notes"])
+                if code != 0:
+                    said.append(f"The notes were not written, so the papers keep the ones they had: {_why(out)}")
+            except TimeoutError:
+                said.append(f"The notes were not written: the self-hosted model was busy for {llm_wait // 60} minutes "
+                            f"with another task. The papers keep the ones they had; the next build writes them.")
         else:
             said.append("The notes were not written: the worker has no EVIDENTRON_LLM_URL.")
         # A named paper is answered again (a new version, or a request); a full build only fills the gaps.
