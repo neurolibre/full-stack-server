@@ -98,3 +98,7 @@ class WeftSchema(Schema):
     comment_id = fields.Integer(required=False,description="Id of the review issue comment that issued the command; its last yaml block, if any, holds the corrections, and its author is the one who confirms.")
     at = fields.Integer(required=False,description="Check and confirm: id of another comment on the review issue whose last yaml block holds the corrections; its author is then the one who confirms.")
     fields = fields.String(required=False,description="Confirm only: comma-separated names of the fields to confirm, when only some are.")  # last: this name hides the fields module inside the class body
+
+
+class SakioriSchema(Schema):
+    id = fields.Integer(required=False,description="Issue number of the paper whose notes and agent's answer are written again; without it, every paper's walk is rebuilt and the missing notes and answers written.")

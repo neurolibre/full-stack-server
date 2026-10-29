@@ -81,6 +81,14 @@ CDN_FOLDER: "cdn"
 # Expected under DATA_ROOT_PATH. The celery user's ~/.evidentron links to it.
 EVIDENTRON_FOLDER: "evidentron"
 
+# Name of the folder that holds Sakiori, each published paper's walk through the
+# collection graph (api/sakiori.py): its site, the crawl's scripts and its data.
+# Expected under DATA_ROOT_PATH.
+SAKIORI_FOLDER: "sakiori"
+
+# Where Sakiori is served; the build comments link a paper's walk under it.
+SAKIORI_URL: "https://sakiori.evidencepub.io"
+
 # Name of the folder that will contain logs (myst, binder, etc.)
 # This is expected to be under the DATA_ROOT_PATH
 LOGS_FOLDER: "logs"

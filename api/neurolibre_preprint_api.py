@@ -10,7 +10,7 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import ListSchema, IdUrlSchema, BooksyncSchema, IDSchema, WeftSchema
+from schema import ListSchema, IdUrlSchema, BooksyncSchema, IDSchema, WeftSchema, SakioriSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -22,6 +22,8 @@ from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsy
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
      preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task, myst_upload_task
 from weft_tasks import weft_draft_task, weft_check_task, weft_confirm_task
+import sakiori
+import sakiori_tasks
 import weft_messages
 from github import Github
 import yaml
@@ -156,6 +158,21 @@ def weft_confirm_post(user,id,repository_url,**options):
     return _weft_screening("WEFT CONFIRM", id, repository_url, **options).start_celery_task(weft_confirm_task)
 
 docs.register(weft_confirm_post)
+
+@app.route('/api/sakiori/build', methods=['POST'])
+@preprint_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description="Rebuild Sakiori's walks (sakiori.evidencepub.io) from the CDN. With id, that paper's notes and the agent's answer are written again; without it, those still missing are written. The build runs as a task; the answer says which.", tags=['Production'])
+@use_kwargs(SakioriSchema())
+def sakiori_build_post(user, id=None):
+    papers = [f"{id:05d}"] if id else []
+    task = sakiori_tasks.sakiori_build_task.delay(papers)
+    where = sakiori.address(papers[0]) if papers else sakiori.SAKIORI_URL
+    result = make_response(f"Sakiori's build is queued (task {task.id}); it will be served at {where}", 202)
+    result.mimetype = "text/plain"
+    return result
+
+docs.register(sakiori_build_post)
 
 # Upload the repository to the respective zenodo deposit
 @app.route('/api/zenodo/upload/repository', methods=['POST'])

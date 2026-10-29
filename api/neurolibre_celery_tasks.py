@@ -1757,6 +1757,9 @@ def rsync_myst_prod_task(self, screening_dict):
         for ver_num in all_versions]
     all_versions_str = ", ".join(all_versions_links)
     cdn_note = add_to_myst_cdn(task, base_doi, f"v{latest_version_num}")
+    # Sakiori walks the CDN, so a paper's walk is woven only once the paper is on it.
+    if not cdn_note.startswith("⚠️"):
+        cdn_note += "\n" + sakiori_tasks.queue(base_doi)
     task.succeed(
         f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi} \n"
         f"Latest version: v{latest_version_num}.\n"
@@ -2551,6 +2554,7 @@ def preview_cleanup_task(self, screening_dict):
     task.succeed("\n".join(lines))
 
 
-# The tasks that describe a paper's data (draft, check, confirm) are in weft_tasks, which registers them on
-# celery_app; it is imported last, since it uses the names above.
+# The tasks that describe a paper's data (draft, check, confirm) are in weft_tasks, and Sakiori's build in
+# sakiori_tasks; each registers its tasks on celery_app, and is imported last, since it uses the names above.
 import weft_tasks  # noqa: E402,F401
+import sakiori_tasks  # noqa: E402
