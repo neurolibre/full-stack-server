@@ -1,4 +1,4 @@
-"""The editor's reset command: start a paper's description over, without a task."""
+"""The editor's commands on the server, without a task: reset (start a paper's description over) and publish."""
 
 import fcntl
 import subprocess
@@ -95,3 +95,18 @@ def test_the_command_runs_from_anywhere(tmp_path):
     done = subprocess.run([sys.executable, str(API / "weft_admin.py"), "--help"], capture_output=True, text=True,
                           cwd=tmp_path)
     assert done.returncode == 0 and "reset" in done.stdout
+
+
+def test_publish_publishes_evidentrons_site_again_and_rebuilds_the_cdn(server, capsys):
+    """After Evidentron changes (a new rule for kin, say), its site and index are published again from the store."""
+    assert weft_admin.main(["publish"]) == 0
+    assert server.publishes == [(weft_steps.SITE_PATH, weft_steps.GRAPH_DB_PATH)] and server.rebuilds == [True]
+    said = capsys.readouterr().out
+    assert "published again" in said and "rebuilt" in said
+
+
+def test_a_publish_that_fails_rebuilds_nothing_and_says_why(server, capsys):
+    server.publish_result = {"ok": False, "errors": ["the store could not be read"]}
+    assert weft_admin.main(["publish"]) == 1
+    assert server.rebuilds == []
+    assert "the store could not be read" in capsys.readouterr().out
