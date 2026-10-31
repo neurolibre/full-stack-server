@@ -23,6 +23,42 @@ READ_CHUNK = 256 * 1024
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
+# Secrets a build log can contain, whatever wrote it: the Jupyter server's token (logs before August 2026 printed
+# it; a notebook can print its environment; error output can quote a URL that carries it), credentials in URLs,
+# GitHub and API tokens, and NAME=value settings whose name says they are secret. Each pattern keeps the label
+# and replaces only the value, so the log still says what was there. Long hex strings are not removed as such:
+# commit hashes look the same and must stay readable.
+REDACTED = "<redacted>"
+_NOT_REDACTED = r"(?!<redacted>)"
+_SECRETS = [
+    # scheme://user:password@host
+    (re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@"), r"\1" + REDACTED + "@"),
+    # ?token=... &access_token=... in URLs
+    (re.compile(r"([?&](?:token|access_token|auth_token|api_key|apikey|key|password)=)" + _NOT_REDACTED + r"[^&\s\"'#]+",
+                re.IGNORECASE), r"\1" + REDACTED),
+    # Authorization: token|Bearer|Basic ...
+    (re.compile(r"(authorization[\"']?\s*[:=]\s*[\"']?(?:token|bearer|basic)\s+)" + _NOT_REDACTED + r"[^\s\"']+",
+                re.IGNORECASE), r"\1" + REDACTED),
+    # --IdentityProvider.token="..." --ServerApp.token=... c.ServerApp.token = '...'
+    (re.compile(r"(\.token\s*=\s*[\"']?)" + _NOT_REDACTED + r"[^\"'\s]+"), r"\1" + REDACTED),
+    # JUPYTER_TOKEN="..."  GH_TOKEN: ...  'OPENAI_API_KEY': '...'  (environment-style names, upper case)
+    (re.compile(r"\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*)"
+                r"([\"']?\s*[=:]\s*[\"']?)" + _NOT_REDACTED + r"[^\s\"',}]+"), r"\1\2" + REDACTED),
+    # password = ...  api_key: ...  (lower case settings)
+    (re.compile(r"\b(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
+                r"([\"']?\s*[=:]\s*[\"']?)" + _NOT_REDACTED + r"[^\s\"',}]+", re.IGNORECASE), r"\1\2" + REDACTED),
+    # GitHub tokens and OpenAI-style keys, wherever they appear
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"), REDACTED),
+    (re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{10,}"), REDACTED),
+]
+
+
+def redact(text):
+    """text with the secrets a build log can contain replaced by <redacted>."""
+    for pattern, replacement in _SECRETS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 def path_for(logs_root, task_id):
     """The live log of task_id under logs_root. Anything but a task id in its usual form is refused."""
@@ -96,6 +132,11 @@ def read_new(path, offset):
     return data.decode("utf-8", errors="replace"), offset + len(data)
 
 
+def _clean(text):
+    """Text as the browser gets it: terminal colour codes removed first (they could split a secret), then secrets."""
+    return redact(_ANSI.sub("", text))
+
+
 def _event(name, data, event_id=None):
     lines = [f"event: {name}"]
     if event_id is not None:
@@ -108,7 +149,7 @@ def events(path, finished, offset=0, clock=time.monotonic, sleep=time.sleep,
            poll=1.0, keepalive=15.0, max_seconds=6 * 3600):
     """Server-sent events for the live log at path, starting after offset.
 
-    'log' events carry new text, without terminal colour codes, and the offset reached as their id, so a
+    'log' events carry new text, without terminal colour codes or secrets (see redact), and the offset reached as their id, so a
     browser that reconnects (EventSource sends the last id back) continues where it stopped. A comment line
     goes out when nothing was sent for `keepalive` seconds, so proxies keep the connection open. When
     finished() returns the outcome, the rest of the file is sent and a 'done' event carries the outcome.
@@ -119,14 +160,14 @@ def events(path, finished, offset=0, clock=time.monotonic, sleep=time.sleep,
     while True:
         text, offset = read_new(path, offset)
         if text:
-            yield _event("log", _ANSI.sub("", text), offset)
+            yield _event("log", _clean(text), offset)
             last_sent = clock()
             continue                               # more may be waiting already
         result = finished()
         if result is not None:
             text, offset = read_new(path, offset)
             while text:
-                yield _event("log", _ANSI.sub("", text), offset)
+                yield _event("log", _clean(text), offset)
                 text, offset = read_new(path, offset)
             yield _event("done", result)
             return

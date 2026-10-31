@@ -236,6 +236,10 @@ def view_logs(file_path):
     except (ValueError, OSError):
         return make_response(jsonify("Log file not found."), 404)
 
+    # Logs are public: secrets are removed whatever wrote them (logs before
+    # August 2026 carry the Jupyter token in plain text). See live_log.redact.
+    content = live_log.redact(content)
+
     # The log goes into a <script> block: "</" is escaped so text from a build
     # (a notebook's output, for one) cannot close the block and run as script.
     safe_content = json.dumps(content).replace("</", "<\\/")
