@@ -1,6 +1,7 @@
 """The steps of a paper's description: each runs the evidentron commands with --json and reads the one object each
 prints. Tested with a fake that writes what a command would and answers with the command's JSON."""
 
+import json
 import os
 import sys
 import time
@@ -186,6 +187,56 @@ def test_draft_reports_when_both_backends_fail(dirs):
     result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
     assert result.problems == ["a.tsv has no term."]
     assert result.summary == []
+
+
+# Data with files that are neither tables nor text goes to the strongest backend from the start (made-up papers
+# from other fields: a sonar survey's .xtf lines and gridded depths, a herbarium's scans).
+
+def profile_of(*files):
+    def profile(argv):
+        Path(argv_value(argv, "-o")).write_text(json.dumps({"files": [{"path": p, "kind": k} for p, k in files]}))
+        return 0, said("profile", profiles=argv_value(argv, "-o"), summary=["files"])
+    return profile
+
+
+SONAR = profile_of(("lines/L1.xtf", "binary"), ("lines/L2.xtf", "binary"), ("grids/depth.nc.gz", "binary"),
+                   ("README.md", "not-read"), ("lines.csv", "table"))
+
+
+def test_data_with_files_that_are_not_tables_is_drafted_by_the_strongest_backend_from_the_start(dirs):
+    work, data, lock = dirs
+    fake = Fake(work, {"profile": SONAR})
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
+    explores = [argv for argv in fake.calls if fake.word(argv) == "explore"]
+    assert [argv_value(a, "--backend") for a in explores] == ["anthropic-api"]
+    assert "--lock" not in explores[0]                    # the self-hosted model's queue is not waited on
+    assert result.drafted_by == "anthropic-api" and result.selfhosted is None
+    assert result.reason == ("its data holds 3 files that are not tables (2 .xtf, 1 .nc.gz), which the self-hosted "
+                             "model describes poorly")
+
+
+def test_data_of_tables_and_text_only_is_drafted_by_the_self_hosted_model(dirs):
+    work, data, lock = dirs
+    fake = Fake(work, {"profile": profile_of(("plots.csv", "table"), ("README.md", "not-read"))})
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
+    assert result.drafted_by == "openai-compatible" and result.reason is None
+
+
+def test_a_strongest_backend_draft_that_fails_its_checks_is_kept_for_review_not_drafted_again(dirs):
+    work, data, lock = dirs
+    fake = Fake(work, {"profile": SONAR, "check": lambda argv: (1, said("check", errors=["lines: no term"]))})
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
+    assert fake.words().count("explore") == 1
+    assert result.problems == ["lines: no term"] and result.weft.exists() and result.summary == SUMMARY
+
+
+def test_a_strongest_backend_that_cannot_draft_says_why(dirs):
+    work, data, lock = dirs
+    explore = lambda a: (1, said("explore", errors=["The exploration did not start: the API refused the key."]))
+    fake = Fake(work, {"profile": SONAR, "explore": explore})
+    result = weft_steps.draft(DOI, data, None, work, BACKENDS, lock, run=fake)
+    assert result.problems == ["The exploration did not start: the API refused the key."]
+    assert fake.words().count("explore") == 1
 
 
 def test_a_profile_that_fails_says_why_and_leaves_the_earlier_draft(dirs):

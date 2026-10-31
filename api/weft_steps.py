@@ -12,6 +12,7 @@ environment), else on this one; it is read when a command is built, not when thi
 
 import contextlib
 import json
+from collections import Counter
 import os
 import shutil
 import signal
@@ -268,10 +269,39 @@ def _remove(path: Path) -> None:
         pass
 
 
+def not_tables(profiles: Path) -> Optional[str]:
+    """Why the data goes to the redraft backend from the start: a phrase naming its files that are neither tables nor
+    text (images, scans, arrays, pickles), when there are any; None for data that is tables (and text) only, or
+    profiles that cannot be read. Drafting 00025 (91 NIfTI images), the strongest model separated its kinds of image
+    and a weaker one described them as one collection (Evidentron's experiments/drafting_models)."""
+    try:
+        files = json.loads(Path(profiles).read_text()).get("files") or []
+    except (OSError, ValueError, AttributeError):
+        return None
+    other = [f for f in files if isinstance(f, dict) and f.get("kind") == "binary"]
+    if not other:
+        return None
+    kinds = Counter(_suffix(str(f.get("path") or "")) for f in other).most_common(3)
+    named = ", ".join(f"{n} {k}" for k, n in kinds)
+    return f"its data holds {len(other)} files that are not tables ({named}), which the self-hosted model describes poorly"
+
+
+def _suffix(path: str) -> str:
+    """A file's kind as its name says it, with the suffix before a compression one (.nii.gz); "without a suffix"
+    for a name that has none."""
+    parts = path.rsplit("/", 1)[-1].lower().split(".")[1:]
+    if not parts:
+        return "without a suffix"
+    return "." + ".".join(parts[-2:] if len(parts) > 1 and parts[-1] in ("gz", "bz2", "xz", "zst") else parts[-1:])
+
+
 def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backends: dict, lock: Path,
           run: Optional[Run] = None) -> DraftResult:
     """Profile the data, explore it on the draft backend and check; on a failure, explore again on the redraft
-    backend, keeping the first draft beside the second as <stem>.selfhosted.weft.yaml."""
+    backend, keeping the first draft beside the second as <stem>.selfhosted.weft.yaml. Data with files that are not
+    tables (not_tables) is explored on the redraft backend from the start, and only once: a draft of it that fails
+    its checks is kept with its problems for review, since running the same backend again costs as much and rarely
+    fixes what the checks found."""
     run = run or subprocess_runner(work)
     weft = Path(work) / f"{_stem(doi)}.weft.yaml"
     profiles = Path(work) / f"{_stem(doi)}.profiles.json"
@@ -286,14 +316,21 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
     _remove(weft)
     _remove(selfhosted)
     failure, first = None, None
-    explored = _explore(doi, profiles, weft, backends["draft"], data_dir, repo_dir, lock, run)
+    why = not_tables(profiles)
+    if why:
+        result.drafted_by, result.reason = backends["redraft"], why
+    explored = _explore(doi, profiles, weft, backends["redraft"] if why else backends["draft"], data_dir, repo_dir,
+                        None if why else lock, run)
     if not explored["ok"]:
         failure = _why_not(explored)[0]
     else:
         first = check(weft, profiles, data_dir, run)
         if first.failure or first.unreadable or first.errors:
             failure = first.failure or first.unreadable or first.errors[0]
-    if failure is None:
+    if why and first is None:                     # the strongest backend could not draft it either
+        result.problems = _why_not(explored)
+        return result
+    if failure is None or why:
         final = first
     else:
         result.drafted_by, result.reason = backends["redraft"], failure
