@@ -2011,8 +2011,15 @@ def preview_build_myst_task(self, screening_dict):
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
             # mystmd's output goes to the live log as it is written (myst-libre >= 0.4.4)
+            # A production build runs every notebook with the final image, so the published outputs are
+            # computed afresh. A preview build reuses mystmd's cache unless asked; myst-libre still clears it
+            # when the image or the data changed (myst-libre >= 0.4.8).
+            fresh_execution = bool(is_prod or getattr(task.screening, "fresh_execution", False))
             myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu", timeout=MYST_BUILD_TIMEOUT,
-                                      output_path=str(live_path) if live_path is not None else None)
+                                      output_path=str(live_path) if live_path is not None else None,
+                                      fresh_execution=fresh_execution)
+            if getattr(builder, "execution_cache_cleared", None):
+                all_logs += f"\n 🔁 Every notebook was run again: {builder.execution_cache_cleared}."
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"

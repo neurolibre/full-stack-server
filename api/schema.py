@@ -49,6 +49,7 @@ class MystBuildSchema(Schema):
     binder_hash = fields.String(required=False,dump_default="HEAD",description="Commit SHA at which a binder image was built successfully.")
     is_prod = fields.Boolean(required=False,dump_default=False,description="Whether or not the build is intended for production.")
     build_cache = fields.Boolean(required=False,dump_default=True,description="Whether or not to use the MyST build cache.")
+    fresh_execution = fields.Boolean(required=False,dump_default=False,description="Run every notebook again, ignoring outputs cached by earlier builds (the rest of the build cache is kept). Production builds always do.")
     prod_version = fields.String(required=False,dump_default="v1",description="Version suffix to be used to define the build directory.")
 
 class BuildTestSchema(Schema):
@@ -58,6 +59,7 @@ class BuildTestSchema(Schema):
     repo_url = fields.Str(required=True,description="Full URL of a NeuroLibre compatible repository to be used for building the book.")
     commit_hash = fields.String(required=True,dump_default="HEAD",description="Commit SHA to be checked out for building the book. Defaults to HEAD.")
     email = fields.Str(required=True,description="Email address to send the response.")
+    fresh_execution = fields.Boolean(required=False,dump_default=False,description="Run every notebook again, ignoring outputs cached by earlier builds.")
 
 class IDSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")

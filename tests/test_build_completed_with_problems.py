@@ -46,11 +46,16 @@ def build(monkeypatch, tmp_path):
     monkeypatch.setattr(celery_tasks.BaseNeuroLibreTask, "fail",
                         lambda self, message, attachment_path=None: out.failed.append(message))
     monkeypatch.setattr(celery_tasks, "REES", lambda config: SimpleNamespace(found_image_name="img", preserve_cache=True))
-    myst = tmp_path / celery_tasks.MYST_FOLDER / "someone" / "tide-gauges"
+    where = {"owner": "someone"}
+
+    def myst():
+        return tmp_path / celery_tasks.MYST_FOLDER / where["owner"] / "tide-gauges"
 
     def spawner(rees, **kwargs):
-        (myst / "latest").mkdir(parents=True, exist_ok=True)
-        (myst / "latest" / "myst.yml").write_text("version: 1")
+        for owner in {"someone", where["owner"]}:
+            folder = tmp_path / celery_tasks.MYST_FOLDER / owner / "tide-gauges" / "latest"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "myst.yml").write_text("version: 1")
         return SimpleNamespace(spawn_jupyter_hub=lambda: [])
     monkeypatch.setattr(celery_tasks, "JupyterHubLocalSpawner", spawner)
 
@@ -65,7 +70,7 @@ def build(monkeypatch, tmp_path):
 
         def build(self, *args, **kwargs):
             # myst-libre >= 0.4.6 saves a build that wrote its site, whatever its notebooks printed
-            site = myst / COMMIT / "_build" / "html"
+            site = myst() / COMMIT / "_build" / "html"
             site.mkdir(parents=True, exist_ok=True)
             (site / "index.html").write_text("<html>")
             return Builder.output
@@ -75,11 +80,13 @@ def build(monkeypatch, tmp_path):
     monkeypatch.setattr(celery_tasks, "MystBuilder", Builder)
     monkeypatch.setattr(celery_tasks.preview_build_myst_task, "update_state", lambda *a, **k: None)
 
-    def run():
+    def run(is_prod=False, issue_id=None, owner="someone", **extra):
+        where["owner"] = owner
         screening = screening_client.ScreeningClient(
-            task_name="build", email_address="author@example.org",
+            task_name="build", email_address="author@example.org", issue_id=issue_id,
             target_repo_url="https://github.com/someone/tide-gauges",
-            is_prod=False, commit_hash=COMMIT, binder_hash="latest", build_cache=True, prod_version="v0")
+            is_prod=is_prod, commit_hash=COMMIT, binder_hash="latest", build_cache=True,
+            prod_version="v1" if is_prod else "v0", **extra)
         celery_tasks.preview_build_myst_task.push_request(id=TASK)
         try:
             celery_tasks.preview_build_myst_task.run(screening.to_dict())
@@ -122,3 +129,37 @@ def test_a_clean_build_says_nothing_about_problems(build):
     path = build.run()
     assert "had problems" not in build.succeeded[0]
     assert live_log.outcome(path)["status"] == "success"
+
+
+# Fresh execution: production builds always run every notebook with the final image; a preview build does when asked.
+
+@pytest.fixture
+def build_calls(build, monkeypatch):
+    calls = []
+    original = build.builder.build
+
+    def recording(self, *args, **kwargs):
+        calls.append(kwargs)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(build.builder, "build", recording)
+    return calls
+
+
+def test_a_preview_build_keeps_the_cache_by_default(build, build_calls):
+    build.run()
+    assert build_calls[0]["fresh_execution"] is False
+
+
+def test_a_preview_build_runs_every_notebook_when_asked(build, build_calls):
+    build.run(fresh_execution=True)
+    assert build_calls[0]["fresh_execution"] is True
+
+
+def test_a_production_build_always_runs_every_notebook(build, build_calls, monkeypatch, tmp_path):
+    monkeypatch.setattr(celery_tasks, "gh_forkify_it", lambda url: "https://github.com/roboneurolibre/tide-gauges")
+    monkeypatch.setattr(celery_tasks, "gh_read_from_issue_body", lambda *a: "N/A")
+    monkeypatch.setattr(celery_tasks.BaseNeuroLibreTask, "start", lambda self, message="": None)
+    monkeypatch.setattr(screening_client.ScreeningClient, "gh_create_comment", lambda self, *a, **k: 1)
+    monkeypatch.setattr(screening_client.ScreeningClient, "gh_update_comment", lambda self, *a, **k: 1)
+    build.run(is_prod=True, issue_id=52, owner="roboneurolibre")
+    assert build_calls[0]["fresh_execution"] is True
