@@ -336,3 +336,35 @@ def test_a_cleanup_has_its_comment_as_its_result(real_task, preview):
     assert result.state == "SUCCESS"
     assert result.result.startswith("🧹 Preview cleanup of someone/paper-repo")
     assert real_task[-1] == ("success", result.result)
+
+
+# Saved builds share unchanged files with the previous commit by hard links (myst-libre >= 0.4.7), and an interrupted
+# save leaves <commit>.saving behind.
+
+def test_files_shared_with_the_kept_build_are_not_counted_as_freed(tmp_path):
+    folder = repository(tmp_path, builds=(OLD, LAST), latest=LAST)
+    shared = folder / LAST / "_build" / "html" / "figure.json"
+    shared.write_bytes(b"f" * 300)
+    os.link(shared, folder / OLD / "_build" / "html" / "figure.json")
+    report = preview_cleanup.clean_builds(tmp_path, "someone", "seed-dispersal")
+    assert OLD in report.removed
+    assert shared.read_bytes() == b"f" * 300
+    assert report.freed == 1000 + 500 + 2000          # OLD's own index.html and archive, and latest/; not figure.json
+
+
+def test_files_linked_only_inside_a_removed_build_are_counted_once(tmp_path):
+    folder = repository(tmp_path, builds=(OLD, LAST), latest=LAST)
+    figure = folder / OLD / "_build" / "site" / "figure.json"
+    figure.parent.mkdir(parents=True)
+    figure.write_bytes(b"g" * 200)
+    os.link(figure, folder / OLD / "_build" / "html" / "figure.json")
+    report = preview_cleanup.clean_builds(tmp_path, "someone", "seed-dispersal")
+    assert report.freed == 1000 + 200 + 500 + 2000
+
+
+def test_an_interrupted_save_is_removed(tmp_path):
+    folder = repository(tmp_path)
+    (folder / f"{MIDDLE}.saving" / "_build").mkdir(parents=True)
+    report = preview_cleanup.clean_builds(tmp_path, "someone", "seed-dispersal")
+    assert f"{MIDDLE}.saving" in report.removed
+    assert not (folder / f"{MIDDLE}.saving").exists()

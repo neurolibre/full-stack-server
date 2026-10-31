@@ -2031,17 +2031,9 @@ def preview_build_myst_task(self, screening_dict):
         expected_webpage_path = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash, "_build", "html", "index.html")
         if os.path.exists(expected_webpage_path):
 
-            source_dir = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash)
-            archive_path = f"{source_dir}.tar.gz"
-
+            # No <commit>.tar.gz any more: nothing downloads it, /api/books finds builds by
+            # their folders, and it was one more full copy of every figure.
             try:
-                source_dir = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash)
-                archive_path = f"{source_dir}.tar.gz"
-                with tarfile.open(archive_path, "w:gz") as tar:
-                    tar.add(source_dir, arcname=os.path.basename(source_dir))
-                task.start(f"Created archive at {archive_path}")
-                all_logs += f"\n ✔️ Created archive at {archive_path}"
-
                 # REMOVED: latest.txt update - now handled by save_successful_build()
                 task.start(f"Build preserved at commit {task.screening.commit_hash}")
                 all_logs += f"\n ✔️ Build preserved at commit {task.screening.commit_hash}"
@@ -2066,8 +2058,8 @@ def preview_build_myst_task(self, screening_dict):
                             os.remove(temp_archive)
 
             except Exception as e:
-                task.start(f"Warning: Failed to create archive: {str(e)}")
-                all_logs += f"\n ⚠️ Warning: Failed to create archive: {str(e)}"
+                task.start(f"Warning: Failed to finish saving the build: {str(e)}")
+                all_logs += f"\n ⚠️ Warning: Failed to finish saving the build: {str(e)}"
 
             if problems:
                 all_logs += "\n\n" + build_problems.markdown(problems, limit=len(problems))

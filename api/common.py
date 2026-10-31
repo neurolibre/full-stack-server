@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 import time
 import git
 import requests
@@ -42,13 +43,47 @@ JB_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDE
 
 MYST_ROOT_PATH = f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}"
 
+_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+
+
+def myst_books(root, preview_url):
+    """The MyST builds saved under root (<owner>/<repo>/<commit>/_build/html/index.html), for /api/books.
+
+    Builds are found by their folders: a <commit>.tar.gz is no longer written next to them (myst-libre >= 0.4.7
+    keeps only _build/html and _build/site in a saved commit). An archive left from an earlier build is still
+    offered as the download link.
+    """
+    books = []
+    for index in sorted(glob.glob(os.path.join(str(root), "*", "*", "*", "_build", "html", "index.html"))):
+        commit_dir = os.path.dirname(os.path.dirname(os.path.dirname(index)))
+        repo_dir, commit_hash = os.path.split(commit_dir)
+        owner_dir, repo = os.path.split(repo_dir)
+        user = os.path.basename(owner_dir)
+        if not _COMMIT.match(commit_hash):
+            continue                       # latest/ (the working folder) or an unfinished <commit>.saving
+        archive = commit_dir + ".tar.gz"
+        books.append({
+            "book_url": f"{preview_url}/{user}/{repo}/{commit_hash}/_build/html/",
+            "book_build_logs": None,
+            "download_link": f"{preview_url}/{user}/{repo}/{commit_hash}.tar.gz" if os.path.isfile(archive) else None,
+            "notebook_list": [],
+            "repo_link": f"https://github.com/{user}/{repo}",
+            "user_name": user,
+            "repo_name": repo,
+            "provider_name": "github.com",
+            "commit_hash": commit_hash,
+            "format_type": "myst",
+            "time_added": time.ctime(os.path.getctime(commit_dir)),
+        })
+    return books
+
+
 def load_all():
     """
     Get the list of all books (Jupyter Book and MyST) that exist in the server.
     """
     BOOK_PATHS = {
-    "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz",
-    "myst": f"{common_config['DATA_ROOT_PATH']}/{common_config['MYST_FOLDER']}/*/*/*.tar.gz"}
+    "jupyter_book": f"{common_config['DATA_ROOT_PATH']}/{common_config['JB_ROOT_FOLDER']}/*/*/*/*.tar.gz"}
 
     PREVIEW_BOOK_URL = {
         "jupyter_book": f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['JB_ROOT_FOLDER']}",
@@ -87,8 +122,6 @@ def load_all():
                     cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
                 elif single_page_path in dirpath:
                     cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/_page/index/singlehtml/"
-            else:  # MyST format
-                cur_url = f"{preview_url}/{user}/{provider}/{repo}/{commit_hash}/_build/html/"
 
             book_dict = {
                 "book_url": cur_url,
@@ -104,7 +137,9 @@ def load_all():
                 "time_added": time.ctime(os.path.getctime(path))
             }
             book_collection += [book_dict]
-    
+
+    preview_url = f"https://{preview_config['SERVER_SLUG']}.{common_config['SERVER_DOMAIN']}/{common_config['MYST_FOLDER']}"
+    book_collection += myst_books(MYST_ROOT_PATH, preview_url)
     return book_collection
 
 def book_get_by_params(user_name=None, commit_hash=None, repo_name=None):

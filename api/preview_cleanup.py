@@ -22,6 +22,7 @@ from myst_libre.utils.naming import BinderHubNaming
 
 LATEST_MARKER = "latest.txt"
 WORKING_CLONE = "latest"
+SAVING = ".saving"
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 
 
@@ -66,7 +67,10 @@ def clean_builds(myst_root, owner: str, repo: str, keep: Iterable[str] = ()) -> 
         name = entry.name
         if name in kept_names:
             continue
-        is_build = entry.is_dir() and not entry.is_symlink() and (name == WORKING_CLONE or COMMIT.fullmatch(name))
+        # <commit>.saving is a save that was interrupted (myst-libre assembles a saved build there first)
+        is_build = entry.is_dir() and not entry.is_symlink() and (
+            name == WORKING_CLONE or COMMIT.fullmatch(name)
+            or (name.endswith(SAVING) and COMMIT.fullmatch(name[:-len(SAVING)])))
         is_archive = entry.is_file() and name.endswith(".tar.gz") and COMMIT.fullmatch(name[:-len(".tar.gz")])
         if not (is_build or is_archive):
             others += 1
@@ -118,9 +122,19 @@ def _image_name(tag: str) -> str:
 
 
 def _size(path: Path) -> int:
+    """The bytes removing path frees. Saved builds share unchanged files with other commits by hard links
+    (myst-libre >= 0.4.7), so a file counts once, and only when every link to it is inside path."""
     if path.is_file():
-        return path.stat().st_size
-    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink())
+        info = path.stat()
+        return info.st_size if info.st_nlink <= 1 else 0
+    seen = {}
+    for p in path.rglob("*"):
+        if p.is_file() and not p.is_symlink():
+            info = p.stat()
+            key = (info.st_dev, info.st_ino)
+            count, size, links = seen.get(key, (0, info.st_size, info.st_nlink))
+            seen[key] = (count + 1, size, links)
+    return sum(size for count, size, links in seen.values() if count >= links)
 
 
 def readable(size: int) -> str:
