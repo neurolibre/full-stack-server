@@ -31,6 +31,7 @@ from myst_libre.exceptions import MystLibreError
 from myst_libre.builders import MystBuilder
 from myst_libre.tools import MystMD
 import live_log
+import data_cache
 from celery.schedules import crontab
 import zipfile
 import tempfile
@@ -2198,41 +2199,16 @@ def preview_download_data(self, screening_dict):
             task.fail("binder/data_requirement.json not found.")
             raise
             
-        valid_pattern = re.compile(r'^[a-z0-9/_-]+$')
-        
-        # Check if it's a single project or multiple datasets format
-        if 'projectName' in data_manifest:
-            # Single project format
-            project_names = [data_manifest['projectName']]
-        else:
-            # Multiple datasets format - validate all project names
-            project_names = []
-            for dataset_key in data_manifest:
-                if isinstance(data_manifest[dataset_key], dict) and 'projectName' in data_manifest[dataset_key]:
-                    project_names.append(data_manifest[dataset_key]['projectName'])
-            
-            if not project_names:
-                task.fail("No projectName found in data_requirement.json")
-                return
-        
-        # Validate all project names
-        invalid_names = []
-        for project_name in project_names:
-            if not valid_pattern.match(project_name):
-                invalid_names.append(project_name)
-        
-        if invalid_names:
-            error_message = f"👀 Project name(s) {', '.join(invalid_names)} are not valid. Only `alphanumerical lowercase characters` in kebab-case (using `-` or `_`) and `/` are allowed."
-            error_message += f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
-            error_message += f"with valid `project_name` values."
-            
+        # Which datasets are already here, which are missing, and which folders hold something else
+        # (data_cache.py). Every dataset counts, not only the first one.
+        try:
+            data_plan = data_cache.plan(DATA_ROOT_PATH, data_manifest)
+        except ValueError as ve:
+            error_message = f"👀 {ve}. Only letters, digits, `-` and `_` are allowed, in parts separated by `/` "
+            error_message += f"(e.g., `erzurum-cag-kebab`, `bursa_iskender_kebap/yogurtlu`). Please update [`data_requirement.json`]({os.path.join(task.screening.target_repo_url, 'blob/main/binder/data_requirement.json')}) "
+            error_message += f"with valid `projectName` values."
             logging.error(error_message)
             raise ValueError(error_message)  # Raise a different exception to be caught below
-            #task.fail(github_alert(error_message, alert_type='caution'))
-            #return
-        
-        # Use the first project name for the data path (repo2data will handle the rest)
-        project_name = project_names[0]
     except ValueError as ve:
         # Handle our custom validation error
         task.fail(github_alert(str(ve), alert_type='caution'))
@@ -2245,37 +2221,51 @@ def preview_download_data(self, screening_dict):
             task.fail(message)
         return
 
-    data_path = task.join_data_root_path(project_name)
-    not_again_message = f"😩 I already have data for `{project_name}` downloaded to `{data_path}`. I will skip downloading data to avoid overwriting a dataset from a different preprint. Please set `overwrite=True` if you really know what you are doing."
-    if os.path.exists(data_path) and not task.screening.is_overwrite:
+    # A folder that exists but holds something else (another preprint's data under the same name, an
+    # older version, or files put there by hand) is replaced only when asked. Missing datasets need no
+    # permission: repo2data skips the ones already here, so asking again only fetches what is new.
+    if data_plan.conflicting and not task.screening.is_overwrite:
+        listing = ", ".join(f"`{name}`" for name in data_plan.conflicting)
+        not_again_message = (f"😩 {listing} already exist in `{DATA_ROOT_PATH}` but hold something other than what "
+                             f"data_requirement.json asks for: another preprint's data under the same name, an older "
+                             f"version, or files put there by hand. I will not replace them. Ask again with overwrite "
+                             f"if you really know what you are doing.")
         if task.screening.email:
             send_email(task.screening.email, f"{JOURNAL_NAME}: Data download request", not_again_message)
         else:
             task.fail(github_alert(not_again_message,"caution"))
         return
 
-    # Download data with repo2data
+    # Download data with repo2data (it skips every dataset whose record matches)
     repo2data = Repo2Data(json_path, server=True)
     repo2data.set_server_dst_folder(DATA_ROOT_PATH)
     try:
         logging.info(f"Downloading data to {DATA_ROOT_PATH}")
-        downloaded_data_path = repo2data.install()[0]
-        removed_items = clean_garbage_files(downloaded_data_path)
-        content, total_size = get_directory_content_summary(downloaded_data_path)
-        if removed_items > 0:
-            logging.info(f"Cleaned {removed_items} unwanted items from {downloaded_data_path}")
-        base_message = f"🔰 Downloaded data in {downloaded_data_path} ({total_size})."
-        file_items = [(f"{file_path} ({size})", "\n- {0}") for file_path, size in content]
+        data_paths = repo2data.install()
+        file_items = []
+        for data_path in data_paths:
+            removed_items = clean_garbage_files(data_path)
+            if removed_items > 0:
+                logging.info(f"Cleaned {removed_items} unwanted items from {data_path}")
+            content, total_size = get_directory_content_summary(data_path)
+            file_items += [(f"{file_path} ({size})", "\n- {0}") for file_path, size in content]
+        fetched = data_plan.missing + (data_plan.conflicting if task.screening.is_overwrite else [])
+        base_message = (f"🔰 Data in {DATA_ROOT_PATH}: downloaded "
+                        f"{', '.join(f'`{name}`' for name in fetched) if fetched else 'nothing new'}; "
+                        f"{len(data_plan.present)} dataset(s) were already here.")
         message = truncate_for_github_comment(base_message, file_items)
-        task.start(f"🍰 Sharing data with the BinderHub cluster.")
-        logging.info(f"Syncing data with the BinderHub cluster at {DATA_NFS_PATH}")
-        success, e_msg = local_to_nfs(downloaded_data_path, DATA_NFS_PATH)
-        # return_code, output = run_celery_subprocess(["rsync", "-a", "--delete", downloaded_data_path, DATA_NFS_PATH])
 
-        if not success:
-            task.fail(github_alert(f"😞 Could not share the data with the BinderHub cluster: \n {e_msg}.","caution"))
-            return
-        else:
+        # Each dataset goes to the same place under the share as under the data root, so notebooks find it
+        # at the same path on Binder. (Only the first dataset used to be copied, and one level too high.)
+        task.start(f"🍰 Sharing data with the BinderHub cluster.")
+        for source, destination in data_cache.nfs_targets(DATA_ROOT_PATH, DATA_NFS_PATH, data_paths):
+            logging.info(f"Syncing {source} with the BinderHub cluster at {destination}")
+            os.makedirs(destination, exist_ok=True)
+            success, e_msg = local_to_nfs(source, destination)
+            if not success:
+                task.fail(github_alert(f"😞 Could not share `{source}` with the BinderHub cluster: \n {e_msg}.","caution"))
+                return
+        if task.screening.issue_id is not None:
             task.screening.gh_create_comment(github_alert(f"💽 The data is now available for {PREVIEW_SERVER} (to build reproducible ✨MyST✨ preprints) and synced to {PREVIEW_BINDERHUB} BinderHub cluster (to test live compute).","tip"),override_assign=True)
     except Exception as e:
         task.fail(f"Data download has failed: {str(e)}")
