@@ -137,6 +137,8 @@
                 </ul>
             </div>
 
+            <p>📜 <a href="{live_log_url}">Follow the build live</a>: the log updates as the build runs.</p>
+
             <p>You will receive another notification once the build is completed. Please allow some time for the process to finish.</p>
         </div>
 

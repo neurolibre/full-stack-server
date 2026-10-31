@@ -29,7 +29,7 @@ openai
 # Unpinned, pip leaves an already-installed 0.4.0 in place and nothing upgrades.
 # >=0.4.2 caps plotext below 6 (6.0 removed the API the usage chart calls),
 # and keeps a failing usage report from skipping the container teardown.
-myst-libre>=0.4.3
+myst-libre>=0.4.4
 humanize==4.9.0
 psutil
 

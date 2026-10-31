@@ -30,6 +30,7 @@ from myst_libre.rees import REES
 from myst_libre.exceptions import MystLibreError
 from myst_libre.builders import MystBuilder
 from myst_libre.tools import MystMD
+import live_log
 from celery.schedules import crontab
 import zipfile
 import tempfile
@@ -82,6 +83,7 @@ CONTAINER_MEMORY_LIMIT = common_config.get('CONTAINER_MEMORY_LIMIT')
 MYST_CONTAINER_NETWORK = common_config['MYST_CONTAINER_NETWORK']
 MYST_EXECUTE_PARALLEL = common_config.get('MYST_EXECUTE_PARALLEL', 2)
 MYST_BUILD_TIMEOUT = common_config.get('MYST_BUILD_TIMEOUT')
+LOGS_ROOT = os.path.join(DATA_ROOT_PATH, common_config['LOGS_FOLDER'])
 
 JB_INTERFACE_OVERRIDE = preprint_config['JB_INTERFACE_OVERRIDE']
 
@@ -1822,6 +1824,21 @@ def preview_build_myst_task(self, screening_dict):
     all_logs_dict["commit_hash_requested"] = task.screening.commit_hash
     all_logs_dict["prod_version"] = task.screening.prod_version
 
+    # The live log the author can follow from the build-started email (live_log.py).
+    # Nothing about it may stop the build, so every step is guarded.
+    try:
+        live_path = live_log.path_for(LOGS_ROOT, task.task_id)
+        live_url = f"{PREVIEW_SERVER}/api/logs/live/{task.task_id}"
+        live_log.remove_old(LOGS_ROOT)
+        live_log.start(live_path, f"MyST build of {task.owner_name}/{task.repo_name} started at {get_time()} (task {task.task_id}).")
+    except Exception as e:
+        logging.warning(f"No live log for task {task.task_id}: {e}")
+        live_path = live_url = None
+
+    def live(text):
+        if live_path is not None:
+            live_log.append(live_path, text)
+
     # No docker archive signals no user-defined runtime.
     if task.screening.issue_id is not None:
         docker_archive_value = gh_read_from_issue_body(task.screening.github_client,REVIEW_REPOSITORY,task.screening.issue_id,"docker-archive")
@@ -1841,10 +1858,15 @@ def preview_build_myst_task(self, screening_dict):
         msg = f"⏳ A MyST build for {original_owner}/{task.repo_name} is already in progress. Please wait for it to finish before starting another."
         logging.warning(msg)
         task.fail(msg)
+        live(msg)
+        if live_path is not None:
+            live_log.finish(live_path, "failure", None)
         return
 
     hub = None
     builder = None
+    log_path = None
+    build_status = "failure"
 
     try:
 
@@ -1869,7 +1891,8 @@ def preview_build_myst_task(self, screening_dict):
                 repo_name=task.repo_name,
                 task_id=task.task_id,
                 commit_hash=task.screening.commit_hash,
-                binder_hash=task.screening.binder_hash
+                binder_hash=task.screening.binder_hash,
+                live_log_url=live_url or f"{PREVIEW_SERVER}/api/logs"
             )
             time.sleep(2) # Avoid rate limiting.
             logging.info(f"Sending email notification re task start.")
@@ -1921,11 +1944,14 @@ def preview_build_myst_task(self, screening_dict):
                                 container_network = MYST_CONTAINER_NETWORK)
 
         task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
+        live("Getting the repository, pulling the execution image and starting Jupyter. This can take several minutes.")
         try:
             hub_logs = hub.spawn_jupyter_hub()
             all_logs += ''.join(hub_logs)
+            live(''.join(hub_logs))
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to spawn JupyterHub: {str(e)}"
+            live(f"⚠️ Failed to start Jupyter: {str(e)}")
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
             task.fail(f"⛔️ Build failed: {str(e)} See logs [here]({PREVIEW_SERVER}/api/logs/{log_path})")
             task.email_user(f"⛔️ Build failed: {str(e)} See logs <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>here</a>")
@@ -1979,9 +2005,12 @@ def preview_build_myst_task(self, screening_dict):
         # builder.setenv('CONTENT_CDN_PORT', "3102")
 
         task.start(f"Issuing MyST build command, execution environment: {rees_resources.found_image_name}")
+        live(f"Building with MyST, execution environment: {rees_resources.found_image_name}")
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
-            myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu", timeout=MYST_BUILD_TIMEOUT)
+            # mystmd's output goes to the live log as it is written (myst-libre >= 0.4.4)
+            myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu", timeout=MYST_BUILD_TIMEOUT,
+                                      output_path=str(live_path) if live_path is not None else None)
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
@@ -2034,6 +2063,7 @@ def preview_build_myst_task(self, screening_dict):
                 all_logs += f"\n ⚠️ Warning: Failed to create archive: {str(e)}"
 
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
+            build_status = "success"
             if is_prod:
                 task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
@@ -2054,6 +2084,11 @@ def preview_build_myst_task(self, screening_dict):
             )
             task.email_user(email_content)
     finally:
+        # Ends the live log's stream with the outcome and the full log's address
+        if live_path is not None:
+            live_log.finish(live_path, build_status,
+                            f"{PREVIEW_SERVER}/api/logs/{log_path}" if log_path else None)
+
         # Always clean up the myst process tree (kills the entire process
         # group: myst node + npm run start + node ./server.js) and the
         # JupyterHub container, regardless of success or failure.

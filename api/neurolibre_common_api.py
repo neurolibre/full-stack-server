@@ -7,6 +7,7 @@ from flask_htpasswd import HtPasswdAuth
 from neurolibre_celery_tasks import celery_app, sleep_task
 from werkzeug.exceptions import HTTPException
 import traceback
+import live_log
 
 common_api = Blueprint('common_api', __name__,
                         template_folder='./')
@@ -226,15 +227,20 @@ def view_logs(file_path):
     """
     This endpoint serves a simple UI to view log files with syntax highlighting.
     """
+    # The route is public, and Flask decodes %2e%2e in the path, so a path that
+    # leads outside the logs folder must be refused here, not left to nginx.
     try:
-        with open(os.path.join(DATA_ROOT_PATH,common_config['LOGS_FOLDER'],file_path), 'r') as f:
+        log_file = live_log.resolve_log_file(os.path.join(DATA_ROOT_PATH, common_config['LOGS_FOLDER']), file_path)
+        with open(log_file, 'r') as f:
             content = f.read()
-        
-        safe_content = json.dumps(content)
-        
-        rendered = render_template('logs.html', content=safe_content)
-        response = make_response(rendered)
-        response.headers['Content-Type'] = 'text/html'
-        return response        
-    except Exception as e:
-        return make_response(jsonify(f"Error reading log file: {str(e)}"), 500)
+    except (ValueError, OSError):
+        return make_response(jsonify("Log file not found."), 404)
+
+    # The log goes into a <script> block: "</" is escaped so text from a build
+    # (a notebook's output, for one) cannot close the block and run as script.
+    safe_content = json.dumps(content).replace("</", "<\\/")
+
+    rendered = render_template('logs.html', content=safe_content)
+    response = make_response(rendered)
+    response.headers['Content-Type'] = 'text/html'
+    return response

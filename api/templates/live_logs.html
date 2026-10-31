@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live build log</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%90%88%E2%80%8D%E2%AC%9B%3C/text%3E%3C/svg%3E">
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', monospace;
+            padding: 20px;
+            margin: 0;
+            line-height: 1.5;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .banner {
+            background-color: #252526;
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .title { font-size: 1.2em; font-weight: bold; color: #ffffff; }
+        .task { color: #9da5b4; font-size: 0.85em; word-break: break-all; }
+        .status { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: #d7ba7d; animation: pulse 1.5s infinite; }
+        .dot.success { background: #4ec9b0; animation: none; }
+        .dot.failure { background: #f14c4c; animation: none; }
+        @keyframes pulse { 50% { opacity: 0.3; } }
+        .status a { color: #4fc1ff; }
+        label { color: #9da5b4; font-size: 0.85em; cursor: pointer; }
+        pre {
+            background-color: #1b1b1c;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 0;
+            height: calc(100vh - 170px);
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="banner">
+            <div>
+                <div class="title">Live build log</div>
+                <div class="task">{{ task_id }}</div>
+            </div>
+            <div class="status">
+                <span class="dot" id="dot"></span>
+                <span id="status">Connecting…</span>
+            </div>
+            <label><input type="checkbox" id="follow" checked> Follow the end</label>
+        </div>
+        <pre id="log"></pre>
+    </div>
+    <script>
+        const log = document.getElementById('log');
+        const statusText = document.getElementById('status');
+        const dot = document.getElementById('dot');
+        const follow = document.getElementById('follow');
+
+        log.addEventListener('scroll', () => {
+            follow.checked = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+        });
+
+        function setStatus(text, linkUrl, kind) {
+            statusText.textContent = text;
+            if (linkUrl && (linkUrl.startsWith('https://') || linkUrl.startsWith('/'))) {
+                const a = document.createElement('a');
+                a.href = linkUrl;
+                a.textContent = 'Full log';
+                statusText.append(' ', a);
+            }
+            if (kind) dot.className = 'dot ' + kind;
+        }
+
+        const source = new EventSource({{ stream_url | tojson }});
+        source.addEventListener('open', () => setStatus('Building…'));
+        source.addEventListener('log', (e) => {
+            log.append(document.createTextNode(JSON.parse(e.data)));
+            if (follow.checked) log.scrollTop = log.scrollHeight;
+        });
+        source.addEventListener('done', (e) => {
+            const result = JSON.parse(e.data);
+            source.close();
+            const ok = result.status === 'success';
+            setStatus(ok ? 'Build finished.' : 'Build ended: ' + result.status + '.', result.log_url, ok ? 'success' : 'failure');
+        });
+        source.addEventListener('timeout', () => {
+            source.close();
+            setStatus('Stopped following: the build has run for a very long time. Reload the page to continue.', null, 'failure');
+        });
+        source.addEventListener('error', () => {
+            if (source.readyState === EventSource.CONNECTING) setStatus('Connection lost, reconnecting…');
+        });
+    </script>
+</body>
+</html>

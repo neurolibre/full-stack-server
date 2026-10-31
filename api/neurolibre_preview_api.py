@@ -18,6 +18,7 @@ from neurolibre_celery_tasks import celery_app, sleep_task, preview_build_book_t
 from celery.events.state import State
 from github import Github, UnknownObjectException
 from screening_client import ScreeningClient
+import live_log
 """
 Configuration START
 """
@@ -44,6 +45,7 @@ SERVER_LOGO = app.config['SERVER_LOGO']
 DATA_ROOT_PATH = app.config['DATA_ROOT_PATH']
 MYST_FOLDER = app.config['MYST_FOLDER']
 REVIEW_REPOSITORY = app.config['REVIEW_REPOSITORY']
+LOGS_ROOT = os.path.join(DATA_ROOT_PATH, app.config['LOGS_FOLDER'])
 
 # Set server name and about information
 SERVER_NAME  = SERVER_SLUG
@@ -281,6 +283,54 @@ def api_myst_build_robo(user, repo_url, commit_hash, email):
                                 target_repo_url=repo_url,
                                 **extra_payload)
     response = screening.start_celery_task(preview_build_myst_task)
+    return response
+
+
+# --- Live build log ----------------------------------------------------------
+#
+# Public, like /api/logs (nginx serves /api/logs/ without a password): the link
+# is sent to the author in the build-started email, and the task id in it is a
+# random UUID, so it cannot be guessed. See live_log.py.
+
+def celery_task_outcome(task_id):
+    """The outcome of a task Celery reports as ended, for a build whose worker died before it could write one."""
+    try:
+        result = celery_app.AsyncResult(task_id)
+        if result.ready():
+            return {"status": result.state.lower(), "log_url": None}
+    except Exception as e:
+        app.logger.warning(f"Could not read the state of task {task_id}: {e}")
+    return None
+
+
+@app.route('/api/logs/live/<task_id>', methods=['GET'], endpoint='live_log_page')
+def live_log_page(task_id):
+    try:
+        live_log.path_for(LOGS_ROOT, task_id)
+    except ValueError:
+        return make_response(jsonify("Build not found."), 404)
+    return render_template('live_logs.html', task_id=task_id,
+                           stream_url=f"/api/logs/live/{task_id}/stream")
+
+
+@app.route('/api/logs/live/<task_id>/stream', methods=['GET'], endpoint='live_log_stream')
+def live_log_stream(task_id):
+    try:
+        path = live_log.path_for(LOGS_ROOT, task_id)
+    except ValueError:
+        return make_response(jsonify("Build not found."), 404)
+    try:
+        offset = max(0, int(request.headers.get('Last-Event-ID', 0)))
+    except ValueError:
+        offset = 0
+
+    def finished():
+        return live_log.outcome(path) or celery_task_outcome(task_id)
+
+    response = Response(stream_with_context(live_log.events(path, finished, offset=offset)),
+                        content_type='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'      # nginx passes each event on at once
     return response
 
 
