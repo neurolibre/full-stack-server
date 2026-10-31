@@ -1,34 +1,51 @@
-import http.server
-import socketserver
-import os
+"""Serve this preprint's static site on your computer.
 
-DIRECTORY= f"./html"
-BASE_URL = "/{doi_prefix}/{doi_suffix}.{issue_id:05d}"
+    python serve_preprint.py          then open the address it prints
+    python serve_preprint.py 8080     to use another port
+
+{journal_name} preprint {doi_prefix}/{doi_suffix}.{issue_id:05d}, built from commit {commit_fork}. The pages link to
+each other under the path the preprint was published at, with or without a version (for example
+/{doi_prefix}/{doi_suffix}.{issue_id:05d}.v1), so the server answers under that path. Python's standard library is
+all it needs.
+"""
+
+import http.server
+import os
+import re
+import socketserver
+import sys
+
+DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "html")
+
+_BASE = "/" + re.escape("{doi_prefix}") + "/" + re.escape("{doi_suffix}.{issue_id:05d}") + r"(?:\.v[0-9]+)?"
+BASE_PATH = re.compile("^" + _BASE + "(?=/|$)")
+
+
+def site_base(directory=DIRECTORY):
+    """The base path the site was built with, read from its front page."""
+    try:
+        with open(os.path.join(directory, "index.html"), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    found = re.findall(_BASE + "(?=/)", text)
+    return max(set(found), key=found.count) if found else ""
+
 
 class CustomHandler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path):
-        # Remove the base URL prefix from the path
-        if path.startswith(BASE_URL):
-            path = path[len(BASE_URL):]
-        # Serve files from the specified directory
-        path = os.path.join(DIRECTORY, path.lstrip("/"))
-        return path
+        # Drop the query, the fragment and the base path, then look in the site folder
+        path = BASE_PATH.sub("", path.split("?", 1)[0].split("#", 1)[0])
+        parts = [p for p in path.split("/") if p not in ("", ".", "..")]
+        local = os.path.join(DIRECTORY, *parts)
+        if not os.path.exists(local) and os.path.exists(local + ".html"):
+            local += ".html"           # pages are linked without their .html
+        return local
 
-    def do_GET(self):
-        # Check if the requested file exists
-        file_path = self.translate_path(self.path)
-        if not os.path.exists(file_path):
-            # If file doesn't exist, try appending `.html`
-            file_path += ".html"
-            if os.path.exists(file_path):
-                # Update the path to point to the .html file
-                self.path += ".html"
-        # Call the parent class's GET handler
-        super().do_GET()
 
-# Set the port for the server
-PORT = 8000
-
-with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
-    print(f"Serving at http://localhost:{{PORT}}{{BASE_URL}}")
-    httpd.serve_forever()
+if __name__ == "__main__":
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    base = site_base()
+    with socketserver.ThreadingTCPServer(("", port), CustomHandler) as httpd:
+        print(f"Serving at http://localhost:{{port}}{{base}}/  (Ctrl+C to stop)")
+        httpd.serve_forever()
