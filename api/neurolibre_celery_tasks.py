@@ -2011,10 +2011,11 @@ def preview_build_myst_task(self, screening_dict):
         try:
             # CHANGED: builder.build() now automatically calls save_successful_build() on success
             # mystmd's output goes to the live log as it is written (myst-libre >= 0.4.4)
-            # A production build runs every notebook with the final image, so the published outputs are
-            # computed afresh. A preview build reuses mystmd's cache unless asked; myst-libre still clears it
-            # when the image or the data changed (myst-libre >= 0.4.8).
-            fresh_execution = bool(is_prod or getattr(task.screening, "fresh_execution", False))
+            # A production build that executes in the paper's own image runs every notebook, so the published
+            # outputs are computed afresh. A noexec build runs in the base image, which lacks the paper's
+            # packages, so it can only reuse cached outputs and keeps them. A preview build reuses mystmd's cache
+            # unless asked; myst-libre still clears it when the image or the data changed (myst-libre >= 0.4.8).
+            fresh_execution = bool((is_prod and not noexec) or getattr(task.screening, "fresh_execution", False))
             myst_logs = builder.build('--execute', '--execute-parallel', str(MYST_EXECUTE_PARALLEL), '--html', user="ubuntu", group="ubuntu", timeout=MYST_BUILD_TIMEOUT,
                                       output_path=str(live_path) if live_path is not None else None,
                                       fresh_execution=fresh_execution)

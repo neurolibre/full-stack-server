@@ -85,7 +85,7 @@ def build(monkeypatch, tmp_path):
         screening = screening_client.ScreeningClient(
             task_name="build", email_address="author@example.org", issue_id=issue_id,
             target_repo_url="https://github.com/someone/tide-gauges",
-            is_prod=is_prod, commit_hash=COMMIT, binder_hash="latest", build_cache=True,
+            is_prod=is_prod, commit_hash=COMMIT, binder_hash=extra.pop("binder_hash", "latest"), build_cache=True,
             prod_version="v1" if is_prod else "v0", **extra)
         celery_tasks.preview_build_myst_task.push_request(id=TASK)
         try:
@@ -163,3 +163,14 @@ def test_a_production_build_always_runs_every_notebook(build, build_calls, monke
     monkeypatch.setattr(screening_client.ScreeningClient, "gh_update_comment", lambda self, *a, **k: 1)
     build.run(is_prod=True, issue_id=52, owner="roboneurolibre")
     assert build_calls[0]["fresh_execution"] is True
+
+
+def test_a_production_build_without_execution_keeps_the_cache(build, build_calls, monkeypatch):
+    # "build myst production noexec" uses the base image, which lacks the paper's packages: it can only reuse outputs
+    monkeypatch.setattr(celery_tasks, "gh_forkify_it", lambda url: "https://github.com/roboneurolibre/tide-gauges")
+    monkeypatch.setattr(celery_tasks, "gh_read_from_issue_body", lambda *a: "N/A")
+    monkeypatch.setattr(celery_tasks.BaseNeuroLibreTask, "start", lambda self, message="": None)
+    monkeypatch.setattr(screening_client.ScreeningClient, "gh_create_comment", lambda self, *a, **k: 1)
+    monkeypatch.setattr(screening_client.ScreeningClient, "gh_update_comment", lambda self, *a, **k: 1)
+    build.run(is_prod=True, issue_id=52, owner="roboneurolibre", binder_hash="noexec")
+    assert build_calls[0]["fresh_execution"] is False
