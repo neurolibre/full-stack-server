@@ -32,6 +32,7 @@ from myst_libre.builders import MystBuilder
 from myst_libre.tools import MystMD
 import live_log
 import data_cache
+import build_problems
 from celery.schedules import crontab
 import zipfile
 import tempfile
@@ -2020,6 +2021,11 @@ def preview_build_myst_task(self, screening_dict):
             task.email_user(f"⛔️ MyST build failed. See logs <a href='{PREVIEW_SERVER}/api/logs/{log_path}'>here</a>")
             return
 
+        # Pages mystmd reported problems on. They do not fail a build that wrote its site
+        # (myst-libre >= 0.4.6 saves it); the author is told which pages to look at.
+        problems = build_problems.problems(myst_logs)
+        problems_block = build_problems.markdown(problems) + "\n\n" if problems else ""
+
         # CHANGED: After successful build, save_successful_build() has already been called by MystBuilder
         # The commit-specific directory now exists at the commit hash path
         expected_webpage_path = task.join_myst_path(task.owner_name, task.repo_name, task.screening.commit_hash, "_build", "html", "index.html")
@@ -2063,16 +2069,19 @@ def preview_build_myst_task(self, screening_dict):
                 task.start(f"Warning: Failed to create archive: {str(e)}")
                 all_logs += f"\n ⚠️ Warning: Failed to create archive: {str(e)}"
 
+            if problems:
+                all_logs += "\n\n" + build_problems.markdown(problems, limit=len(problems))
             log_path = write_log(task.owner_name, task.repo_name, "myst", all_logs, all_logs_dict)
-            build_status = "success"
+            build_status = "warnings" if problems else "success"
             if is_prod:
-                task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
+                task.succeed(f"🚀 PRODUCTION 🚀 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/{DOI_PREFIX}/{DOI_SUFFIX}.{task.screening.issue_id:05d}.{task.screening.prod_version}) \n\n{problems_block} > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
             else:
-                task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
+                task.succeed(f"🧐 PREVIEW 🧐 | 🌺 MyST build has been completed! \n\n * 🔗 [Built webpage]({PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html) \n\n{problems_block} > [!IMPORTANT] \n > Remember to take a look at the [**build logs**]({PREVIEW_SERVER}/api/logs/{log_path}) to check if all the notebooks have been executed successfully, as well as other warnings and errors from the MyST build.", collapsable=False)
                 template = load_txt_file(os.path.join(os.path.dirname(__file__), 'templates/myst_build_completion.html.template'))
                 email_content = template.format(
                     preview_url=f"{PREVIEW_SERVER}/myst/{task.owner_name}/{task.repo_name}/{task.screening.commit_hash}/_build/html/index.html",
-                    build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}"
+                    build_logs_url=f"{PREVIEW_SERVER}/api/logs/{log_path}",
+                    problems_html=build_problems.html(problems)
                 )
                 task.email_user(email_content)
         else:

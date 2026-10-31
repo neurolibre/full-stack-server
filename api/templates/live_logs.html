@@ -33,6 +33,7 @@
         .dot { width: 10px; height: 10px; border-radius: 50%; background: #d7ba7d; animation: pulse 1.5s infinite; }
         .dot.success { background: #4ec9b0; animation: none; }
         .dot.failure { background: #f14c4c; animation: none; }
+        .dot.warnings { background: #d7ba7d; animation: none; }
         @keyframes pulse { 50% { opacity: 0.3; } }
         .status a { color: #4fc1ff; }
         label { color: #9da5b4; font-size: 0.85em; cursor: pointer; }
@@ -95,8 +96,13 @@
         source.addEventListener('done', (e) => {
             const result = JSON.parse(e.data);
             source.close();
-            const ok = result.status === 'success';
-            setStatus(ok ? 'Build finished.' : 'Build ended: ' + result.status + '.', result.log_url, ok ? 'success' : 'failure');
+            if (result.status === 'success') {
+                setStatus('Build finished.', result.log_url, 'success');
+            } else if (result.status === 'warnings') {
+                setStatus('Build finished, with problems on some pages (listed at the end of the log).', result.log_url, 'warnings');
+            } else {
+                setStatus('Build ended: ' + result.status + '.', result.log_url, 'failure');
+            }
         });
         source.addEventListener('timeout', () => {
             source.close();

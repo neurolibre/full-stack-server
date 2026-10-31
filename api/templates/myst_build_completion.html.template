@@ -125,6 +125,8 @@
 
             <p>Great news! Your MyST build has been completed successfully.</p>
 
+            {problems_html}
+
             <div style="text-align: center;">
                 <a href="{preview_url}" class="cta-button">
                     <span class="emoji">🌱</span> View Your Living Preprint
