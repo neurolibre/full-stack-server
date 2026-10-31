@@ -77,6 +77,9 @@ PUBLISH_LICENSE = common_config['PUBLISH_LICENSE']
 
 CONTAINER_CPU_LIMIT = common_config.get('CONTAINER_CPU_LIMIT')
 CONTAINER_MEMORY_LIMIT = common_config.get('CONTAINER_MEMORY_LIMIT')
+# Required: a missing value must stop the worker, not run builds on Docker's
+# default network where the metadata block does not apply
+MYST_CONTAINER_NETWORK = common_config['MYST_CONTAINER_NETWORK']
 MYST_EXECUTE_PARALLEL = common_config.get('MYST_EXECUTE_PARALLEL', 2)
 MYST_BUILD_TIMEOUT = common_config.get('MYST_BUILD_TIMEOUT')
 
@@ -1914,7 +1917,8 @@ def preview_build_myst_task(self, screening_dict):
                                 host_data_parent_dir = DATA_ROOT_PATH, #optional
                                 container_data_mount_dir = CONTAINER_MYST_DATA_PATH,
                                 cpu_limit = CONTAINER_CPU_LIMIT,
-                                memory_limit = CONTAINER_MEMORY_LIMIT)
+                                memory_limit = CONTAINER_MEMORY_LIMIT,
+                                container_network = MYST_CONTAINER_NETWORK)
 
         task.start("Cloning repository, pulling binder image, spawning JupyterHub...")
         try:

@@ -125,6 +125,16 @@ JOURNAL_TWITTER: "neurolibre"
 CONTAINER_CPU_LIMIT: "max"
 CONTAINER_MEMORY_LIMIT: "max"
 
+# Docker network for the notebook execution container. Notebook code from a
+# submitted repository runs in that container, and the host firewall blocks
+# the cloud metadata service (169.254.169.254) only for traffic from this
+# network's bridge (br-mystbuild). On Docker's default network the block does
+# not apply. Setting this also makes myst-libre check, before every build, that
+# the metadata service is unreachable from the network, and refuse to build if
+# it is reachable. The network and the firewall rule are created by Ansible
+# (cloodbrew/full-stack-server, roles/base).
+MYST_CONTAINER_NETWORK: "mystbuild"
+
 # Maximum number of notebooks mystmd will execute in parallel inside a
 # single build.  mystmd default is (CPU_count - 1) which is aggressive
 # when multiple builds run concurrently.
