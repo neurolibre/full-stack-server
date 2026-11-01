@@ -1,7 +1,7 @@
-"""The description of a paper's data: draft, check and confirm, as celery tasks that report on the review issue.
+"""The crosswalk of a paper's data: draft, check and confirm, as celery tasks that report on the review issue.
 
 The steps themselves are in crosswalk_steps and the texts in crosswalk_messages; the tasks add the places on this server and
-the comment. The server is the place of record for the descriptions: the only thing these tasks write on GitHub is
+the comment. The server is the place of record for the crosswalks: the only thing these tasks write on GitHub is
 the comment on the review issue, and the paper's repository is only read, cloned at its published commit.
 
 The celery module imports this one at its end, which registers the tasks on its app under the
@@ -189,7 +189,7 @@ def _yaml_block(body):
 def _corrections(task):
     """The corrections a command brings: (login, yaml text or None, comment id) from the comment `at` names when
     given, else from the command's own comment; (None, None, None) when the payload names no comment. A comment
-    without a yaml block means the description as it stands. Fails with a sentence when the comment cannot be
+    without a yaml block means the crosswalk as it stands. Fails with a sentence when the comment cannot be
     read, or when its yaml block is not valid YAML."""
     s = task.screening
     at, own = getattr(s, "at", None), getattr(s, "command_comment_id", None)
@@ -224,7 +224,7 @@ def _write_submission(paper, text):
 
 
 def draft(task):
-    task.start("Describing the paper's data")
+    task.start("Drafting the crosswalk of the paper's data")
     paper = _crosswalk_paper(task)
     if os.path.isfile(os.path.join(CROSSWALKS_PATH, paper.crosswalk_name)):
         task.fail(say.ALREADY_CONFIRMED)
@@ -255,11 +255,11 @@ def draft(task):
     if len(message) > MAX_DRAFT_IN_COMMENT:
         message = comment(say.too_long(paper.crosswalk_name))
     task.succeed(message, collapsable=False)
-    return f"Drafted the description of the data of {paper.doi} with {result.drafted_by}"
+    return f"Drafted the crosswalk of {paper.doi} with {result.drafted_by}"
 
 
 def check(task):
-    task.start("Checking the description of the paper's data")
+    task.start("Checking the crosswalk of the paper's data")
     login, block, source = _corrections(task)         # anyone's block may be checked
     paper = _crosswalk_paper(task)
     crosswalk, profiles = _server_crosswalk(task, paper)
@@ -270,10 +270,10 @@ def check(task):
     if result.failure:
         task.succeed(say.check_not_run_comment(result.failure, getattr(task.screening, "at", None)),
                      collapsable=False)
-        return f"The description of the data of {paper.doi} could not be checked"
+        return f"The crosswalk of {paper.doi} could not be checked"
     if result.unreadable:
         task.succeed(say.check_unreadable(corrections, result.unreadable), collapsable=False)
-        return f"The description of the data of {paper.doi} could not be read"
+        return f"The crosswalk of {paper.doi} could not be read"
     at = getattr(task.screening, "at", None)
     confirm_at = source if (submission or at is not None) else None
     refused = None
@@ -283,11 +283,11 @@ def check(task):
             confirm_at, refused = None, login
     task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at, result.notes,
                                    not_confirmable_by=refused), collapsable=False)
-    return f"Checked the description of the data of {paper.doi}"
+    return f"Checked the crosswalk of {paper.doi}"
 
 
 def confirm(task):
-    task.start("Confirming the description of the paper's data")
+    task.start("Confirming the crosswalk of the paper's data")
     screening = task.screening
     archive = gh_read_from_issue_body(screening.github_client, screening.review_repository, screening.issue_id, "data-archive")
     if not archive or archive.strip().upper() == "N/A":
@@ -322,7 +322,7 @@ def confirm(task):
     task.succeed(say.confirm_comment(by, reply, result.version, result.addresses,
                                      say.term_links(result.terms, result.terms_url), note,
                                      proposed=say.proposed_terms(block, result.terms)), collapsable=False)
-    return f"Confirmed the description of the data of {paper.doi}"
+    return f"Confirmed the crosswalk of {paper.doi}"
 
 
 # The tasks, named as in the celery module. Their soft time limits are the sums of the steps they run

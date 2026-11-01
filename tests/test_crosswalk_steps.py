@@ -476,7 +476,7 @@ def test_a_load_that_names_no_paper_is_a_sentence(dirs):
     work, data, _ = dirs
     fake = Fake(work, {"load": lambda a: (0, said("load", fields=2, paper=None))})
     result = crosswalk_steps.confirm(**confirm_args(work, data), run=fake)
-    assert result.errors == ["The confirmed description names no paper, so its addresses are unknown."]
+    assert result.errors == ["The confirmed crosswalk names no paper, so its addresses are unknown."]
     assert "publish" not in fake.words()
 
 
@@ -580,7 +580,7 @@ def test_a_step_past_its_time_is_stopped_with_its_children(tmp_path, monkeypatch
 
 # Starting over.
 
-def test_reset_moves_the_description_aside_publishes_again_and_removes_the_work_copy(tmp_path):
+def test_reset_moves_the_crosswalk_aside_publishes_again_and_removes_the_work_copy(tmp_path):
     crosswalks, site = tmp_path / "crosswalks", tmp_path / "site"
     (crosswalks / "00041").mkdir(parents=True)
     (crosswalks / "00041" / "00041.crosswalk.yaml").write_text("the work copy")
@@ -597,7 +597,7 @@ def test_reset_moves_the_description_aside_publishes_again_and_removes_the_work_
     result = crosswalk_steps.reset(DOI, crosswalks, tmp_path / "graph.db", site, run=fake)
     assert fake.words() == ["publish"] and argv_value(fake.calls[0], "--out") == str(site)
     assert "--json" in fake.calls[0]
-    assert seen == {"flat": False}                       # published once the description is gone
+    assert seen == {"flat": False}                       # published once the crosswalk is gone
     assert not (crosswalks / "00041.crosswalk.yaml").exists() and not (crosswalks / "00041.profiles.json").exists()
     assert (crosswalks / "00041.crosswalk.yaml.previous").read_text() == CROSSWALK_YAML
     assert not (crosswalks / "00041").exists()
@@ -622,13 +622,13 @@ def test_a_reset_that_stopped_says_so_and_is_marked(tmp_path, monkeypatch):
     assert result.said == ["The reset stopped: Permission denied."]
 
 
-def test_the_reset_says_publishs_failure_in_plain_words(tmp_path):
+def test_the_reset_says_publishs_failure_inside_its_sentence(tmp_path):
     crosswalks = tmp_path / "crosswalks"
     crosswalks.mkdir()
     (crosswalks / "00041.crosswalk.yaml").write_text(CROSSWALK_YAML)
     out = said("publish", errors=["The crosswalk folder could not be read."])
     result = crosswalk_steps.reset(DOI, crosswalks, tmp_path / "graph.db", tmp_path / "site", run=lambda a: (1, out))
-    assert "Evidentron's site could not be published again: the description folder could not be read." in result.said
+    assert "Evidentron's site could not be published again: the crosswalk folder could not be read." in result.said
     assert result.stopped
     assert not hasattr(crosswalk_steps, "_lower_first")
 
@@ -646,7 +646,7 @@ def test_reset_that_cannot_publish_says_why(tmp_path):
 def test_reset_of_a_paper_with_nothing_confirmed_says_so_and_publishes_nothing(tmp_path):
     fake = Fake(tmp_path)
     result = crosswalk_steps.reset(DOI, tmp_path / "crosswalks", tmp_path / "graph.db", tmp_path / "site", run=fake)
-    assert result.said[0] == f"There is no confirmed description of {DOI} on the server."
+    assert result.said[0] == f"There is no confirmed crosswalk of {DOI} on the server."
     assert fake.calls == [] and not result.removed
 
 

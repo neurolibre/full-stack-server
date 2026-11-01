@@ -1,4 +1,4 @@
-"""The steps of a paper's description of its data, as plain functions over the evidentron commands.
+"""The steps of the crosswalk of a paper's data, as plain functions over the evidentron commands.
 
 Each step runs the commands as subprocesses with --json (the argv lists below are the one place they are written)
 and reads the one JSON object each prints on stdout (Evidentron's contract: `command`, `ok`, `errors`, `warnings`,
@@ -25,7 +25,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import yaml
 
 import myst_cdn
-from crosswalk_words import lower_first, plain
+from crosswalk_words import lower_first
 
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 CDN_URL = _config["CDN_URL"].rstrip("/")
@@ -362,7 +362,7 @@ def _record(crosswalk: Path, profiles: Path, record: Path) -> Optional[str]:
             shutil.copyfile(src, tmp)
             os.replace(tmp, Path(record) / Path(src).name)
     except OSError as e:
-        return (f"The confirmed description could not be kept in the server's folder of descriptions, so it was "
+        return (f"The confirmed crosswalk could not be kept in the server's folder of crosswalks, so it was "
                 f"not published: {e.strerror or e.__class__.__name__}.")
     return None
 
@@ -453,7 +453,7 @@ def confirm(crosswalk: Path, profiles: Path, by: str, fields: Optional[List[str]
         return stop(loaded["errors"])
     doi = loaded.get("paper")
     if not doi:
-        return stop(["The confirmed description names no paper, so its addresses are unknown."])
+        return stop(["The confirmed crosswalk names no paper, so its addresses are unknown."])
     for fmt in ("fair2", "croissant"):
         exported = _run(run, crosswalk_command() + ["export", str(crosswalk), "--profiles", str(profiles), "--format", fmt,
                                                "--db", str(db), "--data", str(data_dir), "--json"])
@@ -499,13 +499,13 @@ def load_paper(doi: str, site: Path, db: Path, run: Optional[Run] = None) -> Opt
 @dataclass
 class ResetResult:
     said: List[str] = field(default_factory=list)     # what was done, one sentence each
-    removed: bool = False                             # a confirmed description was there and was moved aside
+    removed: bool = False                             # a confirmed crosswalk was there and was moved aside
     published: bool = False                           # Evidentron's site was published again without it
     stopped: bool = False                             # the reset did not finish; the last sentence says why
 
 
 def reset(doi: str, crosswalks: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
-    """Start a paper's description over: move its confirmed crosswalk aside as <stem>.crosswalk.yaml.previous (the next
+    """Start a paper's crosswalk over: move its confirmed crosswalk aside as <stem>.crosswalk.yaml.previous (the next
     confirmation measures its version against it), remove its profiles and the work copy <crosswalks>/<stem>/ (so a later
     check or confirmation cannot act on it), and publish Evidentron's site again as a confirmation does, which
     builds it without the paper's documents and the terms only they used. The caller rebuilds the CDN.
@@ -519,10 +519,10 @@ def reset(doi: str, crosswalks: Path, db: Path, site: Path, run: Optional[Run] =
         if crosswalk.is_file():
             os.replace(crosswalk, crosswalks / (crosswalk.name + PREVIOUS))
             result.removed = True
-            result.said.append(f"The confirmed description of {doi} was removed and kept as {crosswalk.name + PREVIOUS}, "
+            result.said.append(f"The confirmed crosswalk of {doi} was removed and kept as {crosswalk.name + PREVIOUS}, "
                                "so the next confirmation measures its version against it.")
         else:
-            result.said.append(f"There is no confirmed description of {doi} on the server.")
+            result.said.append(f"There is no confirmed crosswalk of {doi} on the server.")
         if profiles.is_file():
             profiles.unlink()
             result.said.append(f"Its profiles, {profiles.name}, were removed.")
@@ -540,7 +540,7 @@ def reset(doi: str, crosswalks: Path, db: Path, site: Path, run: Optional[Run] =
             result.said.append("Evidentron's site was published again without its documents.")
         else:
             result.said.append("Evidentron's site could not be published again: "
-                               + plain(lower_first(published["errors"][0])).rstrip(".") + ".")
+                               + lower_first(published["errors"][0]).rstrip(".") + ".")
             result.stopped = True
             return result
     result.said.append("The store keeps the paper's rows until the next load of the paper replaces them, since "

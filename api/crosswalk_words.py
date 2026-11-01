@@ -1,16 +1,5 @@
-"""The two text helpers the steps and the comments share, so that a sentence a person reads says "description" and
-never "crosswalk" outside a command or a file name, whichever module wrote it. No em dashes."""
-
-import re
-
-# "crosswalk" as a word, but not in a command (`@roboneuro crosswalk check`, evidentron.crosswalk) or a file name (x.crosswalk.yaml).
-_CROSSWALK = re.compile(r"(?<!roboneuro )(?<![\w.`/-])crosswalk(s?)(?=['\s,;:)!?]|\.(?!\w)|$)")
-
-
-def plain(text: str) -> str:
-    """A sentence from a step or a command, with "crosswalk" written as "description", since the comment explains
-    the description and never the word."""
-    return _CROSSWALK.sub(r"description\1", str(text))
+"""The text helper the steps and the comments share, so a sentence from a command reads the same whichever module
+places it inside another. No em dashes."""
 
 
 def lower_first(text: str) -> str:

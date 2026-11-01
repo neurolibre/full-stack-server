@@ -1,4 +1,4 @@
-"""The editor's commands on the server, without a task: reset (start a paper's description over) and publish."""
+"""The editor's commands on the server, without a task: reset (start a paper's crosswalk over) and publish."""
 
 import fcntl
 import subprocess
@@ -47,7 +47,7 @@ def test_a_reset_with_nothing_confirmed_rebuilds_nothing(server, capsys):
     out = capsys.readouterr().out
     assert server.publishes == [] and server.rebuilds == []
     assert "rebuilt" not in out
-    assert f"There is no confirmed description of {DOI} on the server." in out
+    assert f"There is no confirmed crosswalk of {DOI} on the server." in out
 
 
 def test_a_reset_whose_publish_failed_does_not_rebuild(server, capsys):

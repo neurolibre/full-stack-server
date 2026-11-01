@@ -1,8 +1,7 @@
 """The texts the crosswalk tasks post on a review issue, in one place so they are easy to edit.
 
-A comment is read by the paper's authors, who may never have heard of a crosswalk: it says what the description of
-the paper's data is, why they are asked, and what to do. "crosswalk" appears only in the commands the bot answers to
-(`@roboneuro crosswalk check`) and in file names. Failures are one or two short sentences. No em dashes.
+A comment is read by the paper's authors, who may never have heard of a crosswalk: it says what the crosswalk of the
+paper's data is, why they are asked, and what to do. Failures are one or two short sentences. No em dashes.
 """
 
 import re
@@ -11,19 +10,19 @@ from typing import List, Optional
 import yaml
 
 from crosswalk_steps import CDN_URL
-from crosswalk_words import lower_first, plain  # noqa: F401  (part of this module's words)
+from crosswalk_words import lower_first  # noqa: F401  (part of this module's words)
 
 DESCRIBING_URL = f"{CDN_URL}/terms/describing/"
 TERMS_URL = f"{CDN_URL}/terms/"
 
 
 def heading(step: str) -> str:
-    return f"### Description of this paper's data: {step}"
+    return f"### Crosswalk of this paper's data: {step}"
 
 
-INTRO = ("NeuroLibre publishes, with each paper, a description of its data: what each file holds, what one row "
-         "stands for, what every column means and in which unit, and which shared term it corresponds to. The "
-         "description makes the data findable and reusable, and it is published next to the paper as "
+INTRO = ("NeuroLibre publishes, with each paper, a crosswalk of its data: it says what each file holds, what one "
+         "row stands for, what every column means and in which unit, and which shared term it corresponds to. The "
+         "crosswalk makes the data findable and reusable, and it is published next to the paper as "
          "[FAIR²](https://fair2.ai) and [Croissant](https://mlcommons.org/croissant/) documents.")
 
 PROPOSAL = ("A first draft was made with a language model from the files themselves. It is a proposal: nothing is "
@@ -46,7 +45,7 @@ RESET = "an editor runs the reset command on the server"
 
 # Sentences that come from the steps and the commands.
 
-# plain and lower_first are in crosswalk_words, which crosswalk_steps shares.
+# lower_first is in crosswalk_words, which crosswalk_steps shares.
 
 
 def end(text: str) -> str:
@@ -55,8 +54,8 @@ def end(text: str) -> str:
 
 
 def inner(text: str) -> str:
-    """A sentence from a step, to follow a colon: plain words, first letter lower-cased, no final full stop."""
-    return lower_first(end(plain(text)))
+    """A sentence from a step, to follow a colon: first letter lower-cased, no final full stop."""
+    return lower_first(end(text))
 
 
 def bullets(items: List[str]) -> str:
@@ -69,7 +68,7 @@ def details(summary: str, body: str) -> str:
 
 def listed(lead: str, items: List[str], after: str = "") -> str:
     """One sentence when there is one item ("lead: item."), else the lead and the items as a list."""
-    items = [plain(i) for i in items]
+    items = [str(i) for i in items]
     if len(items) == 1:
         text = f"{lead}: {inner(items[0])}."
     else:
@@ -169,9 +168,9 @@ def draft_comment(summary: List[str], terms: Optional[str], example: Optional[st
     parts.append("**Checking and confirming**\n" + CHECKING)
     parts.append(details("The draft", draft))
     if problems:
-        parts.append(details("Problems the check found", bullets([plain(p) for p in problems])))
+        parts.append(details("Problems the check found", bullets([str(p) for p in problems])))
     if warnings:
-        parts.append(details("Warnings from the check", bullets([plain(w) for w in warnings])))
+        parts.append(details("Warnings from the check", bullets([str(w) for w in warnings])))
     if check_failure:
         parts.append(check_not_run(check_failure))
     return "\n\n".join(parts)
@@ -185,13 +184,13 @@ def too_long(file_name: str) -> str:
 
 def applied(comment_id) -> str:
     if comment_id is None:
-        return "No corrections were given, so the description was checked as it is."
+        return "No corrections were given, so the crosswalk was checked as it is."
     return f"The corrections from comment {comment_id} were applied."
 
 
 def check_not_run(sentence: str, at=None) -> str:
     """The check could not be run (the command gave no result, ran past its time, did not start): nothing is known
-    about the description. The hint repeats the command as it was asked."""
+    about the crosswalk. The hint repeats the command as it was asked."""
     command = f"`@roboneuro crosswalk check at {at}`" if at is not None else "`@roboneuro crosswalk check`"
     return f"The check could not be run: {inner(sentence)}. Ask for {command} again later."
 
@@ -212,16 +211,16 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
     `confirm_at` the comment a confirmation would name, `not_confirmable_by` the author of corrections who is
     neither the paper's author nor the editor, so a confirmation cannot name their comment."""
     parts = [heading("check"), applied(corrections_id)]
-    warnings = [plain(w) for w in warnings]
-    notes = [plain(n) for n in notes or []]
+    warnings = [str(w) for w in warnings]
+    notes = [str(n) for n in notes or []]
     lists = []
     if warnings:
         lists.append(details("Warnings", bullets(warnings)))
     if notes:
         lists.append(details("Notes on the corrections" if corrections_id is not None else "Notes", bullets(notes)))
     if errors:
-        parts.append("The description does not pass the check yet. Fix these, then ask for `@roboneuro crosswalk check` "
-                     "again:\n" + bullets([plain(e) for e in errors]))
+        parts.append("The crosswalk does not pass the check yet. Fix these, then ask for `@roboneuro crosswalk check` "
+                     "again:\n" + bullets([str(e) for e in errors]))
         return "\n\n".join(parts + lists)
     if not warnings:
         noted = "There are no warnings."
@@ -229,7 +228,7 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
         noted = "There is 1 warning, listed below; it does not block confirmation."
     else:
         noted = f"There are {len(warnings)} warnings, listed below; they do not block confirmation."
-    parts.append(f"The description passes the check. {noted}")
+    parts.append(f"The crosswalk passes the check. {noted}")
     if not_confirmable_by:
         parts.append(WHO_CONFIRMS + " " + cannot_confirm(not_confirmable_by))
     else:
@@ -239,7 +238,7 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
 
 
 def check_unreadable(corrections_id, sentence: str) -> str:
-    return "\n\n".join([heading("check"), applied(corrections_id), plain(sentence)])
+    return "\n\n".join([heading("check"), applied(corrections_id), str(sentence)])
 
 
 # The confirmation.
@@ -282,7 +281,7 @@ def confirm_comment(login: str, reply_id, version: str, addresses: dict, term_li
         lines.append("Terms it uses: " + ", ".join(term_links))
     if proposed:
         lines.append("Terms it proposes: " + ", ".join(proposed))
-    text = (f"Confirmed by @{login}{how}. The description is now version {version} and is published with the "
+    text = (f"Confirmed by @{login}{how}. The crosswalk is now version {version} and is published with the "
             "paper:\n\n" + bullets(lines))
     parts = [heading("confirmed"), text]
     if note:
@@ -313,26 +312,26 @@ def data_missing(project_name: str) -> str:
 NO_PUBLISHED_BUILD = ("The paper has no published build yet, so its code cannot be read. Run "
                       "`@roboneuro production sync myst` first.")
 
-ALREADY_CONFIRMED = ("This paper's data description is already confirmed. To change it, reply with the "
+ALREADY_CONFIRMED = ("This paper's crosswalk is already confirmed. To change it, reply with the "
                      "entries to change in a `yaml` code block. " + WHO_CONFIRMS + " To start over, " + RESET + ".")
 
-NO_DRAFT = ("There is no draft of this paper's data description on the server yet. Ask for "
+NO_DRAFT = ("There is no draft of this paper's crosswalk on the server yet. Ask for "
             "`@roboneuro crosswalk draft` first.")
 
-CONFIRMED_WITHOUT_PROFILES = ("The confirmed description of this paper's data is on the server without its "
+CONFIRMED_WITHOUT_PROFILES = ("The confirmed crosswalk of this paper's data is on the server without its "
                               "profiles, so it cannot be checked. An editor restores the profiles beside it, or "
                               + RESET[len("an editor "):] + " and asks for `@roboneuro crosswalk draft` again.")
 
-NO_ARCHIVE_DOI = ("The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the "
+NO_ARCHIVE_DOI = ("The data archive has no DOI yet, so the crosswalk cannot be confirmed. Confirm it after the "
                   "data has been deposited (`@roboneuro zenodo publish`, or set the archive DOI in the issue).")
 
-NO_COMMAND_COMMENT = ("The description cannot be confirmed without the comment that asked for it, since that "
+NO_COMMAND_COMMENT = ("The crosswalk cannot be confirmed without the comment that asked for it, since that "
                       "comment says who confirms it.")
 
 
 def not_drafted(problems: List[str]) -> str:
     reasons = [inner(p) for p in problems if str(p).strip()] or ["no draft was written"]
-    return f"The description could not be drafted: {'; '.join(reasons)}."
+    return f"The crosswalk could not be drafted: {'; '.join(reasons)}."
 
 
 def unreadable_block(comment_id, where: str) -> str:
@@ -365,11 +364,11 @@ def not_loaded(sentence: str) -> str:
 
 def confirmed_not_published(version: str, errors: List[str], again_at=None) -> str:
     """`again_at` is the reply whose corrections were confirmed: a confirmation without it would publish the
-    description as it was before them."""
+    crosswalk as it was before them."""
     command = f"`@roboneuro crosswalk confirm at {again_at}`" if again_at is not None else "`@roboneuro crosswalk confirm`"
-    return listed(f"The description was confirmed at version {version} but not published", errors,
+    return listed(f"The crosswalk was confirmed at version {version} but not published", errors,
                   f"Asking for {command} again is safe once this is fixed.")
 
 
 def not_confirmed(errors: List[str]) -> str:
-    return listed("The description was not confirmed", errors)
+    return listed("The crosswalk was not confirmed", errors)

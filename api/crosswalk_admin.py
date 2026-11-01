@@ -1,9 +1,9 @@
-"""Commands an editor runs on the server for a paper's description of its data, outside the review issue.
+"""Commands an editor runs on the server for the crosswalk of a paper's data, outside the review issue.
 
     python api/crosswalk_admin.py reset <doi>
     python api/crosswalk_admin.py publish
 
-reset starts the paper's description over (crosswalk_steps.reset): the confirmed description is moved aside as
+reset starts the paper's crosswalk over (crosswalk_steps.reset): the confirmed crosswalk is moved aside as
 <stem>.crosswalk.yaml.previous, so the next confirmation measures its version against it; its profiles and the working
 copy go; Evidentron's site is published again without its documents; and the CDN is rebuilt. The paper's rows stay
 in the store until the next load of the paper replaces them, since Evidentron has no command to remove them. Then
@@ -80,7 +80,7 @@ def publish() -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python api/crosswalk_admin.py", description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    start_over = commands.add_parser("reset", help="start a paper's description over (see the module's text)")
+    start_over = commands.add_parser("reset", help="start a paper's crosswalk over (see the module's text)")
     start_over.add_argument("doi", help="the paper's DOI, for example 10.55458/neurolibre.00041")
     commands.add_parser("publish", help="publish Evidentron's site again and rebuild the CDN (see the module's text)")
     args = parser.parse_args(argv)

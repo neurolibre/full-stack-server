@@ -1,6 +1,5 @@
 """The three crosswalk endpoints, through Flask's test client, with the htpasswd check replaced and each task's apply_async faked."""
 
-import re
 from types import SimpleNamespace
 
 import pytest
@@ -95,7 +94,7 @@ def test_the_options_are_described():
     assert "submitted" not in _description(api.crosswalk_check_post)
     for view in (api.crosswalk_draft_post, api.crosswalk_check_post, api.crosswalk_confirm_post):
         text = _description(view)
-        assert "fork" not in text and "crosswalk" not in re.sub(r"`[^`]*`", "", text)    # only in the commands
+        assert "fork" not in text and "the crosswalk of the paper's data" in text
         assert "on the server" in text and "—" not in text
 
 

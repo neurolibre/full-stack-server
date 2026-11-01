@@ -132,7 +132,7 @@ def _crosswalk_screening(task_name, id, repository_url, fields=None, comment_id=
 @app.route('/api/crosswalk/draft', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Draft the description of the paper's data (what each file, row and column holds) on the server and report on its review issue. Takes id, repository_url and comment_id; at is for check and confirm, fields for confirm.", tags=['Production'])
+@doc(description="Draft the crosswalk of the paper's data (what each file, row and column holds, and the shared term each corresponds to) on the server and report on its review issue. Takes id, repository_url and comment_id; at is for check and confirm, fields for confirm.", tags=['Production'])
 @use_kwargs(CrosswalkSchema())
 def crosswalk_draft_post(user,id,repository_url,**options):
     return _crosswalk_screening("CROSSWALK DRAFT", id, repository_url, **options).start_celery_task(crosswalk_draft_task)
@@ -142,7 +142,7 @@ docs.register(crosswalk_draft_post)
 @app.route('/api/crosswalk/check', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Check the description of the paper's data on the server, with the yaml block of the command's comment (or of the comment named by at) applied, and report on its review issue what is missing or wrong. Anyone's corrections can be checked; nothing is written.", tags=['Production'])
+@doc(description="Check the crosswalk of the paper's data on the server, with the yaml block of the command's comment (or of the comment named by at) applied, and report on its review issue what is missing or wrong. Anyone's corrections can be checked; nothing is written.", tags=['Production'])
 @use_kwargs(CrosswalkSchema())
 def crosswalk_check_post(user,id,repository_url,**options):
     return _crosswalk_screening("CROSSWALK CHECK", id, repository_url, **options).start_celery_task(crosswalk_check_task)
@@ -152,7 +152,7 @@ docs.register(crosswalk_check_post)
 @app.route('/api/crosswalk/confirm', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Confirm the description of the paper's data on the server, as it stands or with the yaml block of the command's comment (or of the comment named by at) applied, publish it and report on its review issue. " + crosswalk_messages.WHO_CONFIRMS + " The confirmation is recorded under the name of the author of that comment, who must be the paper's author or the issue's editor.", tags=['Production'])
+@doc(description="Confirm the crosswalk of the paper's data on the server, as it stands or with the yaml block of the command's comment (or of the comment named by at) applied, publish it and report on its review issue. " + crosswalk_messages.WHO_CONFIRMS + " The confirmation is recorded under the name of the author of that comment, who must be the paper's author or the issue's editor.", tags=['Production'])
 @use_kwargs(CrosswalkSchema())
 def crosswalk_confirm_post(user,id,repository_url,**options):
     return _crosswalk_screening("CROSSWALK CONFIRM", id, repository_url, **options).start_celery_task(crosswalk_confirm_task)

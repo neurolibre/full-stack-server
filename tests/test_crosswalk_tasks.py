@@ -96,7 +96,7 @@ def test_draft_comment_shows_the_draft_and_invites_nobody(world, monkeypatch):
     fake_draft(monkeypatch)
     tasks.crosswalk_draft_task.run(payload())
     t = FakeTask.last
-    assert t.comment.startswith("### Description of this paper's data: draft\n\n")
+    assert t.comment.startswith("### Crosswalk of this paper's data: draft\n\n")
     assert "- p.tsv: 3 columns" in t.comment
     assert "- proposed new term foo: Foo" in t.comment
     assert "<details><summary>Warnings from the check</summary>\n\n- a unit is guessed\n\n</details>" in t.comment
@@ -177,7 +177,7 @@ def test_draft_that_wrote_nothing_fails_with_the_problem(world, monkeypatch):
     fake_draft(monkeypatch, problems=["The data could not be profiled: bad"], write=False)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_draft_task.run(payload())
-    assert FakeTask.last.failed == "The description could not be drafted: the data could not be profiled: bad."
+    assert FakeTask.last.failed == "The crosswalk could not be drafted: the data could not be profiled: bad."
     assert world.gh.used == []
 
 
@@ -194,8 +194,8 @@ def test_check_unreadable(world, monkeypatch):
     seed_server(world)
     monkeypatch.setattr(tasks.crosswalk_steps, "check", lambda *a, **k: tasks.crosswalk_steps.CheckResult(unreadable="The crosswalk is not valid YAML."))
     tasks.crosswalk_check_task.run(payload())
-    assert FakeTask.last.comment == ("### Description of this paper's data: check\n\nNo corrections were given, so "
-                                     "the description was checked as it is.\n\nThe description is not valid YAML.")
+    assert FakeTask.last.comment == ("### Crosswalk of this paper's data: check\n\nNo corrections were given, so "
+                                     "the crosswalk was checked as it is.\n\nThe crosswalk is not valid YAML.")
 
 
 def test_check_errors_then_warnings(world, monkeypatch):
@@ -204,7 +204,7 @@ def test_check_errors_then_warnings(world, monkeypatch):
     tasks.crosswalk_check_task.run(payload())
     c = FakeTask.last.comment
     assert c.index("E1") < c.index("W1")
-    assert ("The description does not pass the check yet. Fix these, then ask for `@roboneuro crosswalk check` again:\n"
+    assert ("The crosswalk does not pass the check yet. Fix these, then ask for `@roboneuro crosswalk check` again:\n"
             "- E1") in c
 
 
@@ -213,13 +213,13 @@ def test_check_clean_and_no_draft(world, monkeypatch):
     monkeypatch.setattr(tasks.crosswalk_steps, "check", lambda *a, **k: tasks.crosswalk_steps.CheckResult())
     tasks.crosswalk_check_task.run(payload())
     assert FakeTask.last.comment == (
-        "### Description of this paper's data: check\n\n"
-        "No corrections were given, so the description was checked as it is.\n\n"
-        "The description passes the check. There are no warnings.\n\n" + WHO)
+        "### Crosswalk of this paper's data: check\n\n"
+        "No corrections were given, so the crosswalk was checked as it is.\n\n"
+        "The crosswalk passes the check. There are no warnings.\n\n" + WHO)
     (world.work / "00041.crosswalk.yaml").unlink()
     with pytest.raises(TaskFailed):
         tasks.crosswalk_check_task.run(payload())
-    assert FakeTask.last.failed == ("There is no draft of this paper's data description on the server yet. Ask for "
+    assert FakeTask.last.failed == ("There is no draft of this paper's crosswalk on the server yet. Ask for "
                                     "`@roboneuro crosswalk draft` first.")
 
 
@@ -229,7 +229,7 @@ def test_confirm_refused_without_data_archive(world, monkeypatch):
     with pytest.raises(TaskFailed):
         tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, fields=""))
     assert FakeTask.last.failed == (
-        "The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the data has been "
+        "The data archive has no DOI yet, so the crosswalk cannot be confirmed. Confirm it after the data has been "
         "deposited (`@roboneuro zenodo publish`, or set the archive DOI in the issue).")
 
 
@@ -278,7 +278,7 @@ def test_confirm_success(world, monkeypatch):
     assert seen["text"] == "files: []\n"              # the last yaml block of the comment
     assert seen["record"] == tasks.CROSSWALKS_PATH
     assert world.rebuilds == [True]
-    assert "Confirmed by @ada (reply in comment 100). The description is now version 1.0.0" in c
+    assert "Confirmed by @ada (reply in comment 100). The crosswalk is now version 1.0.0" in c
 
 
 def test_confirm_at_a_comment_by_the_author(world, monkeypatch):
@@ -401,8 +401,8 @@ def test_check_at_a_comment_without_a_block_checks_as_it_stands(world, monkeypat
     tasks.crosswalk_check_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed is None and seen == {"s": None}
     c = FakeTask.last.comment
-    assert "No corrections were given, so the description was checked as it is." in c
-    assert ("The description passes the check. There are 2 warnings, listed below; they do not block "
+    assert "No corrections were given, so the crosswalk was checked as it is." in c
+    assert ("The crosswalk passes the check. There are 2 warnings, listed below; they do not block "
             "confirmation.") in c
     assert WHO + " For this reply, that is `@roboneuro crosswalk confirm at 200`." in c
     assert c.endswith("<details><summary>Warnings</summary>\n\n- W1\n- W2\n\n</details>")
@@ -573,7 +573,7 @@ def test_no_profiles_anywhere_is_a_sentence(world, tmp_path):
     seed_server(world, profiles=None)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_check_task.run(payload())
-    assert FakeTask.last.failed == ("There is no draft of this paper's data description on the server yet. Ask for "
+    assert FakeTask.last.failed == ("There is no draft of this paper's crosswalk on the server yet. Ask for "
                                     "`@roboneuro crosswalk draft` first.")
     assert str(tmp_path) not in FakeTask.last.failed and "\n" not in FakeTask.last.failed
 
@@ -585,7 +585,7 @@ def test_a_flat_crosswalk_without_its_profiles_is_a_sentence(world, monkeypatch)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_check_task.run(payload())
     assert FakeTask.last.failed == (
-        "The confirmed description of this paper's data is on the server without its profiles, so it cannot be "
+        "The confirmed crosswalk of this paper's data is on the server without its profiles, so it cannot be "
         "checked. An editor restores the profiles beside it, or runs the reset command on the server and asks for "
         "`@roboneuro crosswalk draft` again.")
 
@@ -611,7 +611,7 @@ def test_a_draft_over_a_confirmed_crosswalk_is_refused(world, monkeypatch):
     with pytest.raises(TaskFailed):
         tasks.crosswalk_draft_task.run(payload())
     assert FakeTask.last.failed == (
-        "This paper's data description is already confirmed. To change it, reply with the entries to change in a "
+        "This paper's crosswalk is already confirmed. To change it, reply with the entries to change in a "
         "`yaml` code block. " + WHO + " To start over, an editor runs the reset command on the server.")
     assert world.gh.used == [] and world.calls == []
 
@@ -717,7 +717,7 @@ def test_a_failed_cdn_rebuild_is_a_sentence_in_the_comment(world, monkeypatch):
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", boom)
     tasks.crosswalk_confirm_task.run(payload(command_comment_id=100))
     c = FakeTask.last.comment
-    assert "Confirmed by @ada as the draft stood. The description is now version 1.0.0" in c
+    assert "Confirmed by @ada as the draft stood. The crosswalk is now version 1.0.0" in c
     assert c.endswith("The CDN could not be rebuilt (RuntimeError); the documents appear after the next rebuild.")
     assert "/DATA/cdn/current" not in c
 
@@ -731,8 +731,8 @@ def test_confirmed_but_not_published_says_so(world, monkeypatch):
     with pytest.raises(TaskFailed):
         tasks.crosswalk_confirm_task.run(payload(command_comment_id=100))
     f = FakeTask.last.failed
-    assert f == ("The description was confirmed at version 1.2.0 but not published: no description of x is in the "
-                 "server's folder of descriptions. Asking for `@roboneuro crosswalk confirm` again is safe once this is fixed.")
+    assert f == ("The crosswalk was confirmed at version 1.2.0 but not published: no crosswalk of x is in the "
+                 "server's folder of crosswalks. Asking for `@roboneuro crosswalk confirm` again is safe once this is fixed.")
     assert world.rebuilds == []
 
 
@@ -761,7 +761,7 @@ def test_a_check_with_corrections_lists_its_warnings_like_any_other(world, monke
     c = FakeTask.last.comment
     keep("check-comment.md", c)
     assert "The corrections from comment 200 were applied." in c
-    assert "The description passes the check. There is 1 warning, listed below; it does not block confirmation." in c
+    assert "The crosswalk passes the check. There is 1 warning, listed below; it does not block confirmation." in c
     assert WHO + " For this reply, that is `@roboneuro crosswalk confirm at 200`." in c
     assert ("<details><summary>Warnings</summary>\n\n- b.csv: a unit is missing\n\n</details>\n\n"
             "<details><summary>Notes on the corrections</summary>\n\n- The entry b.csv was added.\n\n</details>") in c
@@ -869,7 +869,7 @@ def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch)
     tasks.crosswalk_draft_task.run(payload())
     c = FakeTask.last.comment
     keep("draft-comment.md", c)
-    assert c.startswith("### Description of this paper's data: draft\n\nNeuroLibre publishes, with each paper,")
+    assert c.startswith("### Crosswalk of this paper's data: draft\n\nNeuroLibre publishes, with each paper,")
     assert "[FAIR²](https://fair2.ai) and [Croissant](https://mlcommons.org/croissant/) documents." in c
     assert "**What the draft found**\n" + "\n".join(f"- {line}" for line in TWO_TABLES_SUMMARY) in c
     assert "The paper's text was linked to 2 shared terms: crop yield, field plot." in c
@@ -882,13 +882,13 @@ def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch)
             " To confirm only some columns, add `fields <name>, <name>`.") in c
     assert "without `at`" not in c
     assert "nothing is published until it is confirmed." in c
-    assert "<summary>Warnings from the check</summary>\n\n- The description has a unit that is guessed." in c
+    assert "<summary>Warnings from the check</summary>\n\n- The crosswalk has a unit that is guessed." in c
     # the draft itself reads back as the crosswalk
     assert tasks._yaml_block(c) == TWO_TABLES
-    # no fenced yaml inside a sentence, no nested backticks, and "crosswalk" only in commands and file names
+    # no fenced yaml inside a sentence, no nested backticks, and the word crosswalk explained where it first appears
     assert all(line.lstrip().startswith("```") for line in c.splitlines() if "```" in line)
     assert "````" not in c and "—" not in c
-    assert "crosswalk" not in prose_of(c).replace("00041.crosswalk.yaml", "")
+    assert "NeuroLibre publishes, with each paper, a crosswalk of its data: it says what each file holds" in c
     for line in prose_of(c).splitlines():
         assert ".." not in line, line
 
@@ -943,8 +943,8 @@ def test_the_confirm_comment_gives_publishs_addresses_and_the_terms(world, monke
     tasks.crosswalk_confirm_task.run(payload(command_comment_id=100))
     keep("confirm-comment.md", FakeTask.last.comment)
     assert FakeTask.last.comment == (
-        "### Description of this paper's data: confirmed\n\n"
-        "Confirmed by @ada as the draft stood. The description is now version 1.1.0 and is published with the paper:\n\n"
+        "### Crosswalk of this paper's data: confirmed\n\n"
+        "Confirmed by @ada as the draft stood. The crosswalk is now version 1.1.0 and is published with the paper:\n\n"
         f"- FAIR²: {CDN}/crosswalks/{DOI}/fair2.json\n"
         f"- Croissant: {CDN}/crosswalks/{DOI}/croissant.json\n"
         f"- Metadata: {CDN}/dois/{DOI}.json\n"
@@ -1100,7 +1100,7 @@ def test_a_check_that_could_not_run_is_not_a_fault_of_the_description(world, mon
         failure="The check step took longer than 15 minutes and was stopped."))
     tasks.crosswalk_check_task.run(payload(command_comment_id=100))
     assert FakeTask.last.comment == (
-        "### Description of this paper's data: check\n\n"
+        "### Crosswalk of this paper's data: check\n\n"
         "The check could not be run: the check step took longer than 15 minutes and was stopped. "
         "Ask for `@roboneuro crosswalk check` again later.")
 
@@ -1112,7 +1112,7 @@ def test_a_check_with_corrections_that_could_not_run_repeats_the_command_with_at
         failure="The command gave no result: ImportError: no module."))
     tasks.crosswalk_check_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
-    assert c == ("### Description of this paper's data: check\n\n"
+    assert c == ("### Crosswalk of this paper's data: check\n\n"
                  "The check could not be run: the command gave no result: ImportError: no module. "
                  "Ask for `@roboneuro crosswalk check at 200` again later.")
     assert "applied" not in c and "checked as it is" not in c
