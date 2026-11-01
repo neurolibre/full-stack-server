@@ -309,8 +309,8 @@ def data_missing(project_name: str) -> str:
             "Ask an editor to check the data transfer.")
 
 
-NO_PUBLISHED_BUILD = ("The paper has no published build yet, so its code cannot be read. Run "
-                      "`@roboneuro production sync myst` first.")
+NO_PUBLISHED_BUILD = ("The paper has no published build on the preview server, and its deposit records no "
+                      "repository archive, so its code cannot be read.")
 
 ALREADY_CONFIRMED = ("This paper's crosswalk is already confirmed. To change it, reply with the "
                      "entries to change in a `yaml` code block. " + WHO_CONFIRMS + " To start over, " + RESET + ".")

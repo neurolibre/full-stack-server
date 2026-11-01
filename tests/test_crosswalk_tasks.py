@@ -439,9 +439,18 @@ def test_no_published_commit_means_no_draft(world, monkeypatch):
     fake_draft(monkeypatch)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_draft_task.run(payload())
-    assert FakeTask.last.failed == ("The paper has no published build yet, so its code cannot be read. Run "
-                                    "`@roboneuro production sync myst` first.")
+    assert FakeTask.last.failed == ("The paper has no published build on the preview server, and its deposit "
+                                    "records no repository archive, so its code cannot be read.")
     assert world.gh.used == [] and world.clones == []
+
+
+def test_a_paper_published_before_the_preview_server_kept_a_record_is_cloned_at_its_archived_commit(world, monkeypatch):
+    world.commit = None
+    asked = []
+    monkeypatch.setattr(tasks.crosswalk_steps, "archived_commit", lambda doi, run=None: asked.append(doi) or "7e005e7e")
+    fake_draft(monkeypatch)
+    tasks.crosswalk_draft_task.run(payload())
+    assert asked == [DOI] and world.clones and world.clones[0][1] == "7e005e7e"
 
 
 def test_clone_failure_is_one_sentence(world, monkeypatch):

@@ -196,6 +196,20 @@ def _run(run: Run, argv: List[str]) -> dict:
     return outcome(*run(argv))
 
 
+def archived_commit(doi: str, run: Optional[Run] = None) -> Optional[str]:
+    """The commit the paper's repository archive was made from, as its deposit records it (Evidentron's
+    `archived-repository`): where a paper's code is read when the preview server has no record of its published build,
+    as for a paper published before it kept one. None when the deposit does not say or cannot be read."""
+    run = run or subprocess_runner(EVIDENTRON_PATH)
+    code, output = run(data_cli_command() + ["archived-repository", doi])
+    try:
+        found = json.loads(getattr(output, "stdout", output) or "")
+    except (TypeError, ValueError):
+        return None
+    commit = found.get("commit") if code == 0 and isinstance(found, dict) else None
+    return str(commit).strip() or None if commit else None
+
+
 @dataclass
 class DraftResult:
     crosswalk: Path

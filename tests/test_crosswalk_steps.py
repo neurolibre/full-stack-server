@@ -766,3 +766,15 @@ def test_the_task_time_limits_leave_room_for_the_steps_own_timeouts():
                          (crosswalk_steps.CONFIRM_SECONDS, confirm)):
         assert limit > steps
         assert limit == steps + crosswalk_steps.STEP_MARGIN
+
+
+def test_the_archived_commit_comes_from_evidentron_and_is_none_when_the_deposit_says_nothing():
+    found = lambda argv: (0, crosswalk_steps.Output(json.dumps({"doi": DOI, "commit": "7e005e7e02aa", "github": None,
+                                                                "archive": None})))
+    assert crosswalk_steps.archived_commit(DOI, run=found) == "7e005e7e02aa"
+    unknown = lambda argv: (1, crosswalk_steps.Output(json.dumps({"doi": DOI, "commit": None, "error": "no archives"})))
+    assert crosswalk_steps.archived_commit(DOI, run=unknown) is None
+    assert crosswalk_steps.archived_commit(DOI, run=lambda argv: (0, crosswalk_steps.Output("not json"))) is None
+    asked = []
+    crosswalk_steps.archived_commit(DOI, run=lambda argv: asked.append(argv) or found(argv))
+    assert asked[0][-2:] == ["archived-repository", DOI] and "evidentron.cli.data_cli" in asked[0]

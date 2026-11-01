@@ -146,13 +146,17 @@ def _load_paper(task, paper, run):
 
 def _published_clone(task, paper):
     """Clone the paper's repository at the commit published on the preview server into REPOS_PATH/<stem>, only to
-    read it; fail with a sentence if it cannot be. Nothing on the server changes before the clone has worked."""
+    read it; fail with a sentence if it cannot be. A paper published before the preview server kept a record of its
+    build has none there, and is cloned at the commit its deposit's repository archive was made from. Nothing on the
+    server changes before the clone has worked."""
     fork_name = f"{GH_ORGANIZATION}/{task.repo_name}"
     try:
         commit = _published_commit(GH_ORGANIZATION, task.repo_name)
     except requests.RequestException as e:
         task.fail(f"The published commit of {fork_name} could not be read from the preview server: "
                   f"{e.__class__.__name__}.")
+    if not commit:
+        commit = crosswalk_steps.archived_commit(paper.doi)
     if not commit:
         task.fail(say.NO_PUBLISHED_BUILD)
     target = os.path.join(REPOS_PATH, paper.stem)
