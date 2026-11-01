@@ -25,14 +25,14 @@ from typing import Callable, Dict, List, Optional, Tuple
 import yaml
 
 import myst_cdn
-from weft_words import lower_first, plain
+from crosswalk_words import lower_first, plain
 
 _config = yaml.safe_load((Path(__file__).parent / "config" / "common.yaml").read_text())
 CDN_URL = _config["CDN_URL"].rstrip("/")
 
 # The server's places for Evidentron, in one place: the tasks and the editor's command read them from here.
 EVIDENTRON_PATH = Path(_config["DATA_ROOT_PATH"]) / _config["EVIDENTRON_FOLDER"]
-WEFTS_PATH = EVIDENTRON_PATH / "wefts"              # the folder of record: the confirmed wefts, flat
+CROSSWALKS_PATH = EVIDENTRON_PATH / "crosswalks"              # the folder of record: the confirmed crosswalks, flat
 GRAPH_DB_PATH = EVIDENTRON_PATH / "graph.db"
 SITE_PATH = myst_cdn.EVIDENTRON_SITE                # Evidentron's static site (a link to its newest build)
 # Held while the store, the vocabulary or the site is written, so two writers never write them at once. A
@@ -76,8 +76,8 @@ def _python() -> str:
     return os.environ.get("EVIDENTRON_PYTHON") or sys.executable
 
 
-def weft_command() -> List[str]:
-    return [_python(), "-m", "evidentron.weft"]
+def crosswalk_command() -> List[str]:
+    return [_python(), "-m", "evidentron.crosswalk"]
 
 
 def graph_command() -> List[str]:
@@ -186,7 +186,7 @@ def _run(run: Run, argv: List[str]) -> dict:
 
 @dataclass
 class DraftResult:
-    weft: Path
+    crosswalk: Path
     profiles: Path
     drafted_by: str                       # the backend
     reason: Optional[str]                 # why the second backend drafted, when it did
@@ -228,12 +228,12 @@ def _stem(doi: str) -> str:
     return doi.rsplit(".", 1)[-1]
 
 
-def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
+def check(crosswalk: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
           db: Optional[Path] = None, submission: Optional[Path] = None) -> CheckResult:
-    """Check a weft against the profiles and the data; with a submission, the weft as the submission would leave it
-    (nothing is written). `unreadable` is the command's sentence when the weft cannot be read."""
-    run = run or subprocess_runner(Path(weft).parent)
-    argv = weft_command() + ["check", str(weft), "--profiles", str(profiles), "--data", str(data_dir), "--json"]
+    """Check a crosswalk against the profiles and the data; with a submission, the crosswalk as the submission would leave it
+    (nothing is written). `unreadable` is the command's sentence when the crosswalk cannot be read."""
+    run = run or subprocess_runner(Path(crosswalk).parent)
+    argv = crosswalk_command() + ["check", str(crosswalk), "--profiles", str(profiles), "--data", str(data_dir), "--json"]
     if db:
         argv += ["--db", str(db)]
     if submission:
@@ -247,9 +247,9 @@ def check(weft: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
                        notes=result["notes"])
 
 
-def _explore(doi, profiles, weft, backend, data_dir, repo_dir, lock, run) -> dict:
-    argv = weft_command() + ["explore", str(profiles), "--backend", backend, "--data", str(data_dir),
-                             "--doi", doi, "-o", str(weft), "--json"]
+def _explore(doi, profiles, crosswalk, backend, data_dir, repo_dir, lock, run) -> dict:
+    argv = crosswalk_command() + ["explore", str(profiles), "--backend", backend, "--data", str(data_dir),
+                             "--doi", doi, "-o", str(crosswalk), "--json"]
     if repo_dir:
         argv += ["--repo", str(repo_dir)]
     if lock:
@@ -298,33 +298,33 @@ def _suffix(path: str) -> str:
 def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backends: dict, lock: Path,
           run: Optional[Run] = None) -> DraftResult:
     """Profile the data, explore it on the draft backend and check; on a failure, explore again on the redraft
-    backend, keeping the first draft beside the second as <stem>.selfhosted.weft.yaml. Data with files that are not
+    backend, keeping the first draft beside the second as <stem>.selfhosted.crosswalk.yaml. Data with files that are not
     tables (not_tables) is explored on the redraft backend from the start, and only once: a draft of it that fails
     its checks is kept with its problems for review, since running the same backend again costs as much and rarely
     fixes what the checks found."""
     run = run or subprocess_runner(work)
-    weft = Path(work) / f"{_stem(doi)}.weft.yaml"
+    crosswalk = Path(work) / f"{_stem(doi)}.crosswalk.yaml"
     profiles = Path(work) / f"{_stem(doi)}.profiles.json"
-    selfhosted = Path(work) / f"{_stem(doi)}.selfhosted.weft.yaml"
-    result = DraftResult(weft=weft, profiles=profiles, drafted_by=backends["draft"], reason=None)
-    profiled = _run(run, weft_command() + ["profile", str(data_dir), "--doi", doi, "-o", str(profiles), "--json"])
+    selfhosted = Path(work) / f"{_stem(doi)}.selfhosted.crosswalk.yaml"
+    result = DraftResult(crosswalk=crosswalk, profiles=profiles, drafted_by=backends["draft"], reason=None)
+    profiled = _run(run, crosswalk_command() + ["profile", str(data_dir), "--doi", doi, "-o", str(profiles), "--json"])
     if not profiled["ok"]:
         result.problems = [f"The data could not be profiled: {profiled['errors'][0]}"]
         return result
 
     # The one place the earlier draft goes: the clone and the profile have worked, and explore writes the new one.
-    _remove(weft)
+    _remove(crosswalk)
     _remove(selfhosted)
     failure, first = None, None
     why = not_tables(profiles)
     if why:
         result.drafted_by, result.reason = backends["redraft"], why
-    explored = _explore(doi, profiles, weft, backends["redraft"] if why else backends["draft"], data_dir, repo_dir,
+    explored = _explore(doi, profiles, crosswalk, backends["redraft"] if why else backends["draft"], data_dir, repo_dir,
                         None if why else lock, run)
     if not explored["ok"]:
         failure = _why_not(explored)[0]
     else:
-        first = check(weft, profiles, data_dir, run)
+        first = check(crosswalk, profiles, data_dir, run)
         if first.failure or first.unreadable or first.errors:
             failure = first.failure or first.unreadable or first.errors[0]
     if why and first is None:                     # the strongest backend could not draft it either
@@ -334,14 +334,14 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
         final = first
     else:
         result.drafted_by, result.reason = backends["redraft"], failure
-        if weft.exists():
-            os.replace(weft, selfhosted)
+        if crosswalk.exists():
+            os.replace(crosswalk, selfhosted)
             result.selfhosted = selfhosted
-        explored = _explore(doi, profiles, weft, backends["redraft"], data_dir, repo_dir, None, run)
+        explored = _explore(doi, profiles, crosswalk, backends["redraft"], data_dir, repo_dir, None, run)
         if not explored["ok"]:
             result.problems = _why_not(explored)
             return result
-        final = check(weft, profiles, data_dir, run)
+        final = check(crosswalk, profiles, data_dir, run)
     drafted_by = explored.get("drafted_by") if isinstance(explored.get("drafted_by"), dict) else {}
     result.drafted_by = drafted_by.get("backend") or result.drafted_by
     result.model = drafted_by.get("model")
@@ -352,12 +352,12 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
     return result
 
 
-def _record(weft: Path, profiles: Path, record: Path) -> Optional[str]:
-    """Copy the confirmed weft and its profiles to the folder of record, flat, as publish reads them; the
+def _record(crosswalk: Path, profiles: Path, record: Path) -> Optional[str]:
+    """Copy the confirmed crosswalk and its profiles to the folder of record, flat, as publish reads them; the
     sentence when they could not be copied, else None."""
     try:
         Path(record).mkdir(parents=True, exist_ok=True)
-        for src in (weft, profiles):
+        for src in (crosswalk, profiles):
             tmp = Path(record) / f".{Path(src).name}.new"
             shutil.copyfile(src, tmp)
             os.replace(tmp, Path(record) / Path(src).name)
@@ -367,11 +367,11 @@ def _record(weft: Path, profiles: Path, record: Path) -> Optional[str]:
     return None
 
 
-PREVIOUS = ".previous"            # the suffix of the confirmed weft a reset kept, beside where it was
+PREVIOUS = ".previous"            # the suffix of the confirmed crosswalk a reset kept, beside where it was
 
 
 def _previous(record: Optional[Path], name: str) -> Optional[Path]:
-    """The weft the version is measured against: the confirmed one in the folder of record, else the one a reset
+    """The crosswalk the version is measured against: the confirmed one in the folder of record, else the one a reset
     kept."""
     if record is None:
         return None
@@ -395,7 +395,7 @@ def publish(site: Path, db: Path, run: Optional[Run] = None) -> dict:
     """Publish Evidentron's static site (terms, documents, metadata) into a new build folder that `site` then links
     to; publish's result.
 
-    `publish` has no --db: it reads the default store and the weft folder from the config it finds. The worker's
+    `publish` has no --db: it reads the default store and the crosswalk folder from the config it finds. The worker's
     ~/.evidentron is a link to /DATA/evidentron (the provisioning sets that up), so the default store and
     ~/.evidentron/config.yaml are the server's; running it in the store's folder also finds ./evidentron.yaml."""
     run = run or subprocess_runner(Path(db).parent)
@@ -408,28 +408,28 @@ def _addresses(doi: str, published: dict) -> Dict[str, str]:
     return dict(found) if isinstance(found, dict) else {}
 
 
-def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], submission: Optional[Path],
+def confirm(crosswalk: Path, profiles: Path, by: str, fields: Optional[List[str]], submission: Optional[Path],
             data_dir: Path, site: Path, db: Path, run: Optional[Run] = None,
             record: Optional[Path] = None) -> ConfirmResult:
-    """Check (with the submission, when there is one), confirm, keep the confirmed weft in `record` (the flat
+    """Check (with the submission, when there is one), confirm, keep the confirmed crosswalk in `record` (the flat
     folder publish reads), load, export both documents and publish the static files; stop at the first failure.
-    The weft already in `record` is the previous confirmed one, so the version moves by what changed since it."""
-    weft = Path(weft)
+    The crosswalk already in `record` is the previous confirmed one, so the version moves by what changed since it."""
+    crosswalk = Path(crosswalk)
     given = run is not None
-    run = run or subprocess_runner(weft.parent)
-    checked = check(weft, profiles, data_dir, run, db, submission)
+    run = run or subprocess_runner(crosswalk.parent)
+    checked = check(crosswalk, profiles, data_dir, run, db, submission)
     if checked.failure:
         return ConfirmResult(errors=["The check could not be run: " + lower_first(checked.failure)])
     if checked.unreadable:
         return ConfirmResult(errors=[checked.unreadable])
     if checked.errors:
         return ConfirmResult(errors=checked.errors)
-    argv = weft_command() + ["confirm", str(weft), "--by", by, "--json"]
+    argv = crosswalk_command() + ["confirm", str(crosswalk), "--by", by, "--json"]
     if fields:
         argv += ["--fields", ",".join(fields)]
     if submission:
         argv += ["--submit", str(submission), "--profiles", str(profiles)]
-    previous = _previous(record, weft.name)
+    previous = _previous(record, crosswalk.name)
     if previous is not None:
         argv += ["--previous", str(previous)]
     done = _run(run, argv)
@@ -444,10 +444,10 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
         return result
 
     if record:
-        sentence = _record(weft, Path(profiles), Path(record))
+        sentence = _record(crosswalk, Path(profiles), Path(record))
         if sentence:
             return stop([sentence])
-    loaded = _run(run, weft_command() + ["load", str(weft), "--profiles", str(profiles), "--db", str(db),
+    loaded = _run(run, crosswalk_command() + ["load", str(crosswalk), "--profiles", str(profiles), "--db", str(db),
                                          "--data", str(data_dir), "--json"])
     if not loaded["ok"]:
         return stop(loaded["errors"])
@@ -455,7 +455,7 @@ def confirm(weft: Path, profiles: Path, by: str, fields: Optional[List[str]], su
     if not doi:
         return stop(["The confirmed description names no paper, so its addresses are unknown."])
     for fmt in ("fair2", "croissant"):
-        exported = _run(run, weft_command() + ["export", str(weft), "--profiles", str(profiles), "--format", fmt,
+        exported = _run(run, crosswalk_command() + ["export", str(crosswalk), "--profiles", str(profiles), "--format", fmt,
                                                "--db", str(db), "--data", str(data_dir), "--json"])
         if not exported["ok"]:
             return stop(exported["errors"])
@@ -504,22 +504,22 @@ class ResetResult:
     stopped: bool = False                             # the reset did not finish; the last sentence says why
 
 
-def reset(doi: str, wefts: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
-    """Start a paper's description over: move its confirmed weft aside as <stem>.weft.yaml.previous (the next
-    confirmation measures its version against it), remove its profiles and the work copy <wefts>/<stem>/ (so a later
+def reset(doi: str, crosswalks: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
+    """Start a paper's description over: move its confirmed crosswalk aside as <stem>.crosswalk.yaml.previous (the next
+    confirmation measures its version against it), remove its profiles and the work copy <crosswalks>/<stem>/ (so a later
     check or confirmation cannot act on it), and publish Evidentron's site again as a confirmation does, which
     builds it without the paper's documents and the terms only they used. The caller rebuilds the CDN.
 
     The paper's rows stay in the store (db): Evidentron has no command to remove them, and the next load of the
     paper replaces them. The last sentence says so."""
-    wefts, stem = Path(wefts), _stem(doi)
-    weft, profiles, work = wefts / f"{stem}.weft.yaml", wefts / f"{stem}.profiles.json", wefts / stem
+    crosswalks, stem = Path(crosswalks), _stem(doi)
+    crosswalk, profiles, work = crosswalks / f"{stem}.crosswalk.yaml", crosswalks / f"{stem}.profiles.json", crosswalks / stem
     result = ResetResult()
     try:
-        if weft.is_file():
-            os.replace(weft, wefts / (weft.name + PREVIOUS))
+        if crosswalk.is_file():
+            os.replace(crosswalk, crosswalks / (crosswalk.name + PREVIOUS))
             result.removed = True
-            result.said.append(f"The confirmed description of {doi} was removed and kept as {weft.name + PREVIOUS}, "
+            result.said.append(f"The confirmed description of {doi} was removed and kept as {crosswalk.name + PREVIOUS}, "
                                "so the next confirmation measures its version against it.")
         else:
             result.said.append(f"There is no confirmed description of {doi} on the server.")

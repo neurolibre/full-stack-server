@@ -1,8 +1,8 @@
-"""The texts the weft tasks post on a review issue, in one place so they are easy to edit.
+"""The texts the crosswalk tasks post on a review issue, in one place so they are easy to edit.
 
-A comment is read by the paper's authors, who may never have heard of a weft: it says what the description of
-the paper's data is, why they are asked, and what to do. "weft" appears only in the commands the bot answers to
-(`@roboneuro weft check`) and in file names. Failures are one or two short sentences. No em dashes.
+A comment is read by the paper's authors, who may never have heard of a crosswalk: it says what the description of
+the paper's data is, why they are asked, and what to do. "crosswalk" appears only in the commands the bot answers to
+(`@roboneuro crosswalk check`) and in file names. Failures are one or two short sentences. No em dashes.
 """
 
 import re
@@ -10,8 +10,8 @@ from typing import List, Optional
 
 import yaml
 
-from weft_steps import CDN_URL
-from weft_words import lower_first, plain  # noqa: F401  (part of this module's words)
+from crosswalk_steps import CDN_URL
+from crosswalk_words import lower_first, plain  # noqa: F401  (part of this module's words)
 
 DESCRIBING_URL = f"{CDN_URL}/terms/describing/"
 TERMS_URL = f"{CDN_URL}/terms/"
@@ -35,9 +35,9 @@ REPLACED = "It replaces the earlier draft on the server."
 # corrections come from (the comment `at` names, else the command's own), who must be the paper's author or the
 # issue's editor.
 WHO_CONFIRMS = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an "
-                "author's reply with `@roboneuro weft confirm at <comment id>`.")
+                "author's reply with `@roboneuro crosswalk confirm at <comment id>`.")
 
-CHECKING = ("Anyone can write `@roboneuro weft check at <comment id>` to check a reply with its corrections applied; "
+CHECKING = ("Anyone can write `@roboneuro crosswalk check at <comment id>` to check a reply with its corrections applied; "
             "the id is the number at the end of the reply's link. " + WHO_CONFIRMS + " To confirm only some columns, "
             "add `fields <name>, <name>`.")
 
@@ -46,7 +46,7 @@ RESET = "an editor runs the reset command on the server"
 
 # Sentences that come from the steps and the commands.
 
-# plain and lower_first are in weft_words, which weft_steps shares.
+# plain and lower_first are in crosswalk_words, which crosswalk_steps shares.
 
 
 def end(text: str) -> str:
@@ -86,15 +86,15 @@ def _yaml_scalar(value) -> str:
     return text.split("\n...")[0].strip()
 
 
-def example(weft_text: str) -> Optional[str]:
+def example(crosswalk_text: str) -> Optional[str]:
     """A yaml block that changes one real entry of this draft: the first table's first field, else the first
-    collection's first variable, with the keys an author reviews; None when the draft has neither. The weft's
+    collection's first variable, with the keys an author reviews; None when the draft has neither. The crosswalk's
     shape is Evidentron's published format, so reading its first field here is reading a public document."""
     try:
-        weft = yaml.safe_load(weft_text)
+        crosswalk = yaml.safe_load(crosswalk_text)
     except yaml.YAMLError:
         return None
-    entries = [e for e in (weft.get("files") or [] if isinstance(weft, dict) else []) if isinstance(e, dict)]
+    entries = [e for e in (crosswalk.get("files") or [] if isinstance(crosswalk, dict) else []) if isinstance(e, dict)]
     for owner_keys, items_key in ((("file", "file_pattern"), "fields"), (("collection",), "variables")):
         for entry in entries:
             owner = next((k for k in owner_keys if entry.get(k)), None)
@@ -116,12 +116,12 @@ def example(weft_text: str) -> Optional[str]:
     return None
 
 
-def draft_block(weft_text: str) -> str:
+def draft_block(crosswalk_text: str) -> str:
     """The draft as a fenced yaml block, with a fence longer than any run of backticks in it."""
     fence = "```"
-    while fence in weft_text:
+    while fence in crosswalk_text:
         fence += "`"
-    return f"{fence}yaml\n" + weft_text.rstrip("\n") + f"\n{fence}"
+    return f"{fence}yaml\n" + crosswalk_text.rstrip("\n") + f"\n{fence}"
 
 
 def terms_sentence(count: Optional[int], labels: Optional[List[str]], failure: Optional[str]) -> Optional[str]:
@@ -192,7 +192,7 @@ def applied(comment_id) -> str:
 def check_not_run(sentence: str, at=None) -> str:
     """The check could not be run (the command gave no result, ran past its time, did not start): nothing is known
     about the description. The hint repeats the command as it was asked."""
-    command = f"`@roboneuro weft check at {at}`" if at is not None else "`@roboneuro weft check`"
+    command = f"`@roboneuro crosswalk check at {at}`" if at is not None else "`@roboneuro crosswalk check`"
     return f"The check could not be run: {inner(sentence)}. Ask for {command} again later."
 
 
@@ -202,7 +202,7 @@ def check_not_run_comment(sentence: str, at=None) -> str:
 
 def cannot_confirm(login: str) -> str:
     return (f"These corrections are by @{login}, who cannot confirm them: the paper's author or the editor replies "
-            "with them, then `@roboneuro weft confirm at` that reply.")
+            "with them, then `@roboneuro crosswalk confirm at` that reply.")
 
 
 def check_comment(corrections_id, errors: List[str], warnings: List[str], confirm_at=None,
@@ -220,7 +220,7 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
     if notes:
         lists.append(details("Notes on the corrections" if corrections_id is not None else "Notes", bullets(notes)))
     if errors:
-        parts.append("The description does not pass the check yet. Fix these, then ask for `@roboneuro weft check` "
+        parts.append("The description does not pass the check yet. Fix these, then ask for `@roboneuro crosswalk check` "
                      "again:\n" + bullets([plain(e) for e in errors]))
         return "\n\n".join(parts + lists)
     if not warnings:
@@ -233,7 +233,7 @@ def check_comment(corrections_id, errors: List[str], warnings: List[str], confir
     if not_confirmable_by:
         parts.append(WHO_CONFIRMS + " " + cannot_confirm(not_confirmable_by))
     else:
-        parts.append(WHO_CONFIRMS + (f" For this reply, that is `@roboneuro weft confirm at {confirm_at}`."
+        parts.append(WHO_CONFIRMS + (f" For this reply, that is `@roboneuro crosswalk confirm at {confirm_at}`."
                                      if confirm_at is not None else ""))
     return "\n\n".join(parts + lists)
 
@@ -295,7 +295,7 @@ def data_folder_unknown(reason: Optional[str]) -> str:
 
 
 def no_backend(key: str) -> str:
-    return (f"The server's Evidentron config names no `{key}` backend under `weft: backend:`, so nothing was done. "
+    return (f"The server's Evidentron config names no `{key}` backend under `crosswalk: backend:`, so nothing was done. "
             "Ask an editor to set it.")
 
 
@@ -317,11 +317,11 @@ ALREADY_CONFIRMED = ("This paper's data description is already confirmed. To cha
                      "entries to change in a `yaml` code block. " + WHO_CONFIRMS + " To start over, " + RESET + ".")
 
 NO_DRAFT = ("There is no draft of this paper's data description on the server yet. Ask for "
-            "`@roboneuro weft draft` first.")
+            "`@roboneuro crosswalk draft` first.")
 
 CONFIRMED_WITHOUT_PROFILES = ("The confirmed description of this paper's data is on the server without its "
                               "profiles, so it cannot be checked. An editor restores the profiles beside it, or "
-                              + RESET[len("an editor "):] + " and asks for `@roboneuro weft draft` again.")
+                              + RESET[len("an editor "):] + " and asks for `@roboneuro crosswalk draft` again.")
 
 NO_ARCHIVE_DOI = ("The data archive has no DOI yet, so the description cannot be confirmed. Confirm it after the "
                   "data has been deposited (`@roboneuro zenodo publish`, or set the archive DOI in the issue).")
@@ -366,7 +366,7 @@ def not_loaded(sentence: str) -> str:
 def confirmed_not_published(version: str, errors: List[str], again_at=None) -> str:
     """`again_at` is the reply whose corrections were confirmed: a confirmation without it would publish the
     description as it was before them."""
-    command = f"`@roboneuro weft confirm at {again_at}`" if again_at is not None else "`@roboneuro weft confirm`"
+    command = f"`@roboneuro crosswalk confirm at {again_at}`" if again_at is not None else "`@roboneuro crosswalk confirm`"
     return listed(f"The description was confirmed at version {version} but not published", errors,
                   f"Asking for {command} again is safe once this is fixed.")
 

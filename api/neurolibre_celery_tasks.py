@@ -2592,7 +2592,7 @@ def preview_cleanup_task(self, screening_dict):
     task.succeed("\n".join(lines))
 
 
-# The tasks that describe a paper's data (draft, check, confirm) are in weft_tasks, and Sakiori's build in
+# The tasks that describe a paper's data (draft, check, confirm) are in crosswalk_tasks, and Sakiori's build in
 # sakiori_tasks; each registers its tasks on celery_app, and is imported last, since it uses the names above.
-import weft_tasks  # noqa: E402,F401
+import crosswalk_tasks  # noqa: E402,F401
 import sakiori_tasks  # noqa: E402

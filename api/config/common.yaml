@@ -77,7 +77,7 @@ MYST_FOLDER: "myst"
 CDN_FOLDER: "cdn"
 
 # Name of the folder that holds Evidentron's files: the graph store, the papers'
-# wefts (wefts/), repositories (repos/), site, artifacts and the vocabulary.
+# crosswalks (crosswalks/), repositories (repos/), site, artifacts and the vocabulary.
 # Expected under DATA_ROOT_PATH. The celery user's ~/.evidentron links to it.
 EVIDENTRON_FOLDER: "evidentron"
 

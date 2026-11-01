@@ -10,7 +10,7 @@ import neurolibre_common_api
 from common import *
 from preprint import *
 from github_client import *
-from schema import ListSchema, IdUrlSchema, BooksyncSchema, IDSchema, WeftSchema, SakioriSchema
+from schema import ListSchema, IdUrlSchema, BooksyncSchema, IDSchema, CrosswalkSchema, SakioriSchema
 from flask import jsonify, make_response, Config
 from flask_apispec import FlaskApiSpec, marshal_with, doc, use_kwargs
 from apispec import APISpec
@@ -21,10 +21,10 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from neurolibre_celery_tasks import celery_app, rsync_data_task, sleep_task, rsync_book_task, fork_configure_repository_task, \
      zenodo_create_buckets_task, zenodo_upload_book_task, zenodo_upload_repository_task, zenodo_upload_docker_task, zenodo_publish_task, \
      preprint_build_pdf_draft, zenodo_upload_data_task, zenodo_flush_task, binder_build_task, rsync_myst_prod_task, myst_upload_task
-from weft_tasks import weft_draft_task, weft_check_task, weft_confirm_task
+from crosswalk_tasks import crosswalk_draft_task, crosswalk_check_task, crosswalk_confirm_task
 import sakiori
 import sakiori_tasks
-import weft_messages
+import crosswalk_messages
 from github import Github
 import yaml
 from screening_client import ScreeningClient
@@ -123,41 +123,41 @@ def summary_pdf_sync_post(user,id):
 # Register endpoint to the documentation
 docs.register(summary_pdf_sync_post)
 
-def _weft_screening(task_name, id, repository_url, fields=None, comment_id=None, at=None):
+def _crosswalk_screening(task_name, id, repository_url, fields=None, comment_id=None, at=None):
     # An absent option stays absent in the screening dict the task receives. The command's comment travels as
     # command_comment_id: the screening's comment_id is the comment the bot replies in, which the worker makes.
     extra = {k: v for k, v in (("fields", fields), ("command_comment_id", comment_id), ("at", at)) if v is not None}
     return ScreeningClient(task_name=task_name, issue_id=id, target_repo_url=repository_url, **extra)
 
-@app.route('/api/weft/draft', methods=['POST'])
+@app.route('/api/crosswalk/draft', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description="Draft the description of the paper's data (what each file, row and column holds) on the server and report on its review issue. Takes id, repository_url and comment_id; at is for check and confirm, fields for confirm.", tags=['Production'])
-@use_kwargs(WeftSchema())
-def weft_draft_post(user,id,repository_url,**options):
-    return _weft_screening("WEFT DRAFT", id, repository_url, **options).start_celery_task(weft_draft_task)
+@use_kwargs(CrosswalkSchema())
+def crosswalk_draft_post(user,id,repository_url,**options):
+    return _crosswalk_screening("CROSSWALK DRAFT", id, repository_url, **options).start_celery_task(crosswalk_draft_task)
 
-docs.register(weft_draft_post)
+docs.register(crosswalk_draft_post)
 
-@app.route('/api/weft/check', methods=['POST'])
+@app.route('/api/crosswalk/check', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
 @doc(description="Check the description of the paper's data on the server, with the yaml block of the command's comment (or of the comment named by at) applied, and report on its review issue what is missing or wrong. Anyone's corrections can be checked; nothing is written.", tags=['Production'])
-@use_kwargs(WeftSchema())
-def weft_check_post(user,id,repository_url,**options):
-    return _weft_screening("WEFT CHECK", id, repository_url, **options).start_celery_task(weft_check_task)
+@use_kwargs(CrosswalkSchema())
+def crosswalk_check_post(user,id,repository_url,**options):
+    return _crosswalk_screening("CROSSWALK CHECK", id, repository_url, **options).start_celery_task(crosswalk_check_task)
 
-docs.register(weft_check_post)
+docs.register(crosswalk_check_post)
 
-@app.route('/api/weft/confirm', methods=['POST'])
+@app.route('/api/crosswalk/confirm', methods=['POST'])
 @preprint_api.auth_required
 @marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
-@doc(description="Confirm the description of the paper's data on the server, as it stands or with the yaml block of the command's comment (or of the comment named by at) applied, publish it and report on its review issue. " + weft_messages.WHO_CONFIRMS + " The confirmation is recorded under the name of the author of that comment, who must be the paper's author or the issue's editor.", tags=['Production'])
-@use_kwargs(WeftSchema())
-def weft_confirm_post(user,id,repository_url,**options):
-    return _weft_screening("WEFT CONFIRM", id, repository_url, **options).start_celery_task(weft_confirm_task)
+@doc(description="Confirm the description of the paper's data on the server, as it stands or with the yaml block of the command's comment (or of the comment named by at) applied, publish it and report on its review issue. " + crosswalk_messages.WHO_CONFIRMS + " The confirmation is recorded under the name of the author of that comment, who must be the paper's author or the issue's editor.", tags=['Production'])
+@use_kwargs(CrosswalkSchema())
+def crosswalk_confirm_post(user,id,repository_url,**options):
+    return _crosswalk_screening("CROSSWALK CONFIRM", id, repository_url, **options).start_celery_task(crosswalk_confirm_task)
 
-docs.register(weft_confirm_post)
+docs.register(crosswalk_confirm_post)
 
 @app.route('/api/sakiori/build', methods=['POST'])
 @preprint_api.auth_required

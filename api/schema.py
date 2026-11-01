@@ -94,7 +94,7 @@ class BooksyncSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the target repository")
     commit_hash = fields.String(required=False,dump_default="HEAD", description="Commit hash.")
 
-class WeftSchema(Schema):
+class CrosswalkSchema(Schema):
     id = fields.Integer(required=True,description="Issue number of the technical screening of this preprint.")
     repository_url = fields.String(required=True,description="Full URL of the target repository")
     comment_id = fields.Integer(required=False,description="Id of the review issue comment that issued the command; its last yaml block, if any, holds the corrections, and its author is the one who confirms.")

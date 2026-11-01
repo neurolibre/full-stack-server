@@ -12,7 +12,7 @@ answer (Evidentron), and is then served by moving one link, as the CDN is:
 
 Only a failed crawl stops a build (the served one stays). A note or an answer that fails is said, and that paper
 keeps the one it had. The notes need EVIDENTRON_LLM_URL (and EVIDENTRON_API_KEY) and the answers ANTHROPIC_API_KEY in
-the worker's environment, as the weft steps do; the answers run on EVIDENTRON_PYTHON from Evidentron's folder, where
+the worker's environment, as the crosswalk steps do; the answers run on EVIDENTRON_PYTHON from Evidentron's folder, where
 its evidentron.yaml is.
 
 Usage (on the preprint server, from api/):
@@ -43,8 +43,8 @@ CARRIED = ("notes", "moments")               # written per paper, so carried fro
 # turn); each is saved as it is written, so a step stopped at its limit loses nothing and the next build goes on.
 TIME_LIMITS = {"crawl": 1200, "notes": 3 * 3600, "moment": 3 * 3600}
 LOCK_WAIT = 7200                             # a build waits this long for another to finish
-# The self-hosted model answers one request at a time, so the notes take its slot (the lock file the weft steps take,
-# evidentron/frames/slot.py), waiting this long for it.
+# The self-hosted model answers one request at a time, so the notes take its slot (the lock file the crosswalk steps take,
+# evidentron/crosswalk/slot.py), waiting this long for it.
 LLM_WAIT = 3600
 BUILD_SECONDS = LOCK_WAIT + LLM_WAIT + sum(TIME_LIMITS.values()) + 120
 

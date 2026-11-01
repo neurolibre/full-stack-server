@@ -192,8 +192,8 @@ def make_extras(root):
     extras = root / "site"
     (extras / "terms").mkdir(parents=True)
     (extras / "terms" / "index.html").write_text("<html>terms</html>")
-    (extras / "wefts" / "10.55458" / "neurolibre.00004").mkdir(parents=True)
-    (extras / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").write_text("{}")
+    (extras / "crosswalks" / "10.55458" / "neurolibre.00004").mkdir(parents=True)
+    (extras / "crosswalks" / "10.55458" / "neurolibre.00004" / "fair2.json").write_text("{}")
     (extras / "dois").mkdir()
     (extras / "dois" / "x.json").write_text("{}")
     (extras / "index.json").write_text("[]")
@@ -206,7 +206,7 @@ def test_the_build_carries_evidentrons_site_at_the_same_paths(tmp_path, two_site
     report = myst_cdn.build(two_sites, out, extras=extras)
     assert report["extras"] is True
     assert (out / "terms" / "index.html").read_text() == "<html>terms</html>"
-    assert (out / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
+    assert (out / "crosswalks" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
     assert (out / "dois" / "x.json").exists()
     assert (out / "index.json").exists()
 
@@ -311,7 +311,7 @@ def test_the_extras_link_is_resolved_once(tmp_path, two_sites, monkeypatch):
     out = tmp_path / "cdn"
     myst_cdn.build(two_sites, out, extras=link)
     assert (out / "terms" / "index.html").read_text() == "<html>terms</html>"
-    assert (out / "wefts" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
+    assert (out / "crosswalks" / "10.55458" / "neurolibre.00004" / "fair2.json").exists()
     assert (out / "index.json").exists()
 
 

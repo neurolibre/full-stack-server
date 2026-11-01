@@ -1,4 +1,4 @@
-"""The three weft endpoints, through Flask's test client, with the htpasswd check replaced and each task's apply_async faked."""
+"""The three crosswalk endpoints, through Flask's test client, with the htpasswd check replaced and each task's apply_async faked."""
 
 import re
 from types import SimpleNamespace
@@ -7,12 +7,12 @@ import pytest
 
 import neurolibre_preprint_api as api
 import screening_client
-import weft_messages
+import crosswalk_messages
 
 ROUTES = {
-    "/api/weft/draft": ("weft_draft_task", "WEFT DRAFT"),
-    "/api/weft/check": ("weft_check_task", "WEFT CHECK"),
-    "/api/weft/confirm": ("weft_confirm_task", "WEFT CONFIRM"),
+    "/api/crosswalk/draft": ("crosswalk_draft_task", "CROSSWALK DRAFT"),
+    "/api/crosswalk/check": ("crosswalk_check_task", "CROSSWALK CHECK"),
+    "/api/crosswalk/confirm": ("crosswalk_confirm_task", "CROSSWALK CONFIRM"),
 }
 REPO = "https://github.com/someone/paper-repo"
 
@@ -86,22 +86,22 @@ def _description(view):
 
 
 def test_the_options_are_described():
-    schema = api.WeftSchema().fields
+    schema = api.CrosswalkSchema().fields
     assert set(schema) == {"id", "repository_url", "fields", "comment_id", "at"}
     assert "confirm" in schema["fields"].metadata["description"].lower()
     assert "draft" not in schema["fields"].metadata["description"].lower()
     for key in ("comment_id", "at"):
         assert "comment" in schema[key].metadata["description"]
-    assert "submitted" not in _description(api.weft_check_post)
-    for view in (api.weft_draft_post, api.weft_check_post, api.weft_confirm_post):
+    assert "submitted" not in _description(api.crosswalk_check_post)
+    for view in (api.crosswalk_draft_post, api.crosswalk_check_post, api.crosswalk_confirm_post):
         text = _description(view)
-        assert "fork" not in text and "weft" not in re.sub(r"`[^`]*`", "", text)    # only in the commands
+        assert "fork" not in text and "crosswalk" not in re.sub(r"`[^`]*`", "", text)    # only in the commands
         assert "on the server" in text and "—" not in text
 
 
 def test_the_confirm_endpoint_says_who_confirms_in_the_one_sentence():
-    text = _description(api.weft_confirm_post)
-    assert weft_messages.WHO_CONFIRMS in text
+    text = _description(api.crosswalk_confirm_post)
+    assert crosswalk_messages.WHO_CONFIRMS in text
     assert ("The confirmation is recorded under the name of the author of that comment, who must be the paper's "
             "author or the issue's editor.") in text
     assert "without `at`" not in text

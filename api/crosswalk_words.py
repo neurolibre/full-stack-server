@@ -1,16 +1,16 @@
 """The two text helpers the steps and the comments share, so that a sentence a person reads says "description" and
-never "weft" outside a command or a file name, whichever module wrote it. No em dashes."""
+never "crosswalk" outside a command or a file name, whichever module wrote it. No em dashes."""
 
 import re
 
-# "weft" as a word, but not in a command (`@roboneuro weft check`, evidentron.weft) or a file name (x.weft.yaml).
-_WEFT = re.compile(r"(?<!roboneuro )(?<![\w.`/-])weft(s?)(?=['\s,;:)!?]|\.(?!\w)|$)")
+# "crosswalk" as a word, but not in a command (`@roboneuro crosswalk check`, evidentron.crosswalk) or a file name (x.crosswalk.yaml).
+_CROSSWALK = re.compile(r"(?<!roboneuro )(?<![\w.`/-])crosswalk(s?)(?=['\s,;:)!?]|\.(?!\w)|$)")
 
 
 def plain(text: str) -> str:
-    """A sentence from a step or a command, with "weft" written as "description", since the comment explains
+    """A sentence from a step or a command, with "crosswalk" written as "description", since the comment explains
     the description and never the word."""
-    return _WEFT.sub(r"description\1", str(text))
+    return _CROSSWALK.sub(r"description\1", str(text))
 
 
 def lower_first(text: str) -> str:

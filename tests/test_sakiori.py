@@ -109,7 +109,7 @@ def test_the_notes_wait_for_the_self_hosted_models_slot_and_say_when_it_stays_bu
     import fcntl
     lock = tmp_path / "evidentron" / "llm.lock"
     lock.parent.mkdir(parents=True)
-    with open(lock, "w") as held:                     # a weft step is using the model
+    with open(lock, "w") as held:                     # a crosswalk step is using the model
         fcntl.flock(held, fcntl.LOCK_EX)
         steps = Steps()
         got = sakiori.build(["00052"], root=tmp_path / "sakiori", evidentron=tmp_path / "evidentron", run=steps,

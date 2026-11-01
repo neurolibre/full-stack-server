@@ -148,11 +148,11 @@ def add_site(name: str, version: str, src: Path, root: Path = CDN_ROOT,
 
 
 def _place_extras(extras: Path, out: Path) -> None:
-    """Link Evidentron's terms/, wefts/, dois/ and index.json into out at the same paths. extras is usually a link
+    """Link Evidentron's terms/, crosswalks/, dois/ and index.json into out at the same paths. extras is usually a link
     to Evidentron's newest build folder, which a publish can swap at any time: it is resolved once, so every file
     comes from the same build."""
     extras = Path(os.path.realpath(extras))
-    for entry in ("terms", "wefts", "dois", "index.json"):
+    for entry in ("terms", "crosswalks", "dois", "index.json"):
         src = extras / entry
         files = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
         for f in files:

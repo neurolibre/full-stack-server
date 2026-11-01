@@ -1,6 +1,6 @@
 """What the tests of the api folder share: the import setup, and the fakes of a task and of Evidentron's results.
 
-The api modules import each other by their plain names (`import weft_steps`) and read config/*.yaml relative to
+The api modules import each other by their plain names (`import crosswalk_steps`) and read config/*.yaml relative to
 the api folder, so the folder goes on sys.path and the modules the tests use are imported from inside it, once.
 A test imports them by the same plain names, so it patches the module the code under test uses.
 """
@@ -26,8 +26,8 @@ sys.path.insert(0, str(API))
 _here = os.getcwd()
 os.chdir(API)
 try:
-    import neurolibre_celery_tasks      # noqa: F401  (registers the weft tasks, as the worker does)
-    import weft_tasks                    # noqa: F401
+    import neurolibre_celery_tasks      # noqa: F401  (registers the crosswalk tasks, as the worker does)
+    import crosswalk_tasks                    # noqa: F401
     import neurolibre_preprint_api       # noqa: F401
     import screening_client              # noqa: F401
 finally:
@@ -37,11 +37,11 @@ from task_outcome import TaskFailed
 
 DOI = "10.55458/neurolibre.00041"
 
-# The keys every result of an Evidentron command has, and those of each command (evidentron/frames/result.py).
+# The keys every result of an Evidentron command has, and those of each command (evidentron/crosswalk/result.py).
 COMMON = {"ok": True, "errors": [], "warnings": [], "notes": []}
 EXTRA = {
-    "profile": {"weft": None, "profiles": None, "problems": [], "drafted_by": None, "summary": []},
-    "explore": {"weft": None, "profiles": None, "problems": [], "drafted_by": None, "summary": []},
+    "profile": {"crosswalk": None, "profiles": None, "problems": [], "drafted_by": None, "summary": []},
+    "explore": {"crosswalk": None, "profiles": None, "problems": [], "drafted_by": None, "summary": []},
     "check": {"unreadable": None},
     "confirm": {"unreadable": None, "version": None, "modified": None, "confirmed": [], "applied": [], "terms": []},
     "load": {"fields": 0, "paper": None},
@@ -89,7 +89,7 @@ class FakeTask:
 
 
 class FakeGitHub:
-    """The GitHub client a task is given. The weft tasks reach GitHub only through the read helpers the tests
+    """The GitHub client a task is given. The crosswalk tasks reach GitHub only through the read helpers the tests
     replace, so every use of the client itself is recorded: a test can say it was never used."""
     current = None
 

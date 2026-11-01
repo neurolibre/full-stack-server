@@ -1,11 +1,11 @@
 """The description of a paper's data: draft, check and confirm, as celery tasks that report on the review issue.
 
-The steps themselves are in weft_steps and the texts in weft_messages; the tasks add the places on this server and
+The steps themselves are in crosswalk_steps and the texts in crosswalk_messages; the tasks add the places on this server and
 the comment. The server is the place of record for the descriptions: the only thing these tasks write on GitHub is
 the comment on the review issue, and the paper's repository is only read, cloned at its published commit.
 
-The celery module imports this one at its end, which registers the tasks on its app under their old names
-(neurolibre_celery_tasks.weft_*_task), so a message queued before the move still reaches its task.
+The celery module imports this one at its end, which registers the tasks on its app under the
+celery module's names (neurolibre_celery_tasks.crosswalk_*_task), as the app's other production tasks are named.
 """
 
 import contextlib
@@ -22,20 +22,20 @@ from task_outcome import TaskFailed
 from github import GithubException, UnknownObjectException
 
 import myst_cdn
-import weft_messages as say
-import weft_steps
+import crosswalk_messages as say
+import crosswalk_steps
 from github_client import gh_clone_repository, gh_get_issue_comment, gh_get_project_name, gh_read_from_issue_body
 from neurolibre_celery_tasks import (BaseNeuroLibreTask, DATA_NFS_PATH, DOI_PREFIX, DOI_SUFFIX, GH_ORGANIZATION,
                                      _published_commit, celery_app, handle_soft_timeout)
 
-# The places on the server are weft_steps' (EVIDENTRON_PATH, WEFTS_PATH, GRAPH_DB_PATH, SITE_PATH, the store's lock).
-EVIDENTRON_PATH = str(weft_steps.EVIDENTRON_PATH)
-GRAPH_DB_PATH = str(weft_steps.GRAPH_DB_PATH)
-WEFTS_PATH = str(weft_steps.WEFTS_PATH)
+# The places on the server are crosswalk_steps' (EVIDENTRON_PATH, CROSSWALKS_PATH, GRAPH_DB_PATH, SITE_PATH, the store's lock).
+EVIDENTRON_PATH = str(crosswalk_steps.EVIDENTRON_PATH)
+GRAPH_DB_PATH = str(crosswalk_steps.GRAPH_DB_PATH)
+CROSSWALKS_PATH = str(crosswalk_steps.CROSSWALKS_PATH)
 REPOS_PATH = os.path.join(EVIDENTRON_PATH, "repos")
 LLM_LOCK_PATH = os.path.join(EVIDENTRON_PATH, "llm.lock")
 EVIDENTRON_CONFIG = os.path.join(EVIDENTRON_PATH, "evidentron.yaml")
-EVIDENTRON_SITE_PATH = str(weft_steps.SITE_PATH)
+EVIDENTRON_SITE_PATH = str(crosswalk_steps.SITE_PATH)
 CDN_CURRENT_PATH = str(myst_cdn.CDN_CURRENT)
 HARD_MARGIN = 600               # the hard time limit of a task: its soft limit, then this long to say why it stopped
 BACKEND_KEYS = ("draft", "redraft", "terms")
@@ -46,16 +46,16 @@ YAML_BLOCK = re.compile(r"^[ \t]*(`{3,})[ \t]*(?:yaml|yml)[ \t]*\n(.*?)^[ \t]*\1
 MAX_DRAFT_IN_COMMENT = 60000
 
 
-def _weft_backends(task):
-    """The backends for drafting, redrafting and linking terms, from `weft: backend:` in the server's Evidentron
+def _crosswalk_backends(task):
+    """The backends for drafting, redrafting and linking terms, from `crosswalk: backend:` in the server's Evidentron
     config; a key it lacks fails the task with one sentence."""
     try:
         with open(EVIDENTRON_CONFIG) as f:
             config = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError):
         config = {}
-    weft = config.get("weft") if isinstance(config, dict) else None
-    found = weft.get("backend") if isinstance(weft, dict) else None
+    crosswalk = config.get("crosswalk") if isinstance(config, dict) else None
+    found = crosswalk.get("backend") if isinstance(crosswalk, dict) else None
     found = found if isinstance(found, dict) else {}
     for key in BACKEND_KEYS:
         if not found.get(key):
@@ -63,11 +63,11 @@ def _weft_backends(task):
     return {key: str(found[key]) for key in BACKEND_KEYS}
 
 
-def _weft_paper(task):
+def _crosswalk_paper(task):
     """What every task needs: the paper's DOI, its stem, the data folder, the work folder and the file names."""
     issue_id = task.screening.issue_id
     doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
-    stem = weft_steps._stem(doi)
+    stem = crosswalk_steps._stem(doi)
     try:
         project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
     except (GithubException, requests.RequestException) as e:
@@ -78,28 +78,28 @@ def _weft_paper(task):
     data_dir = os.path.join(DATA_NFS_PATH, project_name)
     if not os.path.isdir(data_dir):
         task.fail(say.data_missing(project_name))
-    work = os.path.join(WEFTS_PATH, stem)
+    work = os.path.join(CROSSWALKS_PATH, stem)
     os.makedirs(work, exist_ok=True)
     return SimpleNamespace(doi=doi, stem=stem, data_dir=data_dir, work=work,
-                           weft_name=f"{stem}.weft.yaml", profiles_name=f"{stem}.profiles.json")
+                           crosswalk_name=f"{stem}.crosswalk.yaml", profiles_name=f"{stem}.profiles.json")
 
 
-def _server_weft(task, paper):
-    """The weft and its profiles from the server, in the work folder: a copy of the flat confirmed weft and its
+def _server_crosswalk(task, paper):
+    """The crosswalk and its profiles from the server, in the work folder: a copy of the flat confirmed crosswalk and its
     profiles when there is one (so a failed step never touches the confirmed copy), else the draft. Fails with a
-    sentence when the weft or its profiles are missing."""
-    weft = os.path.join(paper.work, paper.weft_name)
+    sentence when the crosswalk or its profiles are missing."""
+    crosswalk = os.path.join(paper.work, paper.crosswalk_name)
     profiles = os.path.join(paper.work, paper.profiles_name)
-    confirmed = os.path.join(WEFTS_PATH, paper.weft_name)
+    confirmed = os.path.join(CROSSWALKS_PATH, paper.crosswalk_name)
     if os.path.isfile(confirmed):
-        confirmed_profiles = os.path.join(WEFTS_PATH, paper.profiles_name)
+        confirmed_profiles = os.path.join(CROSSWALKS_PATH, paper.profiles_name)
         if not os.path.isfile(confirmed_profiles):
             task.fail(say.CONFIRMED_WITHOUT_PROFILES)
-        shutil.copyfile(confirmed, weft)
+        shutil.copyfile(confirmed, crosswalk)
         shutil.copyfile(confirmed_profiles, profiles)
-    if not (os.path.isfile(weft) and os.path.isfile(profiles)):
+    if not (os.path.isfile(crosswalk) and os.path.isfile(profiles)):
         task.fail(say.NO_DRAFT)
-    return weft, profiles
+    return crosswalk, profiles
 
 
 def _github_reason(e):
@@ -125,20 +125,20 @@ def _errors_as_sentences(task):
 
 @contextlib.contextmanager
 def _store_lock(task):
-    """Hold the store's lock (weft_steps.store_lock) while the store, the vocabulary or the site is written; another
-    task waits its turn. A wait beyond weft_steps.STORE_LOCK_WAIT fails the task with one sentence."""
+    """Hold the store's lock (crosswalk_steps.store_lock) while the store, the vocabulary or the site is written; another
+    task waits its turn. A wait beyond crosswalk_steps.STORE_LOCK_WAIT fails the task with one sentence."""
     with contextlib.ExitStack() as stack:
         try:
-            stack.enter_context(weft_steps.store_lock())
+            stack.enter_context(crosswalk_steps.store_lock())
         except TimeoutError:
-            task.fail(say.store_busy(myst_cdn.duration(weft_steps.STORE_LOCK_WAIT)))
+            task.fail(say.store_busy(myst_cdn.duration(crosswalk_steps.STORE_LOCK_WAIT)))
         yield
 
 
 def _load_paper(task, paper, run):
     """Load the paper from the local CDN into the store, so the store has what the issue has now (the data
     archive DOI minted after a draft among it). Call it with the store lock held."""
-    sentence = weft_steps.load_paper(paper.doi, Path(CDN_CURRENT_PATH), Path(GRAPH_DB_PATH), run)
+    sentence = crosswalk_steps.load_paper(paper.doi, Path(CDN_CURRENT_PATH), Path(GRAPH_DB_PATH), run)
     if sentence:
         task.fail(say.not_loaded(sentence))
 
@@ -158,7 +158,7 @@ def _published_clone(task, paper):
     shutil.rmtree(target, ignore_errors=True)
     try:
         gh_clone_repository(f"https://github.com/{fork_name}", target, depth=None, commit=commit,
-                            timeout=weft_steps.CLONE_TIMEOUT)
+                            timeout=crosswalk_steps.CLONE_TIMEOUT)
     except Exception as e:
         lines = [line.strip() for line in str(e).strip().split("\n") if line.strip()]
         why = say.end(lines[-1] if lines else e.__class__.__name__)
@@ -225,35 +225,35 @@ def _write_submission(paper, text):
 
 def draft(task):
     task.start("Describing the paper's data")
-    paper = _weft_paper(task)
-    if os.path.isfile(os.path.join(WEFTS_PATH, paper.weft_name)):
+    paper = _crosswalk_paper(task)
+    if os.path.isfile(os.path.join(CROSSWALKS_PATH, paper.crosswalk_name)):
         task.fail(say.ALREADY_CONFIRMED)
-    backends = _weft_backends(task)
-    replaced = os.path.isfile(os.path.join(paper.work, paper.weft_name))
-    repo_dir = _published_clone(task, paper)          # the earlier draft stays until weft_steps.draft replaces it
-    run = weft_steps.subprocess_runner(Path(paper.work))
+    backends = _crosswalk_backends(task)
+    replaced = os.path.isfile(os.path.join(paper.work, paper.crosswalk_name))
+    repo_dir = _published_clone(task, paper)          # the earlier draft stays until crosswalk_steps.draft replaces it
+    run = crosswalk_steps.subprocess_runner(Path(paper.work))
     with _store_lock(task):
         _load_paper(task, paper, run)
 
-    result = weft_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
+    result = crosswalk_steps.draft(paper.doi, Path(paper.data_dir), Path(repo_dir), Path(paper.work), backends,
                               Path(LLM_LOCK_PATH), run)
-    if not (result.weft.exists() and result.profiles.exists()) or (result.problems and not result.summary):
+    if not (result.crosswalk.exists() and result.profiles.exists()) or (result.problems and not result.summary):
         task.fail(say.not_drafted(result.problems))
     logging.info(f"The data of {paper.doi} was drafted by {result.drafted_by}"
                  + (f" ({result.model})" if result.model else "")
                  + (f", because {result.reason}" if result.reason else ""))
 
     with _store_lock(task):
-        linked = weft_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
+        linked = crosswalk_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)
     terms = say.terms_sentence(linked.linked, linked.labels, linked.failure)
-    text = result.weft.read_text()
+    text = result.crosswalk.read_text()
 
     def comment(inside):
         return say.draft_comment(result.summary, terms, say.example(text), inside, result.problems,
                                  result.warnings, replaced=replaced, check_failure=result.check_failure)
     message = comment(say.draft_block(text))
     if len(message) > MAX_DRAFT_IN_COMMENT:
-        message = comment(say.too_long(paper.weft_name))
+        message = comment(say.too_long(paper.crosswalk_name))
     task.succeed(message, collapsable=False)
     return f"Drafted the description of the data of {paper.doi} with {result.drafted_by}"
 
@@ -261,10 +261,10 @@ def draft(task):
 def check(task):
     task.start("Checking the description of the paper's data")
     login, block, source = _corrections(task)         # anyone's block may be checked
-    paper = _weft_paper(task)
-    weft, profiles = _server_weft(task, paper)
+    paper = _crosswalk_paper(task)
+    crosswalk, profiles = _server_crosswalk(task, paper)
     submission = _write_submission(paper, block)
-    result = weft_steps.check(Path(weft), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH),
+    result = crosswalk_steps.check(Path(crosswalk), Path(profiles), Path(paper.data_dir), db=Path(GRAPH_DB_PATH),
                               submission=submission)
     corrections = source if submission else None
     if result.failure:
@@ -299,15 +299,15 @@ def confirm(task):
     author, editor = _issue_author(task), _issue_editor(task)
     if by.lower() not in {name.lower() for name in (author, editor) if name}:
         task.fail(say.not_allowed(author, editor, source, by, corrections=block is not None))
-    paper = _weft_paper(task)
-    weft, profiles = _server_weft(task, paper)
+    paper = _crosswalk_paper(task)
+    crosswalk, profiles = _server_crosswalk(task, paper)
     submission = _write_submission(paper, block)
     with _store_lock(task):
         # The store gets the paper as it is now, the data archive DOI minted after the draft among it.
-        _load_paper(task, paper, weft_steps.subprocess_runner(Path(paper.work)))
-        result = weft_steps.confirm(Path(weft), Path(profiles), by, fields, submission,
+        _load_paper(task, paper, crosswalk_steps.subprocess_runner(Path(paper.work)))
+        result = crosswalk_steps.confirm(Path(crosswalk), Path(profiles), by, fields, submission,
                                     Path(paper.data_dir), Path(EVIDENTRON_SITE_PATH), Path(GRAPH_DB_PATH),
-                                    record=Path(WEFTS_PATH))
+                                    record=Path(CROSSWALKS_PATH))
         reply = source if (submission or getattr(screening, "at", None) is not None) else None
         if result.errors and result.confirmed:
             task.fail(say.confirmed_not_published(result.version, result.errors, again_at=reply))
@@ -325,31 +325,31 @@ def confirm(task):
     return f"Confirmed the description of the data of {paper.doi}"
 
 
-# The tasks, under the names they had in the celery module. Their soft time limits are the sums of the steps they run
-# at their own limits (weft_steps.DRAFT_SECONDS, CHECK_SECONDS, CONFIRM_SECONDS).
+# The tasks, named as in the celery module. Their soft time limits are the sums of the steps they run
+# at their own limits (crosswalk_steps.DRAFT_SECONDS, CHECK_SECONDS, CONFIRM_SECONDS).
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_draft_task", soft_time_limit=weft_steps.DRAFT_SECONDS,
-                 time_limit=weft_steps.DRAFT_SECONDS + HARD_MARGIN)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_draft_task", soft_time_limit=crosswalk_steps.DRAFT_SECONDS,
+                 time_limit=crosswalk_steps.DRAFT_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
-def weft_draft_task(self, screening_dict):
+def crosswalk_draft_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     with _errors_as_sentences(task):
         return draft(task)
 
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_check_task", soft_time_limit=weft_steps.CHECK_SECONDS,
-                 time_limit=weft_steps.CHECK_SECONDS + HARD_MARGIN)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_check_task", soft_time_limit=crosswalk_steps.CHECK_SECONDS,
+                 time_limit=crosswalk_steps.CHECK_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
-def weft_check_task(self, screening_dict):
+def crosswalk_check_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     with _errors_as_sentences(task):
         return check(task)
 
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.weft_confirm_task",
-                 soft_time_limit=weft_steps.CONFIRM_SECONDS, time_limit=weft_steps.CONFIRM_SECONDS + HARD_MARGIN)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_confirm_task",
+                 soft_time_limit=crosswalk_steps.CONFIRM_SECONDS, time_limit=crosswalk_steps.CONFIRM_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
-def weft_confirm_task(self, screening_dict):
+def crosswalk_confirm_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
     with _errors_as_sentences(task):
         return confirm(task)
