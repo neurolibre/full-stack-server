@@ -15,6 +15,11 @@ Sakiori's walks read the index at their next build (POST /api/sakiori/build).
 
 Each command waits for any task that holds the store, as the tasks wait for each other, and says each thing it did in
 a sentence. The places are crosswalk_steps' own.
+
+Evidentron's commands run on the Python crosswalk_steps finds, as the tasks' do: the one EVIDENTRON_PYTHON names, which
+celery's environment sets; when it is not set, as in a shell, /home/<you>/venv/evidentron/bin/python, where the
+server's provisioning installs Evidentron, if that file exists; else the Python running this script, which on the
+server lacks Evidentron (its commands then fail with a sentence saying so). Set EVIDENTRON_PYTHON to use another one.
 """
 
 import argparse

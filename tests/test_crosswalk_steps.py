@@ -3,6 +3,7 @@ prints. Tested with a fake that writes what a command would and answers with the
 
 import json
 import os
+import pwd
 import sys
 import time
 from pathlib import Path
@@ -426,7 +427,26 @@ def test_the_commands_run_on_evidentrons_python(dirs, monkeypatch):
     assert crosswalk_steps.crosswalk_command()[0] == "/opt/evidentron/bin/python"
     assert crosswalk_steps.data_cli_command() == ["/opt/evidentron/bin/python", "-m", "evidentron.cli.data_cli"]
     monkeypatch.delenv("EVIDENTRON_PYTHON")
+    monkeypatch.setattr(crosswalk_steps, "PROVISIONED_PYTHON", str(work / "nowhere" / "{user}" / "python"))
     assert crosswalk_steps.graph_command() == [sys.executable, "-m", "evidentron.graph"]
+
+
+def test_without_evidentron_python_the_commands_run_on_the_provisioned_python(tmp_path, monkeypatch):
+    """A person running crosswalk_admin.py in a shell has no EVIDENTRON_PYTHON: the commands then run on the Python
+    the provisioning installs for that user, /home/<user>/venv/evidentron/bin/python, when it exists."""
+    monkeypatch.delenv("EVIDENTRON_PYTHON", raising=False)
+    monkeypatch.setattr(crosswalk_steps, "PROVISIONED_PYTHON", str(tmp_path / "{user}" / "venv" / "python"))
+    provisioned = tmp_path / pwd.getpwuid(os.geteuid()).pw_name / "venv" / "python"
+    assert crosswalk_steps.crosswalk_command()[0] == sys.executable            # not there yet
+    provisioned.parent.mkdir(parents=True)
+    provisioned.write_text("")
+    assert crosswalk_steps.crosswalk_command() == [str(provisioned), "-m", "evidentron.crosswalk"]
+    monkeypatch.setenv("EVIDENTRON_PYTHON", "/opt/evidentron/bin/python")    # the environment's still comes first
+    assert crosswalk_steps.crosswalk_command()[0] == "/opt/evidentron/bin/python"
+
+
+def test_the_provisioned_python_is_the_ansible_roles_default():
+    assert crosswalk_steps.PROVISIONED_PYTHON == "/home/{user}/venv/evidentron/bin/python"
 
 
 def test_confirm_keeps_the_confirmed_crosswalk_in_the_flat_folder(dirs):

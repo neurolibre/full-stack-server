@@ -7,13 +7,16 @@ every failure is a sentence for the caller. `run` takes an argv and returns (exi
 replace it; the output's `.stdout` holds the JSON object and its `.stderr` what the command printed for a person.
 
 The commands run on the Python named by EVIDENTRON_PYTHON in the worker's environment (Evidentron's own virtual
-environment), else on this one; it is read when a command is built, not when this module is imported.
+environment); without it, on the Python of the virtual environment the server's provisioning installs Evidentron in,
+/home/<user>/venv/evidentron/bin/python for the user running this, when that file exists (an editor running
+crosswalk_admin.py by hand); else on this one. It is read when a command is built, not when this module is imported.
 """
 
 import contextlib
 import json
 from collections import Counter
 import os
+import pwd
 import shutil
 import signal
 import subprocess
@@ -72,8 +75,17 @@ def store_lock():
     return myst_cdn.held(Path(STORE_LOCK_PATH), STORE_LOCK_WAIT, "another task kept the paper store busy")
 
 
+# Where the server's provisioning installs Evidentron (the Ansible role's evidentron_venv), for the user running this.
+PROVISIONED_PYTHON = "/home/{user}/venv/evidentron/bin/python"
+
+
 def _python() -> str:
-    return os.environ.get("EVIDENTRON_PYTHON") or sys.executable
+    """EVIDENTRON_PYTHON when it is set, else the provisioned Python when it exists, else this Python."""
+    named = os.environ.get("EVIDENTRON_PYTHON")
+    if named:
+        return named
+    provisioned = PROVISIONED_PYTHON.format(user=pwd.getpwuid(os.geteuid()).pw_name)
+    return provisioned if os.path.isfile(provisioned) else sys.executable
 
 
 def crosswalk_command() -> List[str]:

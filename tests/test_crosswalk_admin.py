@@ -1,6 +1,9 @@
 """The editor's commands on the server, without a task: reset (start a paper's crosswalk over) and publish."""
 
 import fcntl
+import json
+import os
+import pwd
 import subprocess
 import sys
 
@@ -103,6 +106,29 @@ def test_publish_publishes_evidentrons_site_again_and_rebuilds_the_cdn(server, c
     assert server.publishes == [(crosswalk_steps.SITE_PATH, crosswalk_steps.GRAPH_DB_PATH)] and server.rebuilds == [True]
     said = capsys.readouterr().out
     assert "published again" in said and "rebuilt" in said
+
+
+def test_publish_without_evidentron_python_runs_on_the_provisioned_python(tmp_path, monkeypatch, capsys):
+    """Run by hand, the command has no EVIDENTRON_PYTHON: Evidentron's publish runs on the provisioned Python."""
+    monkeypatch.delenv("EVIDENTRON_PYTHON", raising=False)
+    monkeypatch.setattr(crosswalk_steps, "PROVISIONED_PYTHON", str(tmp_path / "{user}" / "python"))
+    provisioned = tmp_path / pwd.getpwuid(os.geteuid()).pw_name / "python"
+    provisioned.parent.mkdir()
+    provisioned.write_text("")
+    monkeypatch.setattr(crosswalk_steps, "STORE_LOCK_PATH", tmp_path / "store.lock")
+    monkeypatch.setattr(crosswalk_steps, "GRAPH_DB_PATH", tmp_path / "graph.db")
+    ran = []
+    monkeypatch.setattr(crosswalk_steps, "subprocess_runner",
+                        lambda work: lambda argv: ran.append(argv) or (0, json.dumps({"ok": True})))
+    monkeypatch.setattr(crosswalk_admin.myst_cdn, "rebuild", lambda: {})
+    assert crosswalk_admin.main(["publish"]) == 0
+    assert [argv[:3] for argv in ran] == [[str(provisioned), "-m", "evidentron.cli.data_cli"]]
+    assert "Evidentron's site was published again." in capsys.readouterr().out
+
+
+def test_the_admin_says_how_it_finds_evidentrons_python():
+    assert "EVIDENTRON_PYTHON" in crosswalk_admin.__doc__
+    assert "/home/<you>/venv/evidentron/bin/python" in crosswalk_admin.__doc__
 
 
 def test_a_publish_that_fails_rebuilds_nothing_and_says_why(server, capsys):
