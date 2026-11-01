@@ -242,8 +242,8 @@ def _stem(doi: str) -> str:
 
 def check(crosswalk: Path, profiles: Path, data_dir: Path, run: Optional[Run] = None,
           db: Optional[Path] = None, submission: Optional[Path] = None) -> CheckResult:
-    """Check a crosswalk against the profiles and the data; with a submission, the crosswalk as the submission would leave it
-    (nothing is written). `unreadable` is the command's sentence when the crosswalk cannot be read."""
+    """Check a crosswalk against the profiles and the data; with a submission, the crosswalk as the submission would
+    leave it (nothing is written). `unreadable` is the command's sentence when the crosswalk cannot be read."""
     run = run or subprocess_runner(Path(crosswalk).parent)
     argv = crosswalk_command() + ["check", str(crosswalk), "--profiles", str(profiles), "--data", str(data_dir), "--json"]
     if db:
@@ -518,8 +518,8 @@ class ResetResult:
 
 def reset(doi: str, crosswalks: Path, db: Path, site: Path, run: Optional[Run] = None) -> ResetResult:
     """Start a paper's crosswalk over: move its confirmed crosswalk aside as <stem>.crosswalk.yaml.previous (the next
-    confirmation measures its version against it), remove its profiles and the work copy <crosswalks>/<stem>/ (so a later
-    check or confirmation cannot act on it), and publish Evidentron's site again as a confirmation does, which
+    confirmation measures its version against it), remove its profiles and the work copy <crosswalks>/<stem>/ (so a
+    later check or confirmation cannot act on it), and publish Evidentron's site again as a confirmation does, which
     builds it without the paper's documents and the terms only they used. The caller rebuilds the CDN.
 
     The paper's rows stay in the store (db): Evidentron has no command to remove them, and the next load of the

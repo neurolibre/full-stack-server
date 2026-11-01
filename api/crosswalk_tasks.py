@@ -1,8 +1,8 @@
 """The crosswalk of a paper's data: draft, check and confirm, as celery tasks that report on the review issue.
 
-The steps themselves are in crosswalk_steps and the texts in crosswalk_messages; the tasks add the places on this server and
-the comment. The server is the place of record for the crosswalks: the only thing these tasks write on GitHub is
-the comment on the review issue, and the paper's repository is only read, cloned at its published commit.
+The steps themselves are in crosswalk_steps and the texts in crosswalk_messages; the tasks add the places on this
+server and the comment. The server is the place of record for the crosswalks: the only thing these tasks write on
+GitHub is the comment on the review issue, and the paper's repository is only read, cloned at its published commit.
 
 The celery module imports this one at its end, which registers the tasks on its app under the
 celery module's names (neurolibre_celery_tasks.crosswalk_*_task), as the app's other production tasks are named.
@@ -28,7 +28,8 @@ from github_client import gh_clone_repository, gh_get_issue_comment, gh_get_proj
 from neurolibre_celery_tasks import (BaseNeuroLibreTask, DATA_NFS_PATH, DOI_PREFIX, DOI_SUFFIX, GH_ORGANIZATION,
                                      _published_commit, celery_app, handle_soft_timeout)
 
-# The places on the server are crosswalk_steps' (EVIDENTRON_PATH, CROSSWALKS_PATH, GRAPH_DB_PATH, SITE_PATH, the store's lock).
+# The places on the server are crosswalk_steps' (EVIDENTRON_PATH, CROSSWALKS_PATH, GRAPH_DB_PATH, SITE_PATH, the
+# store's lock).
 EVIDENTRON_PATH = str(crosswalk_steps.EVIDENTRON_PATH)
 GRAPH_DB_PATH = str(crosswalk_steps.GRAPH_DB_PATH)
 CROSSWALKS_PATH = str(crosswalk_steps.CROSSWALKS_PATH)
@@ -85,8 +86,8 @@ def _crosswalk_paper(task):
 
 
 def _server_crosswalk(task, paper):
-    """The crosswalk and its profiles from the server, in the work folder: a copy of the flat confirmed crosswalk and its
-    profiles when there is one (so a failed step never touches the confirmed copy), else the draft. Fails with a
+    """The crosswalk and its profiles from the server, in the work folder: a copy of the flat confirmed crosswalk and
+    its profiles when there is one (so a failed step never touches the confirmed copy), else the draft. Fails with a
     sentence when the crosswalk or its profiles are missing."""
     crosswalk = os.path.join(paper.work, paper.crosswalk_name)
     profiles = os.path.join(paper.work, paper.profiles_name)
@@ -125,8 +126,8 @@ def _errors_as_sentences(task):
 
 @contextlib.contextmanager
 def _store_lock(task):
-    """Hold the store's lock (crosswalk_steps.store_lock) while the store, the vocabulary or the site is written; another
-    task waits its turn. A wait beyond crosswalk_steps.STORE_LOCK_WAIT fails the task with one sentence."""
+    """Hold the store's lock (crosswalk_steps.store_lock) while the store, the vocabulary or the site is written;
+    another task waits its turn. A wait beyond crosswalk_steps.STORE_LOCK_WAIT fails the task with one sentence."""
     with contextlib.ExitStack() as stack:
         try:
             stack.enter_context(crosswalk_steps.store_lock())
@@ -328,8 +329,8 @@ def confirm(task):
 # The tasks, named as in the celery module. Their soft time limits are the sums of the steps they run
 # at their own limits (crosswalk_steps.DRAFT_SECONDS, CHECK_SECONDS, CONFIRM_SECONDS).
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_draft_task", soft_time_limit=crosswalk_steps.DRAFT_SECONDS,
-                 time_limit=crosswalk_steps.DRAFT_SECONDS + HARD_MARGIN)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_draft_task",
+                 soft_time_limit=crosswalk_steps.DRAFT_SECONDS, time_limit=crosswalk_steps.DRAFT_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def crosswalk_draft_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -337,8 +338,8 @@ def crosswalk_draft_task(self, screening_dict):
         return draft(task)
 
 
-@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_check_task", soft_time_limit=crosswalk_steps.CHECK_SECONDS,
-                 time_limit=crosswalk_steps.CHECK_SECONDS + HARD_MARGIN)
+@celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_check_task",
+                 soft_time_limit=crosswalk_steps.CHECK_SECONDS, time_limit=crosswalk_steps.CHECK_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def crosswalk_check_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)
@@ -347,7 +348,8 @@ def crosswalk_check_task(self, screening_dict):
 
 
 @celery_app.task(bind=True, name="neurolibre_celery_tasks.crosswalk_confirm_task",
-                 soft_time_limit=crosswalk_steps.CONFIRM_SECONDS, time_limit=crosswalk_steps.CONFIRM_SECONDS + HARD_MARGIN)
+                 soft_time_limit=crosswalk_steps.CONFIRM_SECONDS,
+                 time_limit=crosswalk_steps.CONFIRM_SECONDS + HARD_MARGIN)
 @handle_soft_timeout
 def crosswalk_confirm_task(self, screening_dict):
     task = BaseNeuroLibreTask(self, screening_dict)

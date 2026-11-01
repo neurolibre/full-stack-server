@@ -1,4 +1,4 @@
-"""The steps of a paper's description: each runs the evidentron commands with --json and reads the one object each
+"""The steps of a paper's crosswalk: each runs the evidentron commands with --json and reads the one object each
 prints. Tested with a fake that writes what a command would and answers with the command's JSON."""
 
 import json

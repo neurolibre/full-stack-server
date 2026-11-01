@@ -1,4 +1,4 @@
-"""The three tasks that describe a paper's data, with crosswalk_steps, the GitHub helpers and the data folder faked:
+"""The three tasks of the crosswalk of a paper's data, with crosswalk_steps, the GitHub helpers and the data folder faked:
 nothing touches the network."""
 
 import os

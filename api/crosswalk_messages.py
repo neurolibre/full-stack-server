@@ -36,9 +36,9 @@ REPLACED = "It replaces the earlier draft on the server."
 WHO_CONFIRMS = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an "
                 "author's reply with `@roboneuro crosswalk confirm at <comment id>`.")
 
-CHECKING = ("Anyone can write `@roboneuro crosswalk check at <comment id>` to check a reply with its corrections applied; "
-            "the id is the number at the end of the reply's link. " + WHO_CONFIRMS + " To confirm only some columns, "
-            "add `fields <name>, <name>`.")
+CHECKING = ("Anyone can write `@roboneuro crosswalk check at <comment id>` to check a reply with its corrections "
+            "applied; the id is the number at the end of the reply's link. " + WHO_CONFIRMS + " To confirm only some "
+            "columns, add `fields <name>, <name>`.")
 
 RESET = "an editor runs the reset command on the server"
 
@@ -294,8 +294,8 @@ def data_folder_unknown(reason: Optional[str]) -> str:
 
 
 def no_backend(key: str) -> str:
-    return (f"The server's Evidentron config names no `{key}` backend under `crosswalk: backend:`, so nothing was done. "
-            "Ask an editor to set it.")
+    return (f"The server's Evidentron config names no `{key}` backend under `crosswalk: backend:`, so nothing was "
+            "done. Ask an editor to set it.")
 
 
 def cdn_not_rebuilt(reason: str) -> str:
