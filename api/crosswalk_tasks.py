@@ -244,9 +244,13 @@ def draft(task):
                               Path(LLM_LOCK_PATH), run)
     if not (result.crosswalk.exists() and result.profiles.exists()) or (result.problems and not result.summary):
         task.fail(say.not_drafted(result.problems))
+    u = result.usage
     logging.info(f"The data of {paper.doi} was drafted by {result.drafted_by}"
                  + (f" ({result.model})" if result.model else "")
-                 + (f", because {result.reason}" if result.reason else ""))
+                 + (f", because {result.reason}" if result.reason else "")
+                 + (f", in {u.get('turns', 0)} turns: {u.get('prompt_tokens', 0)} input tokens, "
+                    f"{u.get('cached_tokens', 0)} of them from the cache, and {u.get('answer_tokens', 0)} output "
+                    f"tokens (the turns are in {paper.stem}.explore.log of the work folder)" if u else ""))
 
     with _store_lock(task):
         linked = crosswalk_steps.link_terms(paper.doi, Path(GRAPH_DB_PATH), backends["terms"], run)

@@ -778,3 +778,26 @@ def test_the_archived_commit_comes_from_evidentron_and_is_none_when_the_deposit_
     asked = []
     crosswalk_steps.archived_commit(DOI, run=lambda argv: asked.append(argv) or found(argv))
     assert asked[0][-2:] == ["archived-repository", DOI] and "evidentron.cli.data_cli" in asked[0]
+
+
+# A draft on a paid model is paid for by the token: the server keeps what it cost and each turn's log.
+
+def test_a_draft_keeps_its_turns_log_and_sums_what_each_exploration_cost(dirs):
+    work, data, lock = dirs
+    explores = []
+
+    def explore(argv):
+        explores.append(argv_value(argv, "--backend"))
+        Path(argv_value(argv, "-o")).write_text(CROSSWALK_YAML)
+        usage = {"turns": 10, "prompt_tokens": 50000, "cached_tokens": 40000, "answer_tokens": 2000}
+        out = said("explore", crosswalk=argv_value(argv, "-o"), summary=SUMMARY, usage=usage,
+                   drafted_by={"backend": argv_value(argv, "--backend"), "model": "a-model"},
+                   **({} if len(explores) > 1 else {"ok": False, "errors": ["a.tsv: no term"]}))
+        return (0 if len(explores) > 1 else 1), crosswalk_steps.Output(out, f"step 0: prompt 5000 tokens ({len(explores)})\n")
+
+    result = crosswalk_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert explores == ["openai-compatible", "anthropic-api"]
+    assert result.usage == {"turns": 20, "prompt_tokens": 100000, "cached_tokens": 80000, "answer_tokens": 4000}
+    log = (work / "00041.explore.log").read_text()
+    assert "== explore on openai-compatible" in log and "== explore on anthropic-api" in log
+    assert "step 0: prompt 5000 tokens (1)" in log and "step 0: prompt 5000 tokens (2)" in log

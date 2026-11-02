@@ -221,6 +221,7 @@ class DraftResult:
     summary: List[str] = field(default_factory=list)
     selfhosted: Optional[Path] = None
     model: Optional[str] = None
+    usage: Dict[str, int] = field(default_factory=dict)    # every exploration's turns and tokens, summed
     check_failure: Optional[str] = None   # the sentence when the check of the final draft could not be run
 
 
@@ -280,7 +281,26 @@ def _explore(doi, profiles, crosswalk, backend, data_dir, repo_dir, lock, run) -
         argv += ["--repo", str(repo_dir)]
     if lock:
         argv += ["--lock", str(lock)]
-    return _run(run, argv)
+    code, output = run(argv)
+    _keep_log(Path(crosswalk), backend, output)
+    return outcome(code, output)
+
+
+def _keep_log(crosswalk: Path, backend: str, output) -> None:
+    """Keep what an exploration printed for a person (each turn: its tokens, how many came from the cache, the tools
+    it called) beside the crosswalk as <stem>.explore.log, after a line naming the backend; a redraft adds to it."""
+    log = crosswalk.with_name(crosswalk.name.replace(".crosswalk.yaml", ".explore.log"))
+    try:
+        with open(log, "a") as out:
+            out.write(f"== explore on {backend}\n{getattr(output, 'stderr', '') or ''}\n")
+    except OSError:
+        pass                                     # the log is for reading later; the draft does not depend on it
+
+
+def _add_usage(total: dict, explored: dict) -> None:
+    for key, value in (explored.get("usage") or {}).items():
+        if isinstance(value, int):
+            total[key] = total.get(key, 0) + value
 
 
 def _why_not(explored: dict) -> List[str]:
@@ -347,6 +367,7 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
         result.drafted_by, result.reason = backends["redraft"], why
     explored = _explore(doi, profiles, crosswalk, backends["redraft"] if why else backends["draft"], data_dir, repo_dir,
                         None if why else lock, run)
+    _add_usage(result.usage, explored)
     if not explored["ok"]:
         failure = _why_not(explored)[0]
     else:
@@ -364,6 +385,7 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
             os.replace(crosswalk, selfhosted)
             result.selfhosted = selfhosted
         explored = _explore(doi, profiles, crosswalk, backends["redraft"], data_dir, repo_dir, None, run)
+        _add_usage(result.usage, explored)
         if not explored["ok"]:
             result.problems = _why_not(explored)
             return result
