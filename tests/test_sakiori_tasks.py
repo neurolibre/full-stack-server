@@ -22,7 +22,7 @@ def client(monkeypatch):
 def queued(monkeypatch):
     calls = []
     monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay",
-                        lambda papers: calls.append(papers) or SimpleNamespace(id="task-1"))
+                        lambda papers, **kw: calls.append(papers if not kw else (papers, kw)) or SimpleNamespace(id="task-1"))
     return calls
 
 
@@ -52,13 +52,13 @@ def test_a_walk_that_cannot_be_queued_is_said_not_raised(monkeypatch):
 
 
 def test_a_failed_crawl_fails_the_task(monkeypatch):
-    monkeypatch.setattr(sakiori, "build", lambda papers: {"ok": False, "build": None, "said": ["The crawl failed: no CDN."]})
+    monkeypatch.setattr(sakiori, "build", lambda papers, **kw: {"ok": False, "build": None, "said": ["The crawl failed: no CDN."]})
     with pytest.raises(TaskFailed, match="no CDN"):
         sakiori_tasks.sakiori_build_task.run(["00052"])
 
 
 def test_what_was_not_written_is_in_the_result(monkeypatch):
-    monkeypatch.setattr(sakiori, "build", lambda papers: {"ok": True, "build": "/b", "said": ["The notes were not written."]})
+    monkeypatch.setattr(sakiori, "build", lambda papers, **kw: {"ok": True, "build": "/b", "said": ["The notes were not written."]})
     assert "The notes were not written." in sakiori_tasks.sakiori_build_task.run(["00052"])
 
 
@@ -133,12 +133,12 @@ def test_the_walk_endpoint_starts_the_task_for_the_issue(client, monkeypatch):
 
 def test_a_build_of_every_walk_is_queued_and_said(queued):
     line = sakiori_tasks.queue_collection()
-    assert queued == [[]]                                 # every paper, only the missing notes and answers written
+    assert queued == [([], {"write": False})]             # every walk, and nothing written: no model is asked
     assert line == "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io"
 
 
 def test_a_build_that_cannot_be_queued_is_said_with_what_to_do(monkeypatch):
-    def broken(papers):
+    def broken(papers, **kw):
         raise ConnectionError("redis is down")
     monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay", broken)
     line = sakiori_tasks.queue_collection()

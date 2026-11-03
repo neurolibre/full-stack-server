@@ -50,20 +50,21 @@ def sakiori_walk_task(self, screening_dict):
 
 @celery_app.task(bind=True, throws=(TaskFailed,), soft_time_limit=sakiori.BUILD_SECONDS,
                  time_limit=sakiori.BUILD_SECONDS + 600)
-def sakiori_build_task(self, papers):
-    """Build Sakiori's walks, with notes and answers written for `papers` (numbers; none: those still missing)."""
-    got = sakiori.build(list(papers or []))
+def sakiori_build_task(self, papers, write=True):
+    """Build Sakiori's walks, with notes and answers written for `papers` (numbers; none: those still missing), or
+    with nothing written (write false: the walks crawled again, at no model's cost)."""
+    got = sakiori.build(list(papers or []), write=write)
     if not got["ok"]:
         raise TaskFailed(" ".join(got["said"]))
     return " ".join(["Sakiori's walks are served.", *got["said"]])
 
 
 def queue_collection() -> str:
-    """Queue a build of every paper's walk, which crawls the CDN again (new data, new kin) and writes only the notes
-    and answers still missing, so it costs no model calls beyond those; the sentence for a comment that says so, or
-    why it could not be queued."""
+    """Queue a build of every paper's walk that crawls the CDN again (new data, new kin) and writes no notes or
+    answers, so it costs no model calls: a confirmation must not set off an agent run for every paper still without
+    an answer (22 at once on 2026-11-03). The sentence for a comment that says so, or why it could not be queued."""
     try:
-        sakiori_build_task.delay([])
+        sakiori_build_task.delay([], write=False)
     except Exception as e:
         return f"Sakiori's walks were not queued to be woven again ({e}); `@roboneuro sakiori` on any paper does it."
     return f"Sakiori's walks are being woven again with it: {sakiori.SAKIORI_URL}"

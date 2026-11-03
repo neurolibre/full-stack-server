@@ -74,7 +74,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: w.rebuilds.append(True) or {"projects": 3, "clashes": []})
     import sakiori_tasks
     w.walks = []                                      # every walk is woven again after a confirmation
-    monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay", lambda papers: w.walks.append(papers))
+    monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay", lambda papers, **kw: w.walks.append((papers, kw)))
     return w
 
 
@@ -281,7 +281,7 @@ def test_confirm_success(world, monkeypatch):
     assert seen["text"] == "files: []\n"              # the last yaml block of the comment
     assert seen["record"] == tasks.CROSSWALKS_PATH
     assert world.rebuilds == [True]
-    assert world.walks == [[]]
+    assert world.walks == [([], {"write": False})]        # the walks again, no notes or answers written
     assert "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io" in FakeTask.last.comment
     assert "Confirmed by @ada (reply in comment 100). The crosswalk is now version 1.0.0" in c
 

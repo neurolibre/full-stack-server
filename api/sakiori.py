@@ -85,10 +85,12 @@ def _locked(path: Path, wait: int):
 
 
 def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDENTRON_PATH, run: Run = _run,
-          env: Optional[Dict[str, str]] = None, stamp: Optional[str] = None, llm_wait: int = LLM_WAIT) -> dict:
+          env: Optional[Dict[str, str]] = None, stamp: Optional[str] = None, llm_wait: int = LLM_WAIT,
+          write: bool = True) -> dict:
     """Build and serve Sakiori's data, with notes and answers written for `papers` (numbers like "00052"; none: every
-    paper still missing them). Returns {"ok", "build", "said"}: whether a new build is served, where, and a sentence
-    for each step that did not go as it should."""
+    paper still missing them). With write false, nothing is written: the walks are crawled again from the CDN (new
+    data, new kin) and served with the notes and answers they had, at no model's cost. Returns {"ok", "build",
+    "said"}: whether a new build is served, where, and a sentence for each step that did not go as it should."""
     env = dict(os.environ if env is None else env)
     crawl, data = root / "crawl", root / "data"
     builds, current = data / "builds", data / "current"
@@ -105,7 +107,9 @@ def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDE
         for folder in CARRIED:
             if (current / folder).is_dir():
                 shutil.copytree(current / folder, new / folder)
-        if env.get("EVIDENTRON_LLM_URL"):
+        if not write:
+            pass                         # the walks only: the notes and answers carried over are served as they are
+        elif env.get("EVIDENTRON_LLM_URL"):
             try:
                 with _locked(evidentron / "llm.lock", llm_wait):
                     code, out = run([sys.executable, str(crawl / "notes.py"), "--data", str(new), *papers], str(root),
@@ -118,11 +122,12 @@ def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDE
         else:
             said.append("The notes were not written: the worker has no EVIDENTRON_LLM_URL.")
         # A named paper is answered again (a new version, or a request); a full build only fills the gaps.
-        again = ["--force"] if papers else []
-        code, out = run([sys.executable, str(crawl / "moment.py"), "--data", str(new), *again, *papers], str(root),
-                        {**env, "EVIDENTRON_DIR": str(evidentron)}, TIME_LIMITS["moment"])
-        if code != 0:                    # its last line names each paper left without a new answer, and why
-            said.append(f"Not every agent answer was written, and those papers keep the ones they had: {_why(out)}")
+        if write:
+            again = ["--force"] if papers else []
+            code, out = run([sys.executable, str(crawl / "moment.py"), "--data", str(new), *again, *papers], str(root),
+                            {**env, "EVIDENTRON_DIR": str(evidentron)}, TIME_LIMITS["moment"])
+            if code != 0:                # its last line names each paper left without a new answer, and why
+                said.append(f"Not every agent answer was written, and those papers keep the ones they had: {_why(out)}")
         link = data / "current.next"
         with contextlib.suppress(FileNotFoundError):
             link.unlink()

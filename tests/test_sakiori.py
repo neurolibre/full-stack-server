@@ -142,3 +142,15 @@ def test_the_papers_left_without_a_new_answer_are_named(tmp_path):
     assert got["ok"]
     assert got["said"] == ["Not every agent answer was written, and those papers keep the ones they had: No new "
                            "answer for 1 of the papers asked: 00052 (ANTHROPIC_API_KEY is not set)."]
+
+
+def test_a_build_that_writes_nothing_only_crawls_and_serves_the_walks_with_what_they_had(tmp_path):
+    """After a confirmation every walk is crawled again for the new data and kin, but no model is asked: the notes
+    and answers the walks had are served as they were."""
+    build(tmp_path, Steps(), papers=("00052",), stamp="20261030-120000")
+    steps = Steps()
+    got = sakiori.build([], root=tmp_path / "sakiori", evidentron=tmp_path / "evidentron", run=steps,
+                        env={"EVIDENTRON_LLM_URL": "http://model"}, stamp="20261030-130000", write=False)
+    assert got["ok"] and got["said"] == []
+    assert [c[0] for c in steps.calls] == ["crawl.py"]                       # no notes.py, no moment.py
+    assert (served(tmp_path) / "moments" / "00052.json").exists()           # carried over
