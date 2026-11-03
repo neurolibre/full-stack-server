@@ -89,8 +89,8 @@ def test_a_served_walk_is_announced_on_the_issue_with_what_sakiori_shows(monkeyp
     sakiori_tasks.sakiori_walk_task.run({"issue_id": 52, "target_repo_url": "https://github.com/x/y"})
     said = WalkTask.last.succeeded
     assert asked == [["00052"]]
-    assert said.startswith("🧵 **Your paper's walk through the collection is ready:** https://sakiori.evidencepub.io/00052")
-    assert "You put in the hard work to do more than a PDF, so we have a surprise for you." in said
+    assert said.startswith("**You put in the hard work to do more than a PDF, so we have a surprise for you!** 🧵")
+    assert "Meet your paper's walk on Sakiori: https://sakiori.evidencepub.io/00052" in said
     assert "Not everything was written" not in said
 
 

@@ -12,13 +12,16 @@ from task_outcome import TaskFailed
 
 # What the authors read when their paper's walk is served: the walk, why it is there, and what it shows, in the order
 # a walk visits its stops (woven's src/stops.ts).
-WALK_READY = """🧵 **Your paper's walk through the collection is ready:** {address}
+WALK_READY = """**You put in the hard work to do more than a PDF, so we have a surprise for you!** 🧵
 
-You put in the hard work to do more than a PDF, so we have a surprise for you. Sakiori follows your paper through the
-NeuroLibre collection, one stop at a time: who wrote it and the works it builds on, its data and what each of its
-columns measures, the archives and the repository that make it reproducible, its dashboard when it has one, the papers
-whose work is closest to yours and why, a question an AI agent answered after reading your paper, and the
-machine-readable descriptions (FAIR² and Croissant) that let others find and reuse your data."""
+Meet your paper's walk on Sakiori: {address}
+
+It's a short guided tour of your work as part of the NeuroLibre collection. Click through and you'll meet the people
+behind it and the work it builds on, see your data and what it measures, find where everything is archived so anyone
+can run it again, and discover the papers in the collection that are closest to yours, and why. We also asked an AI
+agent a question about your paper after it read it; its answer is in there too.
+
+Have a look, and if you like it, share it."""
 
 
 def walk_ready(number: str, said) -> str:
