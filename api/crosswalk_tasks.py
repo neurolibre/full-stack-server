@@ -180,27 +180,25 @@ def _issue_author(task):
     return None
 
 
-# NeuroLibre's editors team, as RoboNeuro names it (roboneuro config: teams: editors). Its members may run the
-# crosswalk commands on any paper, and so may confirm on any paper as an issue's editor does.
-EDITORS_ORGANIZATION, EDITORS_TEAM = "neurolibre", 3408147
-
-
-def _neurolibre_editor(task, login) -> bool:
-    """Whether login is a member of NeuroLibre's editors team. Anything that stops GitHub from saying so counts as
-    no, so a confirmation is refused rather than recorded under someone it should not be."""
+def _sender(task):
+    """Who wrote the command, read from its comment; None when it cannot be read. RoboNeuro lets a command through
+    only from those it allows (the paper's author, the issue's editor and reviewers, NeuroLibre's editors team), as it
+    does for draft and check."""
+    s = task.screening
+    own = getattr(s, "command_comment_id", None)
+    if own is None:
+        return None
     try:
-        client = task.screening.github_client
-        team = client.get_organization(EDITORS_ORGANIZATION).get_team(EDITORS_TEAM)
-        return bool(team.has_in_members(client.get_user(login)))
-    except Exception:                                  # a missing token scope, GitHub unreachable, an unknown login
-        logging.exception(f"Whether @{login} is in NeuroLibre's editors team could not be read")
-        return False
+        return gh_get_issue_comment(s.github_client, s.review_repository, s.issue_id, own)[0]
+    except Exception:
+        return None
 
 
 def _may_confirm(task, login) -> bool:
-    """The paper's author, the issue's editor, or a member of NeuroLibre's editors team."""
-    names = {name.lower() for name in (_issue_author(task), _issue_editor(task)) if name}
-    return login.lower() in names or _neurolibre_editor(task, login)
+    """Corrections may be confirmed under the name of whoever sent the command (RoboNeuro decided they may), or of
+    the paper's author or the issue's editor, whose reply someone else records with `confirm at`."""
+    names = {name.lower() for name in (_issue_author(task), _issue_editor(task), _sender(task)) if name}
+    return login.lower() in names
 
 
 def _issue_editor(task):
