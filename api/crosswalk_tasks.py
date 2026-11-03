@@ -198,9 +198,12 @@ def _neurolibre_editor(task, login) -> bool:
 
 
 def _may_confirm(task, login) -> bool:
-    """The paper's author, the issue's editor, or a member of NeuroLibre's editors team."""
+    """The paper's author, the issue's editor, or a member of NeuroLibre's editors team: the command's sender when
+    RoboNeuro found them in it (it checks with a token that can see the team, which the server's may not), else as
+    GitHub tells the server."""
     names = {name.lower() for name in (_issue_author(task), _issue_editor(task)) if name}
-    return login.lower() in names or _neurolibre_editor(task, login)
+    vouched = str(getattr(task.screening, "editor", None) or "").lower()
+    return login.lower() in names or (vouched and login.lower() == vouched) or _neurolibre_editor(task, login)
 
 
 def _issue_editor(task):

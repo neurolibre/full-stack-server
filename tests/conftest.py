@@ -72,7 +72,7 @@ class FakeTask:
             issue_id=s["issue_id"], review_repository="neurolibre/reviews",
             target_repo_url=s["target_repo_url"], github_client=FakeGitHub.current,
             fields=s.get("fields"), at=s.get("at"), command_comment_id=s.get("command_comment_id"),
-            commit_hash=s.get("commit_hash"))
+            commit_hash=s.get("commit_hash"), editor=s.get("editor"))
         self.owner_name, self.repo_name = "someone", "paper-repo"
         self.started, self.comment, self.failed = [], None, None
         FakeTask.last = self

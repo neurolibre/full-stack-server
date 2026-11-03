@@ -86,7 +86,7 @@ def _description(view):
 
 def test_the_options_are_described():
     schema = api.CrosswalkSchema().fields
-    assert set(schema) == {"id", "repository_url", "fields", "comment_id", "at"}
+    assert set(schema) == {"id", "repository_url", "fields", "comment_id", "at", "editor"}
     assert "confirm" in schema["fields"].metadata["description"].lower()
     assert "draft" not in schema["fields"].metadata["description"].lower()
     for key in ("comment_id", "at"):
