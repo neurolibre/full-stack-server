@@ -121,8 +121,8 @@ def build(papers: List[str], root: Path = SAKIORI_PATH, evidentron: Path = EVIDE
         again = ["--force"] if papers else []
         code, out = run([sys.executable, str(crawl / "moment.py"), "--data", str(new), *again, *papers], str(root),
                         {**env, "EVIDENTRON_DIR": str(evidentron)}, TIME_LIMITS["moment"])
-        if code != 0:
-            said.append(f"The agent's answer was not written, so the papers keep the ones they had: {_why(out)}")
+        if code != 0:                    # its last line names each paper left without a new answer, and why
+            said.append(f"Not every agent answer was written, and those papers keep the ones they had: {_why(out)}")
         link = data / "current.next"
         with contextlib.suppress(FileNotFoundError):
             link.unlink()

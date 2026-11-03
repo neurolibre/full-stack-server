@@ -128,3 +128,17 @@ def test_a_seeded_first_build_is_carried_on_and_pruned_like_the_others(tmp_path)
     build(tmp_path, Steps(), stamp="20261030-130000")
     left = sorted(p.name for p in (tmp_path / "sakiori" / "data" / "builds").iterdir())
     assert left == ["20261030-120000", "20261030-130000"]
+
+
+def test_the_papers_left_without_a_new_answer_are_named(tmp_path):
+    """The moment step names each paper it got no new answer for on its last line, and the build says it."""
+    steps = Steps()
+
+    def run(argv, cwd, env, timeout):
+        if os.path.basename(argv[1]) == "moment.py":
+            return 1, "00052: asking\nNo new answer for 1 of the papers asked: 00052 (ANTHROPIC_API_KEY is not set)."
+        return steps(argv, cwd, env, timeout)
+    got = build(tmp_path, run)
+    assert got["ok"]
+    assert got["said"] == ["Not every agent answer was written, and those papers keep the ones they had: No new "
+                           "answer for 1 of the papers asked: 00052 (ANTHROPIC_API_KEY is not set)."]
