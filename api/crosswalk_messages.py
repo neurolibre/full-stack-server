@@ -33,7 +33,8 @@ REPLACED = "It replaces the earlier draft on the server."
 # Who confirms, said the same way everywhere. The code's rule: the confirmer is the author of the comment the
 # corrections come from (the comment `at` names, else the command's own), who must be the paper's author or the
 # issue's editor.
-WHO_CONFIRMS = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an "
+WHO_CONFIRMS = ("The paper's author, the issue's editor or a member of NeuroLibre's editors team confirms, by replying; "
+                "an editor or reviewer records an "
                 "author's reply with `@roboneuro crosswalk confirm at <comment id>`.")
 
 CHECKING = ("Anyone can write `@roboneuro crosswalk check at <comment id>` to check a reply with its corrections "
@@ -348,8 +349,9 @@ def comment_not_found(comment_id) -> str:
 
 def not_allowed(author: Optional[str], editor: Optional[str], comment_id, login: str, corrections: bool) -> str:
     what = f"the corrections in comment {comment_id} are" if corrections else f"comment {comment_id} is"
-    return (f"Only the paper's author ({'@' + author if author else 'not named on the issue'}) or the editor "
-            f"({'@' + editor if editor else 'not named on the issue'}) can confirm; {what} by @{login}.")
+    return (f"Only the paper's author ({'@' + author if author else 'not named on the issue'}), the editor "
+            f"({'@' + editor if editor else 'not named on the issue'}) or a member of NeuroLibre's editors team can "
+            f"confirm; {what} by @{login}.")
 
 
 def github_unreachable(what: str, reason: str) -> str:

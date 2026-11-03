@@ -312,8 +312,8 @@ def test_a_reply_without_a_block_by_someone_else_is_refused(world, monkeypatch):
     world.comments[200] = ("mallory", "Looks right.")
     with pytest.raises(TaskFailed):
         tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
-    assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; comment 200 "
-                                    "is by @mallory.")
+    assert FakeTask.last.failed == ("Only the paper's author (@ada), the editor (@eddie) or a member of NeuroLibre's "
+                                    "editors team can confirm; comment 200 is by @mallory.")
 
 
 def test_an_unreadable_yaml_block_is_one_sentence(world, monkeypatch):
@@ -341,9 +341,9 @@ def test_corrections_by_someone_else_are_refused(world, monkeypatch):
     world.comments[200] = ("mallory", "```yaml\nfiles: []\n```")
     with pytest.raises(TaskFailed):
         tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
-    assert FakeTask.last.failed == ("Only the paper's author (@ada) or the editor (@eddie) can confirm; "
-                                    "the corrections in comment 200 are by @mallory.")
-    assert world.gh.used == [] and world.calls == []
+    assert FakeTask.last.failed == ("Only the paper's author (@ada), the editor (@eddie) or a member of NeuroLibre's "
+                                    "editors team can confirm; the corrections in comment 200 are by @mallory.")
+    assert world.gh.used == ["get_organization"] and world.calls == []    # only to ask whether mallory is an editor
 
 
 def test_the_editor_may_confirm_as_it_stands(world, monkeypatch):
@@ -868,8 +868,8 @@ def keep(name, comment):
         (RENDERED / name).write_text(comment)
 
 
-WHO = ("The paper's author or the issue's editor confirms, by replying; an editor or reviewer records an author's "
-       "reply with `@roboneuro crosswalk confirm at <comment id>`.")
+WHO = ("The paper's author, the issue's editor or a member of NeuroLibre's editors team confirms, by replying; an "
+       "editor or reviewer records an author's reply with `@roboneuro crosswalk confirm at <comment id>`.")
 
 
 def test_the_draft_comment_for_two_tables_reads_as_a_message(world, monkeypatch):
@@ -1166,3 +1166,24 @@ def test_the_terms_a_reply_proposes_are_named(world, monkeypatch):
     tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
     assert c.endswith(f"- Terms it uses: [soil pH]({CDN}/terms/soil-ph/)\n- Terms it proposes: `leaf-area` (leaf area)")
+
+
+def test_a_member_of_the_editors_team_may_confirm_corrections_on_any_paper(world, monkeypatch):
+    """NeuroLibre's editors run the crosswalk commands on any paper (RoboNeuro's editors team); their corrections are
+    confirmed under their own name, as the issue's editor's are."""
+    seed_server(world)
+    seen = {}
+    _recording_confirm(monkeypatch, seen)
+    monkeypatch.setattr(tasks, "_neurolibre_editor", lambda task, login: login == "agah")
+    world.comments[100] = ("agah", "@roboneuro crosswalk confirm at 200")
+    world.comments[200] = ("agah", "```yaml\nfiles: []\n```")
+    tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
+    assert FakeTask.last.failed is None and seen["by"] == "agah"
+
+
+def test_whether_someone_is_in_the_editors_team_is_no_when_github_cannot_say(world):
+    class Unreachable:
+        def get_organization(self, name):
+            raise ConnectionError("no route to GitHub")
+    task = type("T", (), {"screening": type("S", (), {"github_client": Unreachable()})()})()
+    assert tasks._neurolibre_editor(task, "mallory") is False

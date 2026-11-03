@@ -180,6 +180,29 @@ def _issue_author(task):
     return None
 
 
+# NeuroLibre's editors team, as RoboNeuro names it (roboneuro config: teams: editors). Its members may run the
+# crosswalk commands on any paper, and so may confirm on any paper as an issue's editor does.
+EDITORS_ORGANIZATION, EDITORS_TEAM = "neurolibre", 3408147
+
+
+def _neurolibre_editor(task, login) -> bool:
+    """Whether login is a member of NeuroLibre's editors team. Anything that stops GitHub from saying so counts as
+    no, so a confirmation is refused rather than recorded under someone it should not be."""
+    try:
+        client = task.screening.github_client
+        team = client.get_organization(EDITORS_ORGANIZATION).get_team(EDITORS_TEAM)
+        return bool(team.has_in_members(client.get_user(login)))
+    except Exception:                                  # a missing token scope, GitHub unreachable, an unknown login
+        logging.exception(f"Whether @{login} is in NeuroLibre's editors team could not be read")
+        return False
+
+
+def _may_confirm(task, login) -> bool:
+    """The paper's author, the issue's editor, or a member of NeuroLibre's editors team."""
+    names = {name.lower() for name in (_issue_author(task), _issue_editor(task)) if name}
+    return login.lower() in names or _neurolibre_editor(task, login)
+
+
 def _issue_editor(task):
     login = gh_read_from_issue_body(task.screening.github_client, task.screening.review_repository,
                                     task.screening.issue_id, "editor")
@@ -288,8 +311,8 @@ def check(task):
     confirm_at = source if (submission or at is not None) else None
     refused = None
     if confirm_at is not None and login:
-        # A confirmation at that comment is recorded under its author, who must be the paper's author or the editor.
-        if login.lower() not in {name.lower() for name in (_issue_author(task), _issue_editor(task)) if name}:
+        # A confirmation at that comment is recorded under its author, who must be one who may confirm.
+        if not _may_confirm(task, login):
             confirm_at, refused = None, login
     task.succeed(say.check_comment(corrections, result.errors, result.warnings, confirm_at, result.notes,
                                    not_confirmable_by=refused), collapsable=False)
@@ -306,9 +329,8 @@ def confirm(task):
     by, block, source = _corrections(task)
     if not by:
         task.fail(say.NO_COMMAND_COMMENT)
-    author, editor = _issue_author(task), _issue_editor(task)
-    if by.lower() not in {name.lower() for name in (author, editor) if name}:
-        task.fail(say.not_allowed(author, editor, source, by, corrections=block is not None))
+    if not _may_confirm(task, by):
+        task.fail(say.not_allowed(_issue_author(task), _issue_editor(task), source, by, corrections=block is not None))
     paper = _crosswalk_paper(task)
     crosswalk, profiles = _server_crosswalk(task, paper)
     submission = _write_submission(paper, block)
