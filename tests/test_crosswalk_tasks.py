@@ -1194,25 +1194,3 @@ def test_whether_someone_is_in_the_editors_team_is_no_when_github_cannot_say(wor
             raise ConnectionError("no route to GitHub")
     task = type("T", (), {"screening": type("S", (), {"github_client": Unreachable()})()})()
     assert tasks._neurolibre_editor(task, "mallory") is False
-
-
-def test_an_editor_roboneuro_vouches_for_may_confirm_their_own_corrections(world, monkeypatch):
-    """RoboNeuro checks the editors team with its own token and sends the sender as editor; the server, whose token may
-    not see the team, accepts corrections in that person's own comment, and only theirs."""
-    seed_server(world)
-    seen = {}
-    _recording_confirm(monkeypatch, seen)
-    monkeypatch.setattr(tasks, "_neurolibre_editor", lambda task, login: False)       # the server cannot see the team
-    world.comments[100] = ("agah", "@roboneuro crosswalk confirm at 200")
-    world.comments[200] = ("agah", "```yaml\nfiles: []\n```")
-    tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200, editor="agah"))
-    assert FakeTask.last.failed is None and seen["by"] == "agah"
-
-
-def test_a_vouched_editor_cannot_confirm_someone_elses_corrections(world, monkeypatch):
-    seed_server(world)
-    monkeypatch.setattr(tasks.crosswalk_steps, "confirm", lambda *a, **k: pytest.fail("confirm ran"))
-    monkeypatch.setattr(tasks, "_neurolibre_editor", lambda task, login: False)
-    world.comments[200] = ("mallory", "```yaml\nfiles: []\n```")
-    with pytest.raises(TaskFailed):
-        tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200, editor="agah"))

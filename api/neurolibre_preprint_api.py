@@ -123,12 +123,10 @@ def summary_pdf_sync_post(user,id):
 # Register endpoint to the documentation
 docs.register(summary_pdf_sync_post)
 
-def _crosswalk_screening(task_name, id, repository_url, fields=None, comment_id=None, at=None, editor=None):
+def _crosswalk_screening(task_name, id, repository_url, fields=None, comment_id=None, at=None):
     # An absent option stays absent in the screening dict the task receives. The command's comment travels as
     # command_comment_id: the screening's comment_id is the comment the bot replies in, which the worker makes.
-    # editor is the command's sender when RoboNeuro found them in NeuroLibre's editors team.
-    extra = {k: v for k, v in (("fields", fields), ("command_comment_id", comment_id), ("at", at),
-                               ("editor", editor)) if v is not None}
+    extra = {k: v for k, v in (("fields", fields), ("command_comment_id", comment_id), ("at", at)) if v is not None}
     return ScreeningClient(task_name=task_name, issue_id=id, target_repo_url=repository_url, **extra)
 
 @app.route('/api/crosswalk/draft', methods=['POST'])

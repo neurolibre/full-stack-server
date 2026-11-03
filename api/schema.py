@@ -99,7 +99,6 @@ class CrosswalkSchema(Schema):
     repository_url = fields.String(required=True,description="Full URL of the target repository")
     comment_id = fields.Integer(required=False,description="Id of the review issue comment that issued the command; its last yaml block, if any, holds the corrections, and its author is the one who confirms.")
     at = fields.Integer(required=False,description="Check and confirm: id of another comment on the review issue whose last yaml block holds the corrections; its author is then the one who confirms.")
-    editor = fields.String(required=False,description="Check and confirm: the login of the person who sent the command, when RoboNeuro found them in NeuroLibre's editors team; they may confirm corrections in their own comment.")
     fields = fields.String(required=False,description="Confirm only: comma-separated names of the fields to confirm, when only some are.")  # last: this name hides the fields module inside the class body
 
 
