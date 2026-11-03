@@ -348,6 +348,9 @@ def confirm(task):
         try:
             report = myst_cdn.rebuild()
             note = " ".join(report.get("notes", [])) or None
+            # Every walk shows its paper's kin and data from the CDN, so all of them are woven again with this one
+            import sakiori_tasks
+            note = " ".join(x for x in (note, sakiori_tasks.queue_collection()) if x)
         except Exception as e:
             logging.exception("MyST CDN rebuild after a confirmation failed")
             note = say.cdn_not_rebuilt(str(e) if isinstance(e, TimeoutError) else e.__class__.__name__)

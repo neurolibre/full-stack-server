@@ -72,6 +72,9 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks.crosswalk_steps, "STORE_LOCK_PATH", tmp_path / "store.lock")
     w.rebuilds = []
     monkeypatch.setattr(tasks.myst_cdn, "rebuild", lambda: w.rebuilds.append(True) or {"projects": 3, "clashes": []})
+    import sakiori_tasks
+    w.walks = []                                      # every walk is woven again after a confirmation
+    monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay", lambda papers: w.walks.append(papers))
     return w
 
 
@@ -278,6 +281,8 @@ def test_confirm_success(world, monkeypatch):
     assert seen["text"] == "files: []\n"              # the last yaml block of the comment
     assert seen["record"] == tasks.CROSSWALKS_PATH
     assert world.rebuilds == [True]
+    assert world.walks == [[]]
+    assert "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io" in FakeTask.last.comment
     assert "Confirmed by @ada (reply in comment 100). The crosswalk is now version 1.0.0" in c
 
 
@@ -957,7 +962,8 @@ def test_the_confirm_comment_gives_publishs_addresses_and_the_terms(world, monke
         f"- FAIR²: {CDN}/crosswalks/{DOI}/fair2.json\n"
         f"- Croissant: {CDN}/crosswalks/{DOI}/croissant.json\n"
         f"- Metadata: {CDN}/dois/{DOI}.json\n"
-        f"- Terms it uses: [crop yield]({CDN}/terms/crop-yield/), [`soil-ph`]({CDN}/terms/soil-ph/)")
+        f"- Terms it uses: [crop yield]({CDN}/terms/crop-yield/), [`soil-ph`]({CDN}/terms/soil-ph/)\n\n"
+        "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io")
 
 
 # B10: the backends, the clone, failures and timeouts.
@@ -1165,7 +1171,8 @@ def test_the_terms_a_reply_proposes_are_named(world, monkeypatch):
     monkeypatch.setattr(tasks.crosswalk_steps, "confirm", lambda *a, **k: published("1.1.0", [("soil-ph", "soil pH")]))
     tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
     c = FakeTask.last.comment
-    assert c.endswith(f"- Terms it uses: [soil pH]({CDN}/terms/soil-ph/)\n- Terms it proposes: `leaf-area` (leaf area)")
+    assert c.endswith(f"- Terms it uses: [soil pH]({CDN}/terms/soil-ph/)\n- Terms it proposes: `leaf-area` (leaf area)\n\n"
+                      "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io")
 
 
 def test_a_member_of_the_editors_team_may_confirm_corrections_on_any_paper(world, monkeypatch):

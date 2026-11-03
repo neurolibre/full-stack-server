@@ -129,3 +129,17 @@ def test_the_walk_endpoint_starts_the_task_for_the_issue(client, monkeypatch):
     response = client.post("/api/sakiori/walk", json={"id": 52, "repository_url": "https://github.com/x/y"})
     assert response.status_code < 300, response.get_data(as_text=True)
     assert sent[0][0]["issue_id"] == 52 and sent[0][0]["task_name"] == "SAKIORI WALK"
+
+
+def test_a_build_of_every_walk_is_queued_and_said(queued):
+    line = sakiori_tasks.queue_collection()
+    assert queued == [[]]                                 # every paper, only the missing notes and answers written
+    assert line == "Sakiori's walks are being woven again with it: https://sakiori.evidencepub.io"
+
+
+def test_a_build_that_cannot_be_queued_is_said_with_what_to_do(monkeypatch):
+    def broken(papers):
+        raise ConnectionError("redis is down")
+    monkeypatch.setattr(sakiori_tasks.sakiori_build_task, "delay", broken)
+    line = sakiori_tasks.queue_collection()
+    assert "redis is down" in line and "@roboneuro sakiori" in line

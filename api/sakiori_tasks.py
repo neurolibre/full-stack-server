@@ -58,6 +58,17 @@ def sakiori_build_task(self, papers):
     return " ".join(["Sakiori's walks are served.", *got["said"]])
 
 
+def queue_collection() -> str:
+    """Queue a build of every paper's walk, which crawls the CDN again (new data, new kin) and writes only the notes
+    and answers still missing, so it costs no model calls beyond those; the sentence for a comment that says so, or
+    why it could not be queued."""
+    try:
+        sakiori_build_task.delay([])
+    except Exception as e:
+        return f"Sakiori's walks were not queued to be woven again ({e}); `@roboneuro sakiori` on any paper does it."
+    return f"Sakiori's walks are being woven again with it: {sakiori.SAKIORI_URL}"
+
+
 def queue(base_doi: str, screening=None) -> str:
     """Queue the walk of a paper just published (base_doi like neurolibre.00052), and say so in a line for the
     publication's comment; a walk that cannot be queued is said there, and the publication goes on. With the
