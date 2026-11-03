@@ -174,6 +174,17 @@ def sakiori_build_post(user, id=None):
 
 docs.register(sakiori_build_post)
 
+@app.route('/api/sakiori/walk', methods=['POST'])
+@preprint_api.auth_required
+@marshal_with(None,code=422,description="Cannot validate the payload, missing or invalid entries.")
+@doc(description="Weave one paper's walk again (its notes and the agent's answer written anew) and say on its review issue when it is served, with what Sakiori shows. Takes id and repository_url.", tags=['Production'])
+@use_kwargs(IdUrlSchema())
+def sakiori_walk_post(user, id, repository_url):
+    return ScreeningClient(task_name="SAKIORI WALK", issue_id=id, target_repo_url=repository_url).start_celery_task(
+        sakiori_tasks.sakiori_walk_task)
+
+docs.register(sakiori_walk_post)
+
 # Upload the repository to the respective zenodo deposit
 @app.route('/api/zenodo/upload/repository', methods=['POST'])
 @preprint_api.auth_required

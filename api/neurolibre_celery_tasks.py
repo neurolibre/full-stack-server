@@ -1766,7 +1766,7 @@ def rsync_myst_prod_task(self, screening_dict):
     cdn_note = add_to_myst_cdn(task, base_doi, f"v{latest_version_num}")
     # Sakiori walks the CDN, so a paper's walk is woven only once the paper is on it.
     if not cdn_note.startswith("⚠️"):
-        cdn_note += "\n" + sakiori_tasks.queue(base_doi)
+        cdn_note += "\n" + sakiori_tasks.queue(base_doi, task.screening)
     task.succeed(
         f"🌺 MyST build synced to production server: {PREPRINT_SERVER}/{DOI_PREFIX}/{base_doi} \n"
         f"Latest version: v{latest_version_num}.\n"
