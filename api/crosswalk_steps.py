@@ -223,6 +223,7 @@ class DraftResult:
     model: Optional[str] = None
     usage: Dict[str, int] = field(default_factory=dict)    # every exploration's turns and tokens, summed
     check_failure: Optional[str] = None   # the sentence when the check of the final draft could not be run
+    shared: Optional[str] = None          # how many of its terms of substance other papers hold, in a sentence
 
 
 @dataclass
@@ -397,6 +398,7 @@ def draft(doi: str, data_dir: Path, repo_dir: Optional[Path], work: Path, backen
     result.problems = [final.unreadable] if final.unreadable else final.errors
     result.warnings = final.warnings
     result.summary = [str(line) for line in explored.get("summary") or []]
+    result.shared = (explored.get("reuse") or {}).get("sentence") if isinstance(explored.get("reuse"), dict) else None
     return result
 
 

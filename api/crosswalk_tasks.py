@@ -259,7 +259,8 @@ def draft(task):
 
     def comment(inside):
         return say.draft_comment(result.summary, terms, say.example(text), inside, result.problems,
-                                 result.warnings, replaced=replaced, check_failure=result.check_failure)
+                                 result.warnings, replaced=replaced, check_failure=result.check_failure,
+                                 shared=result.shared)
     message = comment(say.draft_block(text))
     if len(message) > MAX_DRAFT_IN_COMMENT:
         message = comment(say.too_long(paper.crosswalk_name))

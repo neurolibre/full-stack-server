@@ -801,3 +801,22 @@ def test_a_draft_keeps_its_turns_log_and_sums_what_each_exploration_cost(dirs):
     log = (work / "00041.explore.log").read_text()
     assert "== explore on openai-compatible" in log and "== explore on anthropic-api" in log
     assert "step 0: prompt 5000 tokens (1)" in log and "step 0: prompt 5000 tokens (2)" in log
+
+
+def test_a_draft_says_what_links_it_to_other_papers_and_the_comment_shows_it(dirs):
+    work, data, lock = dirs
+    sentence = "1 of the crosswalk's 2 terms of substance is held by other papers: nitrate (1 paper)."
+
+    def explore(argv):
+        Path(argv_value(argv, "-o")).write_text(CROSSWALK_YAML)
+        out = said("explore", crosswalk=argv_value(argv, "-o"), summary=SUMMARY,
+                   reuse={"count": 1, "substance": ["nitrate", "phosphate"], "held": {"nitrate": ["10.9/a"]},
+                          "sentence": sentence},
+                   drafted_by={"backend": argv_value(argv, "--backend"), "model": "a-model"})
+        return 0, crosswalk_steps.Output(out, "")
+
+    result = crosswalk_steps.draft(DOI, data, None, work, BACKENDS, lock, run=Fake(work, {"explore": explore}))
+    assert result.shared == sentence
+    from crosswalk_messages import draft_comment
+    comment = draft_comment(SUMMARY, None, None, "draft", [], [], shared=result.shared)
+    assert "**What links it to other papers**\n" + sentence in comment

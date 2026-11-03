@@ -140,14 +140,17 @@ def terms_sentence(count: Optional[int], labels: Optional[List[str]], failure: O
 
 def draft_comment(summary: List[str], terms: Optional[str], example: Optional[str], draft: str,
                   problems: List[str], warnings: List[str], replaced: bool = False,
-                  check_failure: Optional[str] = None) -> str:
+                  check_failure: Optional[str] = None, shared: Optional[str] = None) -> str:
     """The comment for a draft. `example` is a yaml block of one real entry of this draft (without its fences),
-    `draft` the inside of the collapsed block that shows the draft."""
+    `draft` the inside of the collapsed block that shows the draft. `shared` says how many of the draft's terms
+    other papers' data hold, which is what links the paper to them."""
     parts = [heading("draft"), INTRO, PROPOSAL + (" " + REPLACED if replaced else "")]
     if summary:
         parts.append("**What the draft found**\n" + bullets(summary))
     if terms:
         parts.append(terms)
+    if shared:
+        parts.append("**What links it to other papers**\n" + shared)
     first = "Fix the problems listed below, then put" if problems else "If anything is wrong or missing, put"
     step2 = (f"2. Reply to this issue. {first} the entries to change inside a `yaml` code block (only the entries "
              "that change; an entry with `remove: true` is dropped)")
