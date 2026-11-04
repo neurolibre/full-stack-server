@@ -24,7 +24,7 @@ from github import GithubException, UnknownObjectException
 import myst_cdn
 import crosswalk_messages as say
 import crosswalk_steps
-from github_client import gh_clone_repository, gh_get_issue_comment, gh_get_project_name, gh_read_from_issue_body
+from github_client import gh_clone_repository, gh_get_data_folder, gh_get_issue_comment, gh_read_from_issue_body
 from neurolibre_celery_tasks import (BaseNeuroLibreTask, DATA_NFS_PATH, DOI_PREFIX, DOI_SUFFIX, GH_ORGANIZATION,
                                      _published_commit, celery_app, handle_soft_timeout)
 
@@ -70,7 +70,7 @@ def _crosswalk_paper(task):
     doi = f"{DOI_PREFIX}/{DOI_SUFFIX}.{issue_id:05d}"
     stem = crosswalk_steps._stem(doi)
     try:
-        project_name = gh_get_project_name(task.screening.github_client, task.screening.target_repo_url)
+        project_name = gh_get_data_folder(task.screening.github_client, task.screening.target_repo_url)
     except (GithubException, requests.RequestException) as e:
         task.fail(say.data_folder_unknown(_github_reason(e)))
     except Exception as e:

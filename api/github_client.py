@@ -183,6 +183,25 @@ def gh_get_project_name(github_client,target_repo):
                 raise ValueError(f"Project names must all match. Found '{first_name}' and '{name}'")
         return first_name
 
+def data_folder(data_requirement: dict) -> str:
+    """The folder under DATA_NFS that holds all of a paper's data, from its data_requirement.json: its project
+    name, or, when its datasets name different projects (photon-number-classification/data_boulder and
+    photon-number-classification/data_ottawa), the folder their names share."""
+    if 'projectName' in data_requirement:
+        return data_requirement['projectName']
+    names = [d['projectName'] for d in data_requirement.values() if isinstance(d, dict) and 'projectName' in d]
+    if not names:
+        raise ValueError("No projectName found in data_requirement.json")
+    shared = os.path.commonpath([n.strip('/') for n in names]) if len(set(names)) > 1 else names[0]
+    if not shared:
+        raise ValueError(f"Its datasets share no folder: {', '.join(repr(n) for n in names)}")
+    return shared
+
+def gh_get_data_folder(github_client, target_repo):
+    """The folder under DATA_NFS that holds all of the paper's data (see data_folder)."""
+    repo = github_client.get_repo(gh_filter(target_repo))
+    return data_folder(json.loads(repo.get_contents("binder/data_requirement.json").decoded_content))
+
 def gh_fork_repository(github_client,source_repo):
     """
     Fork repository into the GitHub organization

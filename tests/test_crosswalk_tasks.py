@@ -37,7 +37,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(tasks, "BaseNeuroLibreTask", FakeTask)
     monkeypatch.setattr(tasks, "CROSSWALKS_PATH", str(tmp_path / "crosswalks"))
     monkeypatch.setattr(tasks.os.path, "isdir", lambda p: p == "/DATA_NFS/proj" or REAL_ISDIR(p))
-    monkeypatch.setattr(tasks, "gh_get_project_name", lambda client, url: w.project)
+    monkeypatch.setattr(tasks, "gh_get_data_folder", lambda client, url: w.project)
     monkeypatch.setattr(tasks, "gh_read_from_issue_body", lambda c, r, i, tag: w.body.get(tag))
     config = tmp_path / "evidentron.yaml"
     config.write_text("crosswalk:\n  backend:\n    draft: openai-compatible\n    redraft: anthropic-api\n"
@@ -616,7 +616,7 @@ def test_draft_check_and_confirm_write_nothing_to_github(world, monkeypatch):
     assert FakeTask.last.failed is None
     assert world.gh.used == []            # the client itself is never used: GitHub is reached only through
     assert sorted(n for n in vars(tasks) if n.startswith("gh_")) == [   # these helpers, which only read
-        "gh_clone_repository", "gh_get_issue_comment", "gh_get_project_name", "gh_read_from_issue_body"]
+        "gh_clone_repository", "gh_get_data_folder", "gh_get_issue_comment", "gh_read_from_issue_body"]
 
 
 # I6: a draft never replaces confirmed work.
@@ -1047,7 +1047,7 @@ def test_the_published_commit_is_read_once_with_a_timeout(monkeypatch):
 def test_a_data_folder_that_cannot_be_found_is_one_sentence(world, monkeypatch, error, said):
     def boom(client, url):
         raise error
-    monkeypatch.setattr(tasks, "gh_get_project_name", boom)
+    monkeypatch.setattr(tasks, "gh_get_data_folder", boom)
     fake_draft(monkeypatch)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_draft_task.run(payload())
@@ -1104,7 +1104,7 @@ def test_a_github_error_reading_the_data_requirement_is_its_reason(world, monkey
 
     def boom(client, url):
         raise GithubException(502, {"message": "Bad Gateway"}, {})
-    monkeypatch.setattr(tasks, "gh_get_project_name", boom)
+    monkeypatch.setattr(tasks, "gh_get_data_folder", boom)
     fake_draft(monkeypatch)
     with pytest.raises(TaskFailed):
         tasks.crosswalk_draft_task.run(payload())
@@ -1190,3 +1190,15 @@ def test_whoever_sends_the_command_may_confirm_their_own_corrections(world, monk
     world.comments[200] = ("agah", "```yaml\nfiles: []\n```")
     tasks.crosswalk_confirm_task.run(payload(command_comment_id=100, at=200))
     assert FakeTask.last.failed is None and seen["by"] == "agah"
+
+
+def test_the_data_folder_of_a_paper_whose_datasets_name_different_projects_is_the_folder_they_share():
+    """00046 names photon-number-classification/data_boulder and .../data_ottawa: a crosswalk describes them both."""
+    from github_client import data_folder
+    assert data_folder({"projectName": "proj"}) == "proj"
+    assert data_folder({"a": {"projectName": "proj"}, "b": {"projectName": "proj"}}) == "proj"
+    assert data_folder({"boulder": {"projectName": "photon-number-classification/data_boulder"},
+                        "ottawa": {"projectName": "photon-number-classification/data_ottawa"}}) \
+        == "photon-number-classification"
+    with pytest.raises(ValueError, match="share no folder"):
+        data_folder({"a": {"projectName": "one"}, "b": {"projectName": "two"}})
