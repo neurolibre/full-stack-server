@@ -2022,6 +2022,8 @@ def preview_build_myst_task(self, screening_dict):
                                       fresh_execution=fresh_execution)
             if getattr(builder, "execution_cache_cleared", None):
                 all_logs += f"\n 🔁 Every notebook was run again: {builder.execution_cache_cleared}."
+            if getattr(builder, "themes_refreshed", None):
+                all_logs += f"\n 🎨 The site theme was installed again at its current release (a fresh build)."
             all_logs += f"\n {myst_logs}"
         except Exception as e:
             all_logs += f"\n ⚠️ Warning: Failed to build MyST: {str(e)}"
