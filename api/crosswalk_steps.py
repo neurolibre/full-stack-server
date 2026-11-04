@@ -64,9 +64,10 @@ DRAFT_SECONDS = (CLONE_TIMEOUT + 2 * STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_L
                  + TIME_LIMITS["check"] + OTHER_TIME_LIMIT + STEP_MARGIN)
 # check: the one step it runs (it reads the store and takes no lock, so there is no wait to add).
 CHECK_SECONDS = TIME_LIMITS["check"] + STEP_MARGIN
-# confirm: a wait for the store, load, check, confirm, load, two exports, publish, the CDN's rebuild.
+# confirm: a wait for the store, load, check, confirm, load, two exports and the one that reads the published
+# archives when the files' facts are not recorded, publish, the CDN's rebuild.
 CONFIRM_SECONDS = (STORE_LOCK_WAIT + OTHER_TIME_LIMIT + TIME_LIMITS["check"] + TIME_LIMITS["confirm"]
-                   + TIME_LIMITS["load"] + 2 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS
+                   + TIME_LIMITS["load"] + 3 * TIME_LIMITS["export"] + TIME_LIMITS["publish"] + REBUILD_SECONDS
                    + STEP_MARGIN)
 
 
@@ -504,9 +505,17 @@ def confirm(crosswalk: Path, profiles: Path, by: str, fields: Optional[List[str]
     doi = loaded.get("paper")
     if not doi:
         return stop(["The confirmed crosswalk names no paper, so its addresses are unknown."])
+    archives_read = False
     for fmt in ("fair2", "croissant"):
-        exported = _run(run, crosswalk_command() + ["export", str(crosswalk), "--profiles", str(profiles), "--format", fmt,
-                                               "--db", str(db), "--data", str(data_dir), "--json"])
+        export = crosswalk_command() + ["export", str(crosswalk), "--profiles", str(profiles), "--format", fmt,
+                                        "--db", str(db)]
+        exported = _run(run, export + ["--data", str(data_dir), "--json"])
+        if not exported["ok"] and exported.get("missing_facts") and not archives_read:
+            # From the data folder, a file's facts are recorded only when its archive is known, and nothing says
+            # which archive holds a file inside one; without --data the export reads the published archives, which
+            # say, and records the facts (once: the next format finds them recorded).
+            archives_read = True
+            exported = _run(run, export + ["--json"])
         if not exported["ok"]:
             return stop(exported["errors"])
     published = publish(site, db, run if given else None)

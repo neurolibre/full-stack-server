@@ -401,6 +401,34 @@ def test_a_later_step_that_fails_is_its_sentence(dirs, step):
     assert result.confirmed and result.version == "1.1.0"
 
 
+def test_an_export_missing_file_facts_reads_the_published_archives_once(dirs):
+    """00023's confirmation stopped because its files' facts were not recorded: the folder cannot say which archive
+    holds a file. An export without --data reads the archives and records them; the next format finds them."""
+    work, data, _ = dirs
+    missing = said("export", refused="The size, SHA-256 and media type of a.csv are not recorded.",
+                   errors=["The crosswalk was not exported: ..."], missing_facts=["a.csv"])
+    seen = []
+
+    def export(argv):
+        seen.append(argv)
+        first_with_data = "--data" in argv and len(seen) == 1
+        return (1, missing) if first_with_data else (0, said("export", written="/tmp/x.json"))
+    fake = Fake(work, {"export": export})
+    result = crosswalk_steps.confirm(**confirm_args(work, data), run=fake)
+    assert result.errors == [] and result.addresses == ADDRESSES
+    assert ["--data" in a for a in seen] == [True, False, True]
+    assert [argv_value(a, "--format") for a in seen] == ["fair2", "fair2", "croissant"]
+
+
+def test_file_facts_that_reading_the_archives_cannot_record_stop_the_confirmation(dirs):
+    work, data, _ = dirs
+    missing = said("export", errors=["The crosswalk was not exported: a.csv is not recorded."], missing_facts=["a.csv"])
+    fake = Fake(work, {"export": lambda a: (1, missing)})
+    result = crosswalk_steps.confirm(**confirm_args(work, data), run=fake)
+    assert result.errors == ["The crosswalk was not exported: a.csv is not recorded."]
+    assert fake.words() == ["check", "confirm", "load", "export", "export"]
+
+
 def test_a_later_step_that_prints_no_json_is_one_sentence(dirs):
     work, data, _ = dirs
     crash = crosswalk_steps.Output("", "Traceback (most recent call last):\n  File x\nOSError: disk full\n")
@@ -759,7 +787,7 @@ def test_the_task_time_limits_leave_room_for_the_steps_own_timeouts():
     draft = (crosswalk_steps.CLONE_TIMEOUT + 2 * wait + crosswalk_steps.OTHER_TIME_LIMIT + t["profile"] + t["explore"]
              + crosswalk_steps.EXPLORE_SLOT_WAIT + t["check"] + t["explore"] + t["check"] + crosswalk_steps.OTHER_TIME_LIMIT)
     check = t["check"]
-    confirm = (wait + crosswalk_steps.OTHER_TIME_LIMIT + t["check"] + t["confirm"] + t["load"] + 2 * t["export"]
+    confirm = (wait + crosswalk_steps.OTHER_TIME_LIMIT + t["check"] + t["confirm"] + t["load"] + 3 * t["export"]
                + t["publish"] + crosswalk_steps.REBUILD_SECONDS)
     assert crosswalk_steps.STEP_MARGIN == 120
     for limit, steps in ((crosswalk_steps.DRAFT_SECONDS, draft), (crosswalk_steps.CHECK_SECONDS, check),
