@@ -1833,6 +1833,7 @@ def preview_build_myst_task(self, screening_dict):
         live_url = f"{PREVIEW_SERVER}/api/logs/live/{task.task_id}"
         live_log.remove_old(LOGS_ROOT)
         live_log.start(live_path, f"MyST build of {task.owner_name}/{task.repo_name} started at {get_time()} (task {task.task_id}).")
+        task.screening.live_log_url = live_url         # the issue's in-progress comment links to it too
     except Exception as e:
         logging.warning(f"No live log for task {task.task_id}: {e}")
         live_path = live_url = None

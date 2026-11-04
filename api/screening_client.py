@@ -58,10 +58,20 @@ class ScreeningClient:
             def __call__(self, message="", collapsable=True):
                 template = self.client.gh_response_template(message=message, collapse=collapsable)
                 #if self.phase == "PENDING" or self.comment_id is None:
-                if self.phase == "PENDING":    
+                if self.phase == "PENDING":
                     comment_id = self.client.gh_create_comment(template['PENDING'])
                     self.comment_id = comment_id
                     return comment_id
+                elif self.phase == "SUCCESS":
+                    # The result is a comment of its own, as a MyST build's is, so the issue's subscribers are told
+                    # (GitHub sends nothing for an edited comment). The status comment says where it is.
+                    result_id = self.client.gh_create_comment(template['SUCCESS'], override_assign=True)
+                    if self.client.comment_id is not None:
+                        done = self.client.gh_response_template(
+                            message=f"The result is in [its own comment]({self.client.comment_url(result_id)}).",
+                            collapse=False)
+                        self.client.gh_update_comment(done['SUCCESS'])
+                    return result_id
                 else:
                     return self.client.gh_update_comment(template[self.phase])
 
@@ -162,10 +172,13 @@ class ScreeningClient:
             this_task_id = self.task_id
 
         issue_comment_url = f"https://github.com/neurolibre/neurolibre-reviews/issues/{self.issue_id}#issuecomment-{this_comment_id}"
+        # A task that keeps a live log (a MyST build, live_log.py) links to it while it runs
+        live_log_url = getattr(self, "live_log_url", None)
+        live = f"\n📜 [Follow the build's log live]({live_log_url})\n" if live_log_url else ""
         return {
             "PENDING": f"&#9899; **{self.task_name}**\n----------------------------\n**Status:** Waiting for task assignment\n**Last updated:** {cur_time}\n{message}",
             "RECEIVED": f"&#9898; **{self.task_name}**\n----------------------------\n**Status:** Assigned to task `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: <a href=\"{issue_comment_url}\">Refresh</a>)",
-            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n:recycle: <a href=\"{issue_comment_url}\">Refresh</a>",
+            "STARTED": f"&#128992; **{self.task_name}**\n----------------------------\n**Status:** In progress `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}\n{live}:recycle: <a href=\"{issue_comment_url}\">Refresh</a>",
             "SUCCESS": f"&#128994; **{self.task_name}**\n----------------------------\n**Status:** Success `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
             "FAILURE": f"&#128308; **{self.task_name}**\n----------------------------\n**Status:** Failed `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
             "EXISTS": f"&#128995; **{self.task_name}**\n----------------------------\n**Status:** Already exists `{this_task_id[0:8]}`\n**Last updated:** {cur_time}\n{message}",
@@ -207,6 +220,9 @@ class ScreeningClient:
         if not override_assign:
             self.comment_id = commit_comment.id  # Update comment_id after creation
         return commit_comment.id
+
+    def comment_url(self, comment_id):
+        return f"https://github.com/{self.gh_filter(self.review_repository)}/issues/{self.issue_id}#issuecomment-{comment_id}"
 
     def gh_update_comment(self, comment_body):
         repo = self.github_client.get_repo(self.gh_filter(self.review_repository))
